@@ -46,8 +46,7 @@ struct AnthropicDuelService {
             opponentSections: opponentSections.map { SectionPayload(section_key: $0.sectionKey, content: $0.content) }
         )
 
-        let data = try await invokeDuelAI(body: payload)
-        return try JSONDecoder().decode(DuelGenerateResponse.self, from: data)
+        return try await invokeDuelAI(body: payload)
     }
 
     /// Calcula el delta de compatibilidad y una explicación corta.
@@ -75,22 +74,26 @@ struct AnthropicDuelService {
         }
 
         let payload = RequestBody(sessionId: sessionID, answers: answers, chatId: chatID, opponentId: opponentID)
-        let data = try await invokeDuelAI(body: payload)
-        let result = try JSONDecoder().decode(ScoreResponse.self, from: data)
+        let result: ScoreResponse = try await invokeDuelAI(body: payload)
         return (result.delta, result.explanation)
     }
 
-    private func invokeDuelAI<T: Encodable>(body: T) async throws -> Data {
-        // El SDK de supabase-swift expone `functions.invoke(_:options:)`.
-        // Confirma el nombre exacto contra la versión del paquete que uses;
-        // si difiere, ajusta solo esta función — el resto del servicio no cambia.
-        let response = try await SupabaseManager.shared.client.functions
+    // Hallazgo real, primer resultado de tener por fin un compilador de
+    // verdad (CI en GitHub Actions, runner macOS, 2026-08-24): no existe
+    // ningún overload de `functions.invoke` que devuelva `Data` — solo
+    // `invoke<T: Decodable>(_:options:decoder:) async throws -> T` (decodifica
+    // directamente) y `invoke(_:options:) async throws` (descarta el cuerpo).
+    // Sin contexto de tipo, `let data = try await ...invoke(...)` resolvía
+    // al segundo (Void), y el `JSONDecoder().decode(_:from: data)` de
+    // después fallaba porque `data` nunca fue `Data`. Confirmado leyendo el
+    // código fuente real de
+    // supabase/supabase-swift/Sources/Functions/FunctionsClient.swift.
+    // Se usa ahora el overload genérico directamente — sin
+    // JSONDecoder manual ni comprobación de `isEmpty` (si el cuerpo no
+    // decodifica al tipo esperado, `invoke` ya lanza el error real).
+    private func invokeDuelAI<Body: Encodable, Response: Decodable>(body: Body) async throws -> Response {
+        try await SupabaseManager.shared.client.functions
             .invoke("duel-ai", options: .init(body: body))
-
-        guard !response.isEmpty else {
-            throw AnthropicDuelError.invalidResponse
-        }
-        return response
     }
 }
 

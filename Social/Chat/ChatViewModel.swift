@@ -209,9 +209,15 @@ final class ChatViewModel: ObservableObject {
         struct IcebreakerRequest: Encodable { let chatId: UUID }
         struct IcebreakerResponse: Decodable { let message: String? }
         do {
-            let data = try await SupabaseManager.shared.client.functions
+            // Hallazgo real (primer resultado del CI real en GitHub
+            // Actions): no existe overload de `functions.invoke` que
+            // devuelva `Data` — se usa el overload genérico
+            // `invoke<T: Decodable>` directamente en vez de decodificar a
+            // mano (ver el mismo hallazgo, con más detalle, en
+            // AnthropicDuelService.swift.invokeDuelAI).
+            let response: IcebreakerResponse = try await SupabaseManager.shared.client.functions
                 .invoke("icebreaker-ai", options: .init(body: IcebreakerRequest(chatId: chatID)))
-            icebreaker = try JSONDecoder().decode(IcebreakerResponse.self, from: data).message
+            icebreaker = response.message
         } catch {
             // Sin IA disponible no se rompe el resto del chat.
         }
@@ -509,9 +515,9 @@ final class ChatViewModel: ObservableObject {
         struct ActivityRequest: Encodable { let chatId: UUID }
         struct ActivityResponse: Decodable { let suggestion: String? }
         do {
-            let data = try await SupabaseManager.shared.client.functions
+            let response: ActivityResponse = try await SupabaseManager.shared.client.functions
                 .invoke("activity-ai", options: .init(body: ActivityRequest(chatId: chatID)))
-            suggestedActivity = try JSONDecoder().decode(ActivityResponse.self, from: data).suggestion
+            suggestedActivity = response.suggestion
         } catch {
             // Sin IA disponible (límite de uso, red...) no se rompe el
             // resto del chat — simplemente no se muestra sugerencia.
