@@ -1,0 +1,340 @@
+package com.social.app.chat
+
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.rememberAsyncImagePainter
+
+/**
+ * Chat con barra de compatibilidad en vivo — equivalente Compose de
+ * ChatView.swift. Botones +1/+10/+100 y -1/-10/-100, actividad sugerida al
+ * superar 50%, mismo comportamiento que iOS y que el prototipo web.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun ChatScreen(chatId: String, currentUserId: String, onStartDuel: (opponentId: String) -> Unit = {}) {
+    val viewModel = remember(chatId) { ChatViewModel(chatId) }
+    val messages by viewModel.messages.collectAsState()
+    val reactions by viewModel.reactions.collectAsState()
+    val compatibility by viewModel.compatibility.collectAsState()
+    val opponentId by viewModel.opponentId.collectAsState()
+    val suggestedActivity by viewModel.suggestedActivity.collectAsState()
+    val icebreaker by viewModel.icebreaker.collectAsState()
+    var draft by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) viewModel.sendPhoto(context, uri)
+    }
+
+    LaunchedEffect(chatId) { viewModel.start() }
+    DisposableEffect(chatId) { onDispose { viewModel.stop() } }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        LinearProgressIndicator(
+            progress = { compatibility / 100f },
+            modifier = Modifier.fillMaxWidth().height(10.dp).padding(horizontal = 16.dp)
+        )
+        Text(
+            "$compatibility% de compatibilidad",
+            modifier = Modifier.fillMaxWidth().padding(4.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            style = MaterialTheme.typography.labelMedium
+        )
+        val isOpponentOnline by viewModel.isOpponentOnline.collectAsState()
+        if (isOpponentOnline) {
+            Text(
+                "🟢 En línea",
+                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                VoteButton("-100") { viewModel.vote(-100) }
+                VoteButton("-10") { viewModel.vote(-10) }
+                VoteButton("-1") { viewModel.vote(-1) }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                VoteButton("+1") { viewModel.vote(1) }
+                VoteButton("+10") { viewModel.vote(10) }
+                VoteButton("+100") { viewModel.vote(100) }
+            }
+        }
+
+        // Antes DuelScreen no tenía ningún punto de entrada real en la app
+        // (la ruta de navegación existía en RootTabView.kt pero nadie
+        // navegaba a ella) — este es el sitio natural: retar al duelo desde
+        // el chat con esa persona.
+        opponentId?.let { opponent ->
+            Button(
+                onClick = { onStartDuel(opponent) },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+            ) {
+                Text("⚡ Retar a duelo")
+            }
+        }
+
+        // Antes esto era un texto fijo hardcodeado, no reflejaba la fila real
+        // de la tabla `activities` (mismo bug que ChatViewModel.swift ya
+        // evitaba consultando de verdad). Ahora sale de suggestedActivity.
+        suggestedActivity?.let { activity ->
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.tertiaryContainer
+            ) {
+                Text("✨ Actividad sugerida: $activity", modifier = Modifier.padding(10.dp))
+            }
+        }
+
+        val reactionEmojis = listOf("❤", "😂", "😮", "😢", "👍")
+        LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp)) {
+            items(messages) { message ->
+                val isMine = message.senderId == currentUserId
+                var showPicker by remember { mutableStateOf(false) }
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                    horizontalAlignment = if (isMine) Alignment.End else Alignment.Start
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isMine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                        // Hallazgo real: no había forma de borrar un mensaje
+                        // propio — mantener pulsado el tuyo lo borra (ver
+                        // 0022_messages_delete.sql).
+                        modifier = Modifier.combinedClickable(
+                            onClick = { showPicker = !showPicker },
+                            onLongClick = { if (isMine) viewModel.deleteMessage(message.id) }
+                        )
+                    ) {
+                        // Hallazgo real: el chat solo soportaba texto — ver
+                        // 0016_message_media.sql / ChatViewModel.sendPhoto.
+                        if (message.mediaUrl != null) {
+                            Image(
+                                painter = rememberAsyncImagePainter(message.mediaUrl),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.size(200.dp).clip(RoundedCornerShape(14.dp))
+                            )
+                        } else if (message.audioUrl != null) {
+                            // Última pieza real de "chat funcional" — nota
+                            // de voz, reproducción con MediaPlayer nativo.
+                            AudioMessageBubble(url = message.audioUrl, isMine = isMine)
+                        } else {
+                            Text(message.body ?: "", modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+                        }
+                    }
+                    // Hallazgo real: última pieza de "chat funcional con
+                    // fotos, voz, reacciones, read receipts" alcanzable sin
+                    // infraestructura nueva — ver 0018_message_reactions.sql.
+                    // Toque en la burbuja abre/cierra un selector rápido de
+                    // emojis; las reacciones existentes se agrupan con su
+                    // recuento, resaltadas si el usuario ya reaccionó así.
+                    val messageReactions = reactions[message.id].orEmpty()
+                    if (messageReactions.isNotEmpty()) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            messageReactions.groupBy { it.emoji }.forEach { (emoji, group) ->
+                                val iReacted = group.any { it.userId == currentUserId }
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (iReacted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier.clickable { viewModel.toggleReaction(message.id, emoji) }
+                                ) {
+                                    Text("$emoji ${group.size}", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                        }
+                    }
+                    if (showPicker) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {
+                            reactionEmojis.forEach { emoji ->
+                                Text(
+                                    emoji,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.clickable {
+                                        viewModel.toggleReaction(message.id, emoji)
+                                        showPicker = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    if (isMine) {
+                        Text(
+                            if (message.readAt != null) "Leído ✓✓" else "Enviado ✓",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (message.readAt != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+
+        val isOpponentTyping by viewModel.isOpponentTyping.collectAsState()
+        if (isOpponentTyping) {
+            Text(
+                "Escribiendo…",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+            )
+        }
+
+        // "Potenciar la IA" (petición explícita del usuario), comparado
+        // con Hinge/Bumble: sugerencia real para arrancar la conversación
+        // en un chat nuevo — nunca se envía sola, solo rellena el campo.
+        icebreaker?.let { suggestion ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                    .clickable { draft = suggestion; viewModel.dismissIcebreaker() },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("✨", modifier = Modifier.padding(end = 8.dp))
+                Text(
+                    suggestion,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+                androidx.compose.material3.TextButton(onClick = { viewModel.dismissIcebreaker() }) {
+                    Text("✕")
+                }
+            }
+        }
+
+        // Última pieza real de "chat funcional con fotos, voz, reacciones,
+        // read receipts" — grabación nativa con MediaRecorder (ver
+        // VoiceRecorder.kt), sin SDK de terceros.
+        val voiceRecorder = remember { VoiceRecorder(context) }
+        var isRecording by remember { mutableStateOf(false) }
+        val recordPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                voiceRecorder.start()
+                isRecording = true
+            }
+        }
+
+        Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(onClick = { pickImage.launch("image/*") }, modifier = Modifier.padding(end = 8.dp)) {
+                Text("📷")
+            }
+            OutlinedButton(
+                onClick = {
+                    if (isRecording) {
+                        isRecording = false
+                        voiceRecorder.stop()?.let { viewModel.sendVoiceNote(it) }
+                    } else {
+                        recordPermission.launch(android.Manifest.permission.RECORD_AUDIO)
+                    }
+                },
+                modifier = Modifier.padding(end = 8.dp)
+            ) {
+                Text(if (isRecording) "⏹" else "🎙")
+            }
+            OutlinedTextField(
+                value = draft,
+                onValueChange = { draft = it; viewModel.notifyTyping() },
+                modifier = Modifier.weight(1f),
+                placeholder = { Text(if (isRecording) "Grabando…" else "Escribe un mensaje…") },
+                enabled = !isRecording
+            )
+            Button(onClick = { viewModel.sendMessage(draft); draft = "" }, modifier = Modifier.padding(start = 8.dp), enabled = !isRecording) {
+                Text("➤")
+            }
+        }
+    }
+}
+
+/** Reproductor de nota de voz — `MediaPlayer` nativo, sin SDK de terceros,
+ * mismo criterio que `VoiceRecorder`. Se libera al salir de composición
+ * para no dejar el reproductor vivo en segundo plano. */
+@Composable
+private fun AudioMessageBubble(url: String, isMine: Boolean) {
+    var isPlaying by remember { mutableStateOf(false) }
+    var player by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
+
+    androidx.compose.runtime.DisposableEffect(url) {
+        onDispose {
+            player?.release()
+            player = null
+        }
+    }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .clickable {
+                if (isPlaying) {
+                    player?.pause()
+                    isPlaying = false
+                } else {
+                    val p = player ?: android.media.MediaPlayer().apply {
+                        setDataSource(url)
+                        setOnCompletionListener { isPlaying = false }
+                        prepareAsync()
+                        setOnPreparedListener { start() }
+                    }
+                    player = p
+                    if (p.isPlaying.not()) {
+                        try { p.start() } catch (e: Exception) { /* aún preparando */ }
+                    }
+                    isPlaying = true
+                }
+            }
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+        Text(if (isPlaying) "⏸" else "▶")
+        Text(" Nota de voz", color = if (isMine) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color.Unspecified)
+    }
+}
+
+@Composable
+private fun VoteButton(label: String, onClick: () -> Unit) {
+    Button(onClick = onClick, modifier = Modifier) {
+        Text(label, style = MaterialTheme.typography.labelSmall)
+    }
+}

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sustituye el placeholder genérico de Android Studio (un círculo blanco
+     hueco) por el logo real de SOCIAL, centrado y escalado para caber
+     dentro de la "safe zone" (66dp) del icono adaptativo de 108dp, sin que
+     el launcher lo recorte en las esquinas al aplicar la máscara circular. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="64dp"
+        android:height="32dp"
+        android:gravity="center">
+        <bitmap
+            android:src="@drawable/social_logo"
+            android:gravity="fill" />
+    </item>
+</layer-list>

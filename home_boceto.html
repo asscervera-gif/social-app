@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>SOCIAL — Boceto: Home</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
+  body{background:#111;display:flex;justify-content:center;align-items:center;min-height:100vh;}
+  .phone{width:375px;height:812px;background:#F4F6F8;border-radius:44px;border:10px solid #1c1c1e;position:relative;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6);}
+  .scroll{position:absolute;top:0;left:0;right:0;bottom:58px;overflow-y:auto;}
+
+  /* -------- Top bar -------- */
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:16px;background:#fff;border-bottom:1px solid #E9ECEF;}
+  .find-btn{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,#4DABF7,#A55EEA);
+    color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:14px;}
+  .brand-title{font-size:20px;font-weight:800;letter-spacing:2px;
+    background:linear-gradient(90deg,#FF3B3B,#F7B731,#20BF6B,#4DABF7,#A55EEA);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+  .my-avatar{position:relative;width:32px;height:32px;border-radius:50%;background:#F1F3F5;display:flex;align-items:center;justify-content:center;font-size:16px;}
+  .badge-red{position:absolute;top:-4px;right:-4px;background:#FA5252;color:#fff;font-size:9px;font-weight:700;
+    border-radius:8px;padding:1px 5px;}
+
+  /* -------- Historias -------- */
+  .stories{display:flex;gap:14px;padding:14px 16px;overflow-x:auto;background:#fff;border-bottom:1px solid #E9ECEF;}
+  .story{display:flex;flex-direction:column;align-items:center;gap:5px;flex-shrink:0;}
+  .story-ring{width:58px;height:58px;border-radius:50%;padding:2.5px;
+    background:linear-gradient(135deg,#F7B731,#FA5252,#A55EEA);}
+  .story-ring.mine{background:#F1F3F5;padding:0;position:relative;}
+  .story-inner{width:100%;height:100%;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;}
+  .plus-badge{position:absolute;bottom:-2px;right:-2px;width:18px;height:18px;background:#4DABF7;color:#fff;
+    border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;border:2px solid #fff;}
+  .story span{font-size:10.5px;color:#333;}
+
+  /* -------- Tabs -------- */
+  .tabs{display:flex;background:#fff;border-bottom:1px solid #E9ECEF;}
+  .tab{flex:1;text-align:center;padding:12px 0;font-size:13px;color:#888;font-weight:600;}
+  .tab.active{color:#111;border-bottom:2px solid #111;}
+
+  /* -------- Recomendados -------- */
+  .rec-section{background:#fff;padding-bottom:14px;border-bottom:8px solid #F4F6F8;}
+  .rec-title{font-size:10.5px;color:#888;text-transform:uppercase;font-weight:700;letter-spacing:.5px;padding:14px 16px 10px;}
+  .rec-scroll{display:flex;gap:10px;padding:0 16px;overflow-x:auto;}
+  .rec-card{flex:0 0 130px;border:1px solid #E9ECEF;border-radius:14px;overflow:hidden;}
+  .rec-top{height:90px;position:relative;background:linear-gradient(135deg,#FFD8A8,#FFA8A8);}
+  .rec-compat{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.55);color:#fff;font-size:10px;
+    padding:3px 7px;border-radius:9px;text-align:center;line-height:1.2;}
+  .rec-compat.priv{background:rgba(0,0,0,.35);}
+  .rec-compat small{display:block;font-size:7.5px;opacity:.85;}
+  .rec-bottom{padding:8px;}
+  .rec-user{display:flex;align-items:center;gap:6px;margin-bottom:8px;}
+  .rec-av{width:24px;height:24px;border-radius:50%;background:#F1F3F5;display:flex;align-items:center;justify-content:center;font-size:12px;}
+  .rec-name{font-size:11.5px;font-weight:700;color:#111;}
+  .rec-btn{width:100%;background:#4DABF7;color:#fff;border:none;border-radius:9px;padding:6px 0;font-size:11px;font-weight:700;}
+
+  /* -------- Feed -------- */
+  .post{background:#fff;margin-bottom:8px;}
+  .post-head{display:flex;align-items:center;gap:10px;padding:10px 14px;}
+  .post-avatar{width:34px;height:34px;border-radius:50%;padding:2px;background:linear-gradient(135deg,#F7B731,#FA5252,#A55EEA);}
+  .post-avatar-inner{width:100%;height:100%;border-radius:50%;background:#FFD8A8;display:flex;align-items:center;justify-content:center;font-size:16px;}
+  .post-user{flex:1;}
+  .post-name{font-size:12.5px;font-weight:700;color:#111;}
+  .post-loc{font-size:10.5px;color:#888;}
+  .post-compat{background:#EBFBEE;color:#20BF6B;font-size:10px;font-weight:700;padding:4px 8px;border-radius:9px;text-align:center;}
+  .post-compat.priv{background:#F1F3F5;color:#888;}
+  .post-compat small{display:block;font-size:7.5px;font-weight:600;}
+  .post-img{width:100%;aspect-ratio:1;background:linear-gradient(135deg,#A5D8FF,#B2F2BB);}
+  .post-actions{display:flex;align-items:center;gap:14px;padding:10px 14px 4px;font-size:19px;}
+  .post-actions .spacer{flex:1;}
+  .post-likes{padding:2px 14px;font-size:12.5px;font-weight:700;color:#111;}
+  .post-caption{padding:2px 14px;font-size:12.5px;color:#111;}
+  .post-caption b{margin-right:5px;}
+  .post-comments{padding:4px 14px;font-size:12px;color:#888;}
+  .post-date{padding:4px 14px 12px;font-size:9.5px;color:#ADB5BD;text-transform:uppercase;letter-spacing:.4px;}
+
+  /* -------- Nav -------- */
+  .nav{position:absolute;bottom:0;left:0;right:0;height:58px;background:#fff;border-top:1px solid #E9ECEF;display:flex;align-items:center;z-index:30;}
+  .nav .n{flex:1;text-align:center;color:#BBBBBB;font-size:7.5px;}
+  .nav .n.active{color:#111;}
+  .nav .n .ic{font-size:18px;display:block;margin-bottom:2px;}
+  .slogo{font-size:24px;font-weight:300;line-height:1;
+    background:linear-gradient(90deg,#FF3B3B,#F7B731,#20BF6B,#4DABF7,#A55EEA);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="scroll">
+    <div class="topbar">
+      <div class="find-btn">F</div>
+      <div class="brand-title">SOCIAL</div>
+      <div class="my-avatar">🙂<span class="badge-red">3</span></div>
+    </div>
+
+    <div class="stories">
+      <div class="story">
+        <div class="story-ring mine"><div class="story-inner">🙂</div><div class="plus-badge">+</div></div>
+        <span>Tu historia</span>
+      </div>
+      <div class="story"><div class="story-ring"><div class="story-inner">🦊</div></div><span>Álex</span></div>
+      <div class="story"><div class="story-ring"><div class="story-inner">🐼</div></div><span>Marta</span></div>
+      <div class="story"><div class="story-ring"><div class="story-inner">🦁</div></div><span>Leo</span></div>
+    </div>
+
+    <div class="tabs">
+      <div class="tab active">Siguiendo</div>
+      <div class="tab">Recomendado</div>
+    </div>
+
+    <div class="rec-section">
+      <div class="rec-title">Recomendados para ti · Compatibilidad IA</div>
+      <div class="rec-scroll">
+        <div class="rec-card">
+          <div class="rec-top" style="background:linear-gradient(135deg,#FFD8A8,#FFA8A8);">
+            <div class="rec-compat">92%<small>IA compat.</small></div>
+          </div>
+          <div class="rec-bottom">
+            <div class="rec-user"><div class="rec-av">🦊</div><div class="rec-name">Álex</div></div>
+            <button class="rec-btn">Ver perfil</button>
+          </div>
+        </div>
+        <div class="rec-card">
+          <div class="rec-top" style="background:linear-gradient(135deg,#A5D8FF,#D0BFFF);">
+            <div class="rec-compat priv">?%<small>solicitar</small></div>
+          </div>
+          <div class="rec-bottom">
+            <div class="rec-user"><div class="rec-av">🐼</div><div class="rec-name">Marta</div></div>
+            <button class="rec-btn">Ver perfil</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="post">
+      <div class="post-head">
+        <div class="post-avatar"><div class="post-avatar-inner">🦊</div></div>
+        <div class="post-user"><div class="post-name">Álex</div><div class="post-loc">Madrid, España</div></div>
+        <div class="post-compat">92%<small>compat. IA</small></div>
+      </div>
+      <div class="post-img"></div>
+      <div class="post-actions">🤍<span>💬</span><span>➤</span><span class="spacer"></span><span>🔖</span></div>
+      <div class="post-likes">214 Me gusta</div>
+      <div class="post-caption"><b>Álex</b>Atardecer perfecto en la sierra 🏔️</div>
+      <div class="post-comments">Ver los 12 comentarios</div>
+      <div class="post-date">HACE 2 HORAS</div>
+    </div>
+
+    <div class="post">
+      <div class="post-head">
+        <div class="post-avatar"><div class="post-avatar-inner">🐼</div></div>
+        <div class="post-user"><div class="post-name">Marta</div><div class="post-loc">Barcelona, España</div></div>
+        <div class="post-compat priv">?%<small>solicitar</small></div>
+      </div>
+      <div class="post-img" style="background:linear-gradient(135deg,#FFC9DE,#FFD8A8);"></div>
+      <div class="post-actions">❤️<span>💬</span><span>➤</span><span class="spacer"></span><span>🔖</span></div>
+      <div class="post-likes">89 Me gusta</div>
+      <div class="post-caption"><b>Marta</b>Café de especialidad ☕</div>
+      <div class="post-comments">Ver los 4 comentarios</div>
+      <div class="post-date">HACE 5 HORAS</div>
+    </div>
+  </div>
+
+  <div class="nav">
+    <div class="n active"><span class="ic">🏠</span>Home</div>
+    <div class="n"><span class="ic">🔍</span>Match</div>
+    <div class="n"><span class="slogo">S</span></div>
+    <div class="n"><span class="ic">🔔</span>Avisos</div>
+    <div class="n"><span class="ic">👤</span>Perfil</div>
+  </div>
+</div>
+<script>if(location.hash==='#embed'){document.querySelectorAll('.nav').forEach(n=>n.style.display='none');}</script>
+</body>
+</html>

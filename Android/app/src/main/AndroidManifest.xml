@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- La app soporta Android 8+ (minSdk 26); androidx.core.uwb exige 31 en
+         su propio manifest. Se permite el merge porque SocialProximity.kt
+         comprueba Build.VERSION.SDK_INT antes de tocar cualquier API de UWB
+         — en <31 la app funciona igual, solo sin proximidad física. -->
+    <uses-sdk tools:overrideLibrary="androidx.core.uwb" />
+
+    <!-- Red: llamadas a Supabase (Postgrest/Realtime/Auth/Functions). Sin esto
+         la app crashea en el primer intento de conexión (SecurityException en
+         OkHttp) — encontrado ejecutando la app de verdad en un emulador, no
+         solo compilando. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Notificaciones locales del proceso (LocalNotifier.kt): obligatorio
+         pedirlo en tiempo de ejecución desde Android 13 (API 33). Sin FCM
+         ni ningún backend push real — solo dispara mientras la app está
+         viva (ver aviso de honestidad en LocalNotifier.kt). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Cámara: vista previa para los marcadores flotantes -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="true" />
+
+    <!-- Micrófono: última pieza real de "chat funcional con fotos, voz,
+         reacciones, read receipts" — mensajes de voz nativos (MediaRecorder),
+         sin SDK de terceros. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- UWB: medición de proximidad de precisión (Android 12+, opcional). -->
+    <uses-permission android:name="android.permission.UWB_RANGING" android:minSdkVersion="31" />
+    <uses-feature android:name="android.hardware.uwb" android:required="false" />
+
+    <!-- Nearby Connections: canal de arranque para intercambiar sesiones UWB -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Obligatorio en Android 13+ (API 33) para que Nearby Connections
+         pueda usar sus estrategias basadas en Wi-Fi (P2P_CLUSTER, la que
+         usa SocialProximity.kt) — sin este permiso el descubrimiento falla
+         en cualquier dispositivo real Android 13+, aunque en el emulador
+         (API 33 pero sin advertencia bloqueante) no se notaba hasta revisar
+         el log: "MISSING_PERMISSION_NEARBY_WIFI_DEVICES". -->
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation" />
+
+    <application
+        android:label="SOCIAL"
+        android:icon="@mipmap/ic_launcher"
+        android:theme="@style/Theme.Social"
+        android:allowBackup="false">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Social">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

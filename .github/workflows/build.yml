@@ -1,0 +1,92 @@
+# .github/workflows/build.yml
+#
+# Compila SOCIAL en un runner macOS de GitHub Actions — esta es la vía real
+# para verificar que el proyecto compila sin tener un Mac propio. No firma
+# ni sube a App Store (eso requiere un Apple Developer Program de pago y
+# certificados); solo compila para el simulador, que basta para detectar
+# errores de sintaxis/dependencias.
+#
+# Coste: GitHub da minutos gratis limitados en repos privados; los runners
+# macOS consumen minutos a 10x respecto a Linux. Repos públicos son gratis.
+
+name: Build SOCIAL (simulador)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar XcodeGen
+        run: brew install xcodegen
+
+      - name: Generar Social.xcodeproj
+        run: xcodegen generate
+
+      - name: Seleccionar versión de Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+
+      # Config.plist real está en .gitignore (credenciales) — sin esto,
+      # SupabaseManager.swift hace fatalError() al arrancar (por diseño,
+      # ver el comentario en ese archivo) y ni siquiera se podría lanzar
+      # en el simulador para la captura de pantalla de abajo. Credenciales
+      # de relleno, no reales — solo para que la app arranque en CI; las
+      # llamadas reales a Supabase fallarán limpiamente (cada ViewModel ya
+      # captura el error y lo muestra, no hay ningún crash esperado por eso).
+      - name: Crear Config.plist de CI (credenciales de relleno, no reales)
+        run: |
+          cat > Social/Backend/Config.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>SUPABASE_URL</key>
+              <string>https://ci-placeholder.supabase.co</string>
+              <key>SUPABASE_ANON_KEY</key>
+              <string>ci-placeholder-anon-key</string>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Compilar para el simulador
+        run: |
+          xcodebuild build \
+            -project Social.xcodeproj \
+            -scheme Social \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 15' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO
+
+      # No es un test funcional (las llamadas a Supabase apuntan a un host
+      # de relleno y fallarán) — es la única verificación visual posible
+      # sin un Mac físico ni un iPhone real: confirma que la app arranca,
+      # SwiftUI renderiza sin fatalError/crash de layout, y deja una
+      # captura real como prueba en vez de solo "compiló".
+      - name: Lanzar en el Simulador y capturar pantalla
+        run: |
+          set -e
+          UDID=$(xcrun simctl list devices available -j | \
+            /usr/bin/python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(dev['udid'] for rt in d.values() for dev in rt if dev['name']=='iPhone 15'))")
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          APP_PATH=$(find build/Build/Products -maxdepth 1 -iname "Social.app" | head -1)
+          xcrun simctl install "$UDID" "$APP_PATH"
+          xcrun simctl launch "$UDID" com.social.app
+          sleep 8
+          mkdir -p artifacts
+          xcrun simctl io "$UDID" screenshot artifacts/social-ios-simulator.png
+
+      - name: Subir captura como artefacto
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: social-ios-simulator-screenshot
+          path: artifacts/social-ios-simulator.png
+          if-no-files-found: warn

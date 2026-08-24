@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Social" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:colorBackground">@color/social_background</item>
+        <item name="android:statusBarColor">@color/social_background</item>
+        <!-- Fondo blanco necesita iconos oscuros en la barra de estado
+             (hora, wifi, batería) — con el tema oscuro anterior esos
+             iconos eran claros y quedaban invisibles sobre blanco. -->
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

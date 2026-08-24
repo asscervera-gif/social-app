@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>SOCIAL — Boceto: Avisos</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
+  body{background:#111;display:flex;justify-content:center;align-items:center;min-height:100vh;}
+  .phone{width:375px;height:812px;background:#F4F6F8;border-radius:44px;border:10px solid #1c1c1e;position:relative;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6);}
+  .scroll{position:absolute;top:0;left:0;right:0;bottom:58px;overflow-y:auto;}
+  h1.title{font-size:19px;font-weight:800;color:#111;padding:16px 16px 10px;background:#fff;}
+  .sec-title{font-size:10.5px;color:#888;text-transform:uppercase;font-weight:700;letter-spacing:.5px;padding:14px 16px 6px;}
+  .row{display:flex;align-items:center;gap:12px;padding:11px 16px;background:#fff;position:relative;}
+  .row.unread{background:#E7F5FF;}
+  .row-avatar{position:relative;width:42px;height:42px;border-radius:50%;background:#F1F3F5;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;}
+  .type-badge{position:absolute;bottom:-2px;right:-2px;width:17px;height:17px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;font-size:9px;border:2px solid #fff;}
+  .tb-social{background:#111;color:#fff;} .tb-follow{background:#4DABF7;color:#fff;}
+  .tb-fight{background:#7048E8;color:#fff;} .tb-like{background:#FA5252;color:#fff;} .tb-compat{background:#20BF6B;color:#fff;}
+  .row-text{flex:1;font-size:13px;color:#111;line-height:1.35;}
+  .row-text b{font-weight:700;}
+  .row-time{display:block;font-size:11px;color:#888;margin-top:2px;}
+  .unread-dot{width:8px;height:8px;background:#4DABF7;border-radius:50%;}
+  .suggest-row{display:flex;gap:16px;padding:14px 16px;overflow-x:auto;background:#fff;}
+  .suggest{display:flex;flex-direction:column;align-items:center;gap:5px;flex-shrink:0;}
+  .suggest-av{width:56px;height:56px;border-radius:50%;background:#F1F3F5;display:flex;align-items:center;justify-content:center;font-size:26px;}
+  .suggest span{font-size:11px;color:#333;}
+  .nav{position:absolute;bottom:0;left:0;right:0;height:58px;background:#fff;border-top:1px solid #E9ECEF;display:flex;align-items:center;z-index:30;}
+  .nav .n{flex:1;text-align:center;color:#BBBBBB;font-size:7.5px;}
+  .nav .n.active{color:#111;}
+  .nav .n .ic{font-size:18px;display:block;margin-bottom:2px;}
+  .slogo{font-size:24px;font-weight:300;line-height:1;
+    background:linear-gradient(90deg,#FF3B3B,#F7B731,#20BF6B,#4DABF7,#A55EEA);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+
+  /* -------- Hoja de detalle -------- */
+  .sheet-overlay{position:absolute;inset:0;background:rgba(0,0,0,.4);z-index:40;opacity:0;pointer-events:none;transition:opacity .25s;}
+  .sheet-overlay.show{opacity:1;pointer-events:auto;}
+  .sheet{position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:22px 22px 0 0;z-index:41;
+    padding:20px;transform:translateY(100%);transition:transform .3s;}
+  .sheet-overlay.show .sheet{transform:translateY(0);}
+  .sheet-head{display:flex;flex-direction:column;align-items:center;margin-bottom:14px;}
+  .sheet-av{width:60px;height:60px;border-radius:50%;background:#FFD8A8;display:flex;align-items:center;justify-content:center;font-size:30px;margin-bottom:8px;}
+  .sheet-name{font-size:16px;font-weight:700;color:#111;} .sheet-handle{font-size:12px;color:#888;}
+  .sheet-context{background:#F1F3F5;border-radius:12px;padding:10px 12px;font-size:12.5px;color:#555;margin-bottom:14px;}
+  .sheet-btn{width:100%;border:none;border-radius:12px;padding:12px;font-size:13px;font-weight:700;margin-bottom:8px;cursor:pointer;}
+  .b-accept{background:#20BF6B;color:#fff;} .b-reject{background:#F1F3F5;color:#FA5252;}
+  .b-msg{background:#4DABF7;color:#fff;} .b-social{background:#111;color:#fff;} .b-fight{background:#7048E8;color:#fff;}
+  .b-perfil{background:#F1F3F5;color:#111;} .b-block{background:#fff;color:#111;border:1px solid #E9ECEF;}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="scroll">
+    <h1 class="title">🔔 Notificaciones</h1>
+    <div class="sec-title">Nuevas</div>
+    <div class="row unread" onclick="openSheet()">
+      <div class="row-avatar">🦊<span class="type-badge tb-social">🤝</span></div>
+      <div class="row-text"><b>Álex</b> te ha enviado un social 🤝<span class="row-time">hace 5 min</span></div>
+      <div class="unread-dot"></div>
+    </div>
+    <div class="row unread" onclick="openSheet()">
+      <div class="row-avatar">🐼<span class="type-badge tb-follow">＋</span></div>
+      <div class="row-text"><b>Marta</b> ha empezado a seguirte<span class="row-time">hace 20 min</span></div>
+      <div class="unread-dot"></div>
+    </div>
+    <div class="row" onclick="openSheet()">
+      <div class="row-avatar">🦁<span class="type-badge tb-fight">⚔️</span></div>
+      <div class="row-text"><b>Leo</b> te ha retado a un fight<span class="row-time">hace 2 h</span></div>
+    </div>
+    <div class="row" onclick="openSheet()">
+      <div class="row-avatar">🐨<span class="type-badge tb-like">❤️</span></div>
+      <div class="row-text"><b>Nora</b> ha dado like a tu publicación<span class="row-time">hace 3 h</span></div>
+    </div>
+    <div class="row" onclick="openSheet()">
+      <div class="row-avatar">🐸<span class="type-badge tb-compat">%</span></div>
+      <div class="row-text"><b>Iker</b> quiere ver tu compatibilidad<span class="row-time">hace 5 h</span></div>
+    </div>
+
+    <div class="sec-title">Sugerencias de perfiles</div>
+    <div class="suggest-row">
+      <div class="suggest"><div class="suggest-av">🦊</div><span>Álex</span></div>
+      <div class="suggest"><div class="suggest-av">🐼</div><span>Marta</span></div>
+      <div class="suggest"><div class="suggest-av">🦁</div><span>Leo</span></div>
+      <div class="suggest"><div class="suggest-av">🐨</div><span>Nora</span></div>
+    </div>
+  </div>
+  <div class="nav">
+    <div class="n"><span class="ic">🏠</span>Home</div>
+    <div class="n"><span class="ic">🔍</span>Match</div>
+    <div class="n"><span class="slogo">S</span></div>
+    <div class="n active"><span class="ic">🔔</span>Avisos</div>
+    <div class="n"><span class="ic">👤</span>Perfil</div>
+  </div>
+
+  <div class="sheet-overlay" id="ov" onclick="if(event.target===this)closeSheet()">
+    <div class="sheet">
+      <div class="sheet-head">
+        <div class="sheet-av">🦊</div>
+        <div class="sheet-name">Álex</div>
+        <div class="sheet-handle">@alex_r</div>
+      </div>
+      <div class="sheet-context">Álex te ha enviado un social hace 5 minutos. Aceptar abrirá un chat directo entre los dos.</div>
+      <button class="sheet-btn b-accept">✓ Aceptar social</button>
+      <button class="sheet-btn b-reject">✕ Rechazar</button>
+      <button class="sheet-btn b-msg">💬 Enviar mensaje</button>
+      <button class="sheet-btn b-social">🤝 Enviar social</button>
+      <button class="sheet-btn b-fight">⚔️ Retar a fight</button>
+      <button class="sheet-btn b-perfil">👤 Ver perfil</button>
+      <button class="sheet-btn b-block">🚫 Bloquear o silenciar</button>
+    </div>
+  </div>
+</div>
+<script>
+function openSheet(){ document.getElementById('ov').classList.add('show'); }
+function closeSheet(){ document.getElementById('ov').classList.remove('show'); }
+if(location.hash==='#embed'){document.querySelectorAll('.nav').forEach(n=>n.style.display='none');}
+</script>
+</body>
+</html>

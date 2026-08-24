@@ -1,0 +1,47 @@
+name: Social
+options:
+  bundleIdPrefix: com.social.app
+  deploymentTarget:
+    iOS: "16.0"
+
+packages:
+  Supabase:
+    url: https://github.com/supabase/supabase-swift
+    from: "2.0.0"
+
+targets:
+  Social:
+    type: application
+    platform: iOS
+    sources:
+      - path: Social
+        excludes:
+          - "Backend/Config.example.plist"
+    resources:
+      - path: Social/Backend/Config.plist
+        optional: true
+      # Hallazgo real, legalmente relevante: la política de privacidad
+      # existía como documento del repositorio pero nunca se mostraba
+      # dentro de la app (ver PrivacyPolicyView.swift). Nota de
+      # mantenimiento: si se edita legal/privacy_policy_es.md, hay que
+      # volver a copiarlo aquí — no se lee en vivo del repositorio.
+      - path: Social/privacy_policy_es.md
+      - path: Social/terms_of_service_es.md
+    dependencies:
+      - package: Supabase
+        product: Supabase
+    info:
+      path: Social/Info.plist
+      properties:
+        CFBundleDisplayName: SOCIAL
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.social.app
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+        DEVELOPMENT_TEAM: ""
+        CODE_SIGN_STYLE: Automatic

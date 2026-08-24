@@ -1,0 +1,37 @@
+# Xcode — el .xcodeproj se genera con `xcodegen generate` a partir de
+# project.yml (fuente de verdad), no se versiona.
+*.xcodeproj/
+xcuserdata/
+DerivedData/
+*.xcworkspace/xcuserdata/
+*.moved-aside
+*.hmap
+*.ipa
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Secretos: nunca subir claves reales
+Social/Backend/Config.plist
+Android/local.properties
+
+# Android
+Android/.gradle/
+Android/app/build/
+Android/build/
+Android/.idea/
+Android/*.iml
+Android/local.properties
+
+# Supabase CLI
+supabase/.branches
+supabase/.temp
+
+# Verificación local de migraciones (supabase/local_verify) — dependencia
+# real (@electric-sql/pglite) instalada vía npm, no se versiona.
+supabase/local_verify/node_modules/
+supabase/local_verify/package-lock.json
+
+# macOS
+.DS_Store

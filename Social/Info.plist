@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSNearbyInteractionUsageDescription</key>
+    <string>SOCIAL usa la interacción cercana para medir la distancia y dirección de las personas a tu alrededor y mostrarte su avatar en la cámara.</string>
+
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>SOCIAL usa Bluetooth para descubrir e intercambiar de forma segura la información inicial con otros dispositivos cercanos antes de medir la distancia.</string>
+
+    <!-- Corregido: el texto anterior decía que la ubicación/brújula
+         estabilizaban el apuntado hacia personas cercanas, pero el marcador
+         y la guía de apuntado ("gira a la izquierda/derecha") solo usan el
+         ángulo UWB relativo al dispositivo (ver corrección en
+         HeadingProvider.swift/SocialCameraView.swift) — la ubicación real
+         se usa para detectar eventos cercanos (Modo Evento,
+         EventLocationProvider) y, si se activa, para el mapa "Find". -->
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>SOCIAL usa tu ubicación para detectar si estás dentro de un evento activo (Modo Evento) y, si lo activas, para mostrarte en el mapa de "Find".</string>
+
+    <key>NSCameraUsageDescription</key>
+    <string>SOCIAL usa la cámara para mostrarte, en tiempo real, el avatar de las personas que tienes cerca cuando enfocas hacia ellas.</string>
+
+    <!-- Última pieza real de "chat funcional con fotos, voz, reacciones,
+         read receipts" — mensajes de voz nativos (AVAudioRecorder). -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>SOCIAL usa el micrófono para grabar notas de voz en el chat.</string>
+
+    <!-- Obligatorio en iOS 14+: MultipeerConnectivity usa Bonjour por
+         debajo para el canal de arranque (SocialProximity.swift,
+         serviceType "social-uwb"). Sin NSLocalNetworkUsageDescription y
+         NSBonjourServices declarando el tipo de servicio exacto, el
+         descubrimiento de peers falla en dispositivos reales — mismo tipo
+         de hallazgo que NEARBY_WIFI_DEVICES en Android (equivalente
+         auditoría de permisos, encontrado revisando el mismo problema en
+         ambas plataformas). -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>SOCIAL usa la red local para descubrir a otras personas cercanas con la app abierta, antes de medir la distancia real por UWB.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_social-uwb._tcp</string>
+        <string>_social-uwb._udp</string>
+    </array>
+
+    <key>UILaunchScreen</key>
+    <dict/>
+
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+    </array>
+</dict>
+</plist>

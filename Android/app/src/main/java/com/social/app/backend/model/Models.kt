@@ -1,0 +1,135 @@
+package com.social.app.backend.model
+
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
+/**
+ * Modelos serializables que reflejan 1:1 las tablas de
+ * supabase/migrations/0001_schema.sql — equivalente Kotlin de Models.swift.
+ */
+
+@Serializable
+data class Profile(
+    val id: String,
+    @SerialName("display_name") val displayName: String,
+    @SerialName("avatar_url") val avatarUrl: String? = null,
+    // Hallazgo real: faltaba este campo por completo — `avatar_config`
+    // existe en 0001_schema.sql desde el principio y se consultaba en
+    // varias pantallas vía Columns.raw, pero al no estar en el modelo
+    // nunca se decodificaba ni se podía pintar. Ver avatar/AvatarView.kt.
+    @SerialName("avatar_config") val avatarConfig: Map<String, String>? = null,
+    val interests: List<String> = emptyList(),
+    val bio: String? = null,
+    @SerialName("is_invisible") val isInvisible: Boolean = false,
+    @SerialName("location_public") val locationPublic: Boolean = false,
+    @SerialName("compat_public") val compatPublic: Boolean = false,
+    @SerialName("is_verified") val isVerified: Boolean = false,
+    // Hallazgo real (redisenio de Match, ver MatchScreen.kt): la columna
+    // existe en 0001_schema.sql desde el principio, pero nada la escribia
+    // nunca (ver PrivacySettingsViewModel.kt.publishCurrentLocation, el fix
+    // gemelo de este mismo hallazgo) ni la leia fuera de "Find" — el filtro
+    // "Cerca" de Match no podia existir de verdad sin esto en el modelo.
+    @SerialName("last_lat") val lastLat: Double? = null,
+    @SerialName("last_lng") val lastLng: Double? = null,
+    @SerialName("created_at") val createdAt: String? = null
+)
+
+@Serializable
+data class Post(
+    val id: String,
+    @SerialName("author_id") val authorId: String,
+    @SerialName("media_url") val mediaUrl: String? = null,
+    val caption: String? = null,
+    @SerialName("is_social_only") val isSocialOnly: Boolean = false,
+    @SerialName("like_count") val likeCount: Int = 0,
+    @SerialName("comment_count") val commentCount: Int = 0,
+    // Hallazgo real: ningún post mostraba fecha/hora en ningún sitio de la
+    // app, comparado con cualquier app grande ("hace 2h", "3d"...) — ni
+    // siquiera se decodificaba `created_at` en el modelo.
+    @SerialName("created_at") val createdAt: String = ""
+)
+
+@Serializable
+data class Comment(
+    val id: String,
+    @SerialName("post_id") val postId: String,
+    @SerialName("author_id") val authorId: String,
+    val body: String,
+    @SerialName("created_at") val createdAt: String
+)
+
+@Serializable
+data class SocialLink(
+    val id: String,
+    @SerialName("requester_id") val requesterId: String,
+    @SerialName("addressee_id") val addresseeId: String,
+    val status: String
+)
+
+@Serializable
+data class NotificationEntry(
+    val id: String,
+    val kind: String,
+    val payload: Map<String, String> = emptyMap(),
+    @SerialName("read_at") val readAt: String? = null,
+    @SerialName("created_at") val createdAt: String
+)
+
+@Serializable
+data class CompatRequest(
+    val id: String,
+    @SerialName("requester_id") val requesterId: String,
+    @SerialName("target_id") val targetId: String,
+    val status: String
+)
+
+@Serializable
+data class Chat(
+    val id: String,
+    @SerialName("user_a_id") val userAId: String,
+    @SerialName("user_b_id") val userBId: String,
+    @SerialName("compatibility_score") val compatibilityScore: Int = 50
+)
+
+@Serializable
+data class ChatMessage(
+    val id: String,
+    @SerialName("chat_id") val chatId: String,
+    @SerialName("sender_id") val senderId: String,
+    val body: String? = null,
+    // Hallazgo real: el chat solo soportaba texto — `media_url` opcional
+    // (0016_message_media.sql), igual que posts, ahora que Storage existe.
+    @SerialName("media_url") val mediaUrl: String? = null,
+    @SerialName("created_at") val createdAt: String,
+    // Hallazgo real: última pieza real de "chat funcional con fotos, voz,
+    // reacciones, read receipts" alcanzable sin infraestructura nueva —
+    // mismo patrón que notifications.read_at (0017_message_read_receipts.sql).
+    @SerialName("read_at") val readAt: String? = null,
+    // Mensajes de voz — separado de mediaUrl a propósito, ver
+    // 0019_message_audio.sql: el cliente necesita distinguir explícitamente
+    // reproductor de imagen, no adivinar por la extensión del archivo.
+    @SerialName("audio_url") val audioUrl: String? = null
+)
+
+/** Hallazgo de integridad corregido (ver duel-ai/index.ts): antes incluía
+ * `correctIndex`, viajando en claro al cliente — cualquiera podía ver la
+ * respuesta correcta antes de elegir. Ahora el servidor guarda las
+ * preguntas completas en `duel_sessions` y solo manda prompt+options; la
+ * puntuación real la calcula el servidor contra esa sesión, no el cliente. */
+@Serializable
+data class DuelQuestion(
+    val prompt: String,
+    val options: List<String>
+)
+
+@Serializable
+data class Duel(
+    val id: String,
+    @SerialName("chat_id") val chatId: String,
+    @SerialName("initiator_id") val initiatorId: String,
+    @SerialName("opponent_id") val opponentId: String,
+    val questions: List<DuelQuestion>,
+    @SerialName("compatibility_delta") val compatibilityDelta: Int? = null,
+    val explanation: String? = null,
+    @SerialName("is_public") val isPublic: Boolean = false
+)

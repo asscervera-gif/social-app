@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>SOCIAL — App completa navegable</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
+  body{background:#111;display:flex;justify-content:center;align-items:center;min-height:100vh;}
+  .phone{width:375px;height:812px;background:#F4F6F8;border-radius:44px;border:10px solid #1c1c1e;position:relative;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6);}
+  .screen{position:absolute;inset:0;display:none;}
+  .screen.active{display:block;}
+  .nav{position:absolute;bottom:0;left:0;right:0;height:58px;background:#fff;border-top:1px solid #E9ECEF;display:flex;align-items:center;z-index:30;}
+  .nav .n{flex:1;text-align:center;color:#BBBBBB;font-size:7.5px;cursor:pointer;}
+  .nav .n.active{color:#111;}
+  .nav .n .ic{font-size:18px;display:block;margin-bottom:2px;}
+  .slogo{font-size:24px;font-weight:300;line-height:1;
+    background:linear-gradient(90deg,#FF3B3B,#F7B731,#20BF6B,#4DABF7,#A55EEA);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+  iframe{width:100%;height:calc(100% - 58px);border:0;display:block;}
+  .note{position:fixed;bottom:10px;left:0;right:0;text-align:center;color:#666;font-size:12px;}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="screen active" id="scr-social"><iframe src="social_boceto.html#embed"></iframe></div>
+  <div class="screen" id="scr-home"><iframe src="home_boceto.html#embed"></iframe></div>
+  <div class="screen" id="scr-match"><iframe src="match_boceto.html#embed"></iframe></div>
+  <div class="screen" id="scr-avisos"><iframe src="notificaciones_boceto.html#embed"></iframe></div>
+  <div class="screen" id="scr-perfil"><iframe src="perfil_boceto.html#embed"></iframe></div>
+
+  <div class="nav">
+    <div class="n" data-s="home" onclick="go('home')"><span class="ic">🏠</span>Home</div>
+    <div class="n" data-s="match" onclick="go('match')"><span class="ic">🔍</span>Match</div>
+    <div class="n active" data-s="social" onclick="go('social')"><span class="slogo">S</span></div>
+    <div class="n" data-s="avisos" onclick="go('avisos')"><span class="ic">🔔</span>Avisos</div>
+    <div class="n" data-s="perfil" onclick="go('perfil')"><span class="ic">👤</span>Perfil</div>
+  </div>
+</div>
+<div class="note">Nota: cada pestaña carga su boceto individual (social_boceto.html, home_boceto.html...) dentro de un iframe — la barra inferior de cada boceto individual queda oculta aquí para no duplicarla; la barra real de esta vista es la de abajo.</div>
+<script>
+function go(s){
+  document.querySelectorAll('.screen').forEach(e=>e.classList.remove('active'));
+  document.getElementById('scr-'+s).classList.add('active');
+  document.querySelectorAll('.nav .n').forEach(e=>e.classList.remove('active'));
+  document.querySelector(`.nav .n[data-s="${s}"]`).classList.add('active');
+}
+</script>
+</body>
+</html>

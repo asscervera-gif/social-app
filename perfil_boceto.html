@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>SOCIAL — Boceto: Perfil</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
+  body{background:#111;display:flex;justify-content:center;align-items:center;min-height:100vh;}
+  .phone{width:375px;height:812px;background:#F4F6F8;border-radius:44px;border:10px solid #1c1c1e;position:relative;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6);}
+  .scroll{position:absolute;top:0;left:0;right:0;bottom:58px;overflow-y:auto;}
+
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:#fff;}
+  .handle{font-size:15px;font-weight:700;color:#111;}
+  .tb-icons{display:flex;gap:8px;}
+  .tb-icon{width:30px;height:30px;border-radius:9px;background:#F1F3F5;display:flex;align-items:center;justify-content:center;font-size:14px;}
+
+  .head{display:flex;gap:14px;padding:6px 16px 14px;background:#fff;}
+  .avatar-wrap{display:flex;flex-direction:column;align-items:center;gap:3px;}
+  .avatar-big{width:76px;height:76px;border-radius:50%;border:2px solid #E9ECEF;background:#FFD8A8;
+    display:flex;align-items:center;justify-content:center;font-size:34px;}
+  .avatar-label{font-size:9px;color:#888;}
+  .head-right{flex:1;display:flex;flex-direction:column;gap:8px;}
+  .publish-btn{background:#111;color:#fff;border:none;border-radius:12px;padding:9px;font-size:12.5px;font-weight:700;}
+  .counters{display:flex;gap:6px;}
+  .counter{flex:1;background:#F1F3F5;border-radius:9px;padding:6px 4px;text-align:center;}
+  .counter b{display:block;font-size:12px;color:#111;}
+  .counter span{font-size:8px;color:#888;text-transform:uppercase;}
+
+  .profile-card{margin:0 16px 12px;background:#fff;border-radius:12px;padding:12px 14px;display:flex;
+    align-items:center;justify-content:space-between;}
+  .pc-left{font-size:13px;font-weight:600;color:#111;display:flex;align-items:center;gap:8px;}
+  .pc-right{display:flex;align-items:center;gap:6px;font-size:13px;color:#20BF6B;font-weight:700;}
+
+  .grid6{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:0 16px 12px;}
+  .cell6{aspect-ratio:1/0.72;border-radius:11px;border:1.5px solid #E9ECEF;background:#F8F9FA;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:11px;color:#555;font-weight:600;}
+  .cell6.active{border-color:#111;background:#fff;color:#111;}
+  .cell6 .em{font-size:20px;}
+
+  .empty-hint{text-align:center;color:#ADB5BD;font-size:12.5px;padding:30px 20px;}
+
+  .acc{background:#fff;border-radius:14px;margin:8px 12px;overflow:hidden;border:1px solid #E9ECEF;}
+  .ah{padding:13px 15px;display:flex;align-items:center;gap:10px;}
+  .ah .em{font-size:16px;} .ah .tt{flex:1;font-size:13px;font-weight:700;color:#111;}
+  .vis-tag{font-size:10px;padding:3px 8px;border-radius:9px;font-weight:600;}
+  .vis-pub{background:#E7F5FF;color:#1971C2;} .vis-priv{background:#FFF0F6;color:#C2255C;}
+  .ah .ar{color:#ADB5BD;font-size:11px;}
+  .ai{padding:0 15px 13px;}
+  .qa{margin-bottom:8px;} .q{font-size:10.5px;color:#999;} .a{font-size:12.5px;color:#222;padding:4px 6px;border-radius:6px;}
+  .a.editing{border:1px solid #4DABF7;background:#E7F5FF;}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;}
+  .chip{background:#F1F3F5;border:1px solid #E9ECEF;font-size:11px;padding:4px 9px;border-radius:12px;color:#444;}
+  .add-dato{border:1.5px dashed #E9ECEF;border-radius:9px;padding:7px;text-align:center;font-size:11.5px;color:#888;margin-top:4px;}
+
+  .save-bar{position:absolute;left:16px;right:16px;bottom:70px;background:#20BF6B;color:#fff;text-align:center;
+    padding:13px;border-radius:14px;font-size:13.5px;font-weight:700;z-index:25;}
+
+  .nav{position:absolute;bottom:0;left:0;right:0;height:58px;background:#fff;border-top:1px solid #E9ECEF;display:flex;align-items:center;z-index:30;}
+  .nav .n{flex:1;text-align:center;color:#BBBBBB;font-size:7.5px;}
+  .nav .n.active{color:#111;}
+  .nav .n .ic{font-size:18px;display:block;margin-bottom:2px;}
+  .slogo{font-size:24px;font-weight:300;line-height:1;
+    background:linear-gradient(90deg,#FF3B3B,#F7B731,#20BF6B,#4DABF7,#A55EEA);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="scroll">
+    <div class="topbar">
+      <div class="handle">@alexrivera</div>
+      <div class="tb-icons"><div class="tb-icon">⚙️</div><div class="tb-icon">☰</div></div>
+    </div>
+
+    <div class="head">
+      <div class="avatar-wrap">
+        <div class="avatar-big">🦊</div>
+        <div class="avatar-label">avatar</div>
+      </div>
+      <div class="head-right">
+        <button class="publish-btn">＋ Publicar</button>
+        <div class="counters">
+          <div class="counter"><b>128</b><span>Pubs</span></div>
+          <div class="counter"><b>312</b><span>Sigo</span></div>
+          <div class="counter"><b>1.2k</b><span>Seguid.</span></div>
+          <div class="counter"><b>86</b><span>Socials</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="profile-card">
+      <div class="pc-left">📋 Mi perfil completo</div>
+      <div class="pc-right">86% ›</div>
+    </div>
+
+    <div class="grid6">
+      <div class="cell6 active"><span class="em">🦊</span>Avatar</div>
+      <div class="cell6"><span class="em">▶</span>Reels</div>
+      <div class="cell6"><span class="em">⚔️</span>Fights</div>
+      <div class="cell6"><span class="em">🤝</span>Pubs de socials</div>
+      <div class="cell6"><span class="em">📡</span>En directo</div>
+      <div class="cell6"><span class="em">🗂️</span>Tus pubs</div>
+    </div>
+
+    <div class="empty-hint">☝️ Elige una sección para ver tu contenido</div>
+
+    <!-- Ejemplo de "Mi perfil completo" con las 15 secciones -->
+    <div class="acc"><div class="ah"><span class="em">🪪</span><span class="tt">Identidad y datos básicos</span><span class="vis-tag vis-pub">🌐 público</span><span class="ar">▶</span></div>
+      <div class="ai"><div class="qa"><div class="q">Edad</div><div class="a editing">29</div></div><div class="qa"><div class="q">Ciudad</div><div class="a">Madrid</div></div><div class="add-dato">＋ Añadir dato</div></div></div>
+    <div class="acc"><div class="ah"><span class="em">👨‍👩‍👧</span><span class="tt">Familia y origen</span><span class="vis-tag vis-priv">🔒 privado</span><span class="ar">▶</span></div></div>
+    <div class="acc"><div class="ah"><span class="em">💼</span><span class="tt">Trabajo y estudios</span><span class="vis-tag vis-pub">🌐 público</span><span class="ar">▶</span></div></div>
+    <div class="acc"><div class="ah"><span class="em">🧠</span><span class="tt">Personalidad y carácter</span><span class="vis-tag vis-pub">🌐 público</span><span class="ar">▶</span></div></div>
+    <div class="acc"><div class="ah"><span class="em">🎯</span><span class="tt">Gustos e intereses</span><span class="vis-tag vis-pub">🌐 público</span><span class="ar">▶</span></div></div>
+    <div class="acc"><div class="ah"><span class="em">🧭</span><span class="tt">Valores y creencias</span><span class="vis-tag vis-priv">🔒 privado</span><span class="ar">▶</span></div></div>
+    <div class="acc"><div class="ah"><span class="em">💗</span><span class="tt">Emociones y mundo interior</span><span class="vis-tag vis-priv">🔒 privado</span><span class="ar">▶</span></div></div>
+    <div class="acc"><div class="ah"><span class="em">🤝</span><span class="tt">Relaciones sociales y amistad</span><span class="vis-tag vis-pub">🌐 público</span><span class="ar">▶</span></div></div>
+    <div class="acc"><div class="ah"><span class="em">❤️</span><span class="tt">Amor y pareja</span><span class="vis-tag vis-priv">🔒 privado</span><span class="ar">▶</span></div></div>
+    <div class="acc"><div class="ah"><span class="em">🏢</span><span class="tt">Contexto laboral</span><span class="vis-tag vis-pub">🌐 público</span><span class="ar">▶</span></div></div>
+    <div class="acc"><div class="ah"><span class="em">⏰</span><span class="tt">Rutina y estilo de vida</span><span class="vis-tag vis-pub">🌐 público</span><span class="ar">▶</span></div></div>
+    <div class="acc"><div class="ah"><span class="em">📖</span><span class="tt">Historia y experiencias</span><span class="vis-tag vis-priv">🔒 privado</span><span class="ar">▶</span></div></div>
+    <div class="acc"><div class="ah"><span class="em">🌟</span><span class="tt">Sueños y futuro</span><span class="vis-tag vis-pub">🌐 público</span><span class="ar">▶</span></div></div>
+    <div class="acc"><div class="ah"><span class="em">☕</span><span class="tt">Preferencias cotidianas</span><span class="vis-tag vis-pub">🌐 público</span><span class="ar">▶</span></div></div>
+    <div class="acc"><div class="ah"><span class="em">💭</span><span class="tt">Preguntas profundas</span><span class="vis-tag vis-priv">🔒 privado</span><span class="ar">▶</span></div></div>
+  </div>
+
+  <div class="nav">
+    <div class="n"><span class="ic">🏠</span>Home</div>
+    <div class="n"><span class="ic">🔍</span>Match</div>
+    <div class="n"><span class="slogo">S</span></div>
+    <div class="n"><span class="ic">🔔</span>Avisos</div>
+    <div class="n active"><span class="ic">👤</span>Perfil</div>
+  </div>
+</div>
+<script>if(location.hash==='#embed'){document.querySelectorAll('.nav').forEach(n=>n.style.display='none');}</script>
+</body>
+</html>

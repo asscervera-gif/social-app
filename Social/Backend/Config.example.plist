@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>SUPABASE_URL</key>
+    <string>https://TU-PROYECTO.supabase.co</string>
+
+    <key>SUPABASE_ANON_KEY</key>
+    <string>TU_ANON_KEY_AQUI</string>
+
+    <!-- ANTHROPIC_API_KEY ya NO va aquí: vive como secreto de la Edge Function
+         `duel-ai` en Supabase (supabase secrets set ANTHROPIC_API_KEY=...),
+         nunca en el binario de la app. -->
+</dict>
+</plist>

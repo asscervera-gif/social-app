@@ -1,0 +1,14 @@
+{
+  "name": "social-local-verify",
+  "private": true,
+  "type": "module",
+  "description": "Verificación real de las migraciones SQL de SOCIAL contra un Postgres de verdad (PGlite, WASM), sin necesitar Docker/Postgres instalado ni un proyecto Supabase real.",
+  "scripts": {
+    "migrations": "node run_migrations.mjs ../migrations",
+    "triggers": "node test_triggers.mjs ../migrations",
+    "rls": "node test_rls.mjs ../migrations"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.6"
+  }
+}
