@@ -81,8 +81,11 @@ struct ProfileViewerView: View {
         }
         .navigationTitle("Perfil")
         .task {
+            // Hallazgo real (CI real, GitHub Actions): `client` estaba
+            // declarado dentro del `do { }` y se usaba también fuera de
+            // él más abajo — fuera de alcance, no compilaba.
+            let client = SupabaseManager.shared.client
             do {
-                let client = SupabaseManager.shared.client
                 profile = try await client.from("profiles").select().eq("id", value: profileID).single().execute().value
                 sections = try await client.from("profile_sections").select().eq("profile_id", value: profileID).execute().value
             } catch {
