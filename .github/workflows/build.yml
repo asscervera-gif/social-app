@@ -129,6 +129,19 @@ jobs:
             echo "No se encontró ningún informe de crash para Social en $REPORTS"
           fi
 
+      # Hallazgo real: simctl launch devolvió un PID real las dos veces
+      # (proceso vivo, sin crash) pero la captura seguía en la pantalla de
+      # inicio — ni timing ni crash. Vuelca el log del sistema de esa
+      # ventana de tiempo por si hay un watchdog/hang real (p.ej. la
+      # cámara/permiso de ubicación bloqueando el arranque de forma
+      # síncrona en un runner sin cámara real).
+      - name: Volcar log del sistema de la ventana de lanzamiento
+        if: always()
+        run: |
+          UDID=$(xcrun simctl list devices available -j | \
+            /usr/bin/python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(dev['udid'] for rt in d.values() for dev in rt if dev['name'].startswith('iPhone')))")
+          xcrun simctl spawn "$UDID" log show --last 2m --predicate 'process == "Social" OR eventMessage CONTAINS "Social"' --style compact 2>&1 | tail -150
+
       - name: Subir captura como artefacto
         if: always()
         uses: actions/upload-artifact@v4
