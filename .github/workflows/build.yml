@@ -113,7 +113,15 @@ jobs:
           # se resuelve en un runner sin interacción, y la app nunca
           # llega a primer plano en la captura. `simctl privacy grant`
           # los concede todos sin diálogo, antes de lanzar.
-          xcrun simctl privacy "$UDID" grant all com.social.app
+          # Hallazgo real (captura de pantalla real): "grant all" no
+          # suprimió el diálogo real de cámara ("SOCIAL Would Like to
+          # Access the Camera") — se concede también explícitamente por
+          # servicio individual, más fiable que confiar en "all".
+          xcrun simctl privacy "$UDID" grant all com.social.app || true
+          xcrun simctl privacy "$UDID" grant camera com.social.app || true
+          xcrun simctl privacy "$UDID" grant microphone com.social.app || true
+          xcrun simctl privacy "$UDID" grant bluetooth com.social.app || true
+          xcrun simctl privacy "$UDID" grant location-always com.social.app || true
           # SIMCTL_CHILD_* pasa la variable al proceso lanzado (mecanismo
           # documentado de simctl) — activa el bypass de solo-CI en
           # AppRootView.swift para que la captura llegue de verdad a
