@@ -104,7 +104,7 @@ final class NotificationsBadgeViewModel: ObservableObject {
                     // `didSet` de `unreadCount` (ver más arriba) — no
                     // hace falta duplicarlo aquí en `content.badge`.
                     let request = UNNotificationRequest(identifier: entry.id.uuidString, content: content, trigger: nil)
-                    UNUserNotificationCenter.current().add(request)
+                    try? await UNUserNotificationCenter.current().add(request)
                 }
             }
         }

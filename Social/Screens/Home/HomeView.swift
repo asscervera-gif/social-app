@@ -75,8 +75,19 @@ struct HomeView: View {
                 }
             }
             .task { await viewModel.load() }
-            .navigationDestination(item: $hashtagToOpen) { tag in
-                SearchView(initialHashtag: tag)
+            // Hallazgo real (CI real, GitHub Actions, 2026-08-24):
+            // `navigationDestination(item:destination:)` requiere iOS 17+,
+            // pero el objetivo de despliegue del proyecto es iOS 16.0
+            // (project.yml) — no compilaba. Mismo resultado con la
+            // variante compatible desde iOS 16 (`isPresented:`), atada al
+            // mismo estado opcional en vez de duplicar un Bool aparte.
+            .navigationDestination(isPresented: Binding(
+                get: { hashtagToOpen != nil },
+                set: { isPresented in if !isPresented { hashtagToOpen = nil } }
+            )) {
+                if let tag = hashtagToOpen {
+                    SearchView(initialHashtag: tag)
+                }
             }
             .sheet(isPresented: $showFind) {
                 // Hallazgo real: esto era un texto de relleno, nunca un
