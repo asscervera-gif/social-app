@@ -113,6 +113,8 @@ jobs:
           # innecesario.
           xcrun simctl launch "$UDID" com.social.app
           sleep 15
+          echo "=== ¿sigue vivo el proceso justo antes de capturar? ==="
+          xcrun simctl spawn "$UDID" launchctl list | grep -i social || echo "NO aparece en launchctl list"
           mkdir -p artifacts
           xcrun simctl io "$UDID" screenshot artifacts/social-ios-simulator.png
 
@@ -123,7 +125,7 @@ jobs:
       # Foreground" en SpringBoard — el problema era un relanzamiento
       # innecesario, ya corregido arriba, no timing ni crash).
       - name: Diagnóstico si el lanzamiento vuelve a fallar
-        if: failure()
+        if: always()
         run: |
           REPORTS="$HOME/Library/Logs/DiagnosticReports"
           if ls "$REPORTS"/Social-*.ips >/dev/null 2>&1; then
