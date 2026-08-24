@@ -50,6 +50,19 @@ struct AppRootView: View {
             }
         }
         .task {
+            // Bypass exclusivo de CI, para poder capturar una pantalla
+            // real de RootTabView (Home/Match/etc.) en el workflow de
+            // GitHub Actions — el Config.plist de relleno de CI nunca
+            // consigue una sesión real, así que sin esto la captura
+            // automática nunca pasaría de Auth/Welcome. Solo se activa si
+            // el proceso lanzado lleva la variable de entorno explícita
+            // (ver .github/workflows/build.yml) — no hay forma de
+            // activarlo desde fuera de un lanzamiento de CI controlado.
+            if ProcessInfo.processInfo.environment["CI_SKIP_AUTH"] == "1" {
+                isAuthenticated = true
+                return
+            }
+
             let session = try? await SupabaseManager.shared.client.auth.session
             isAuthenticated = session != nil
             if session != nil { await checkNeedsAvatarOnboarding() }

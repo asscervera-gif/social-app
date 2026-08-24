@@ -106,7 +106,13 @@ jobs:
           xcrun simctl bootstatus "$UDID" -b
           APP_PATH=$(find build/Build/Products -maxdepth 3 -iname "Social.app" | head -1)
           xcrun simctl install "$UDID" "$APP_PATH"
-          xcrun simctl launch "$UDID" com.social.app
+          # SIMCTL_CHILD_* pasa la variable al proceso lanzado (mecanismo
+          # documentado de simctl) — activa el bypass de solo-CI en
+          # AppRootView.swift para que la captura llegue de verdad a
+          # RootTabView (pantalla real de la app: cámara de proximidad,
+          # pestaña por defecto) en vez de quedarse siempre en Auth/Welcome
+          # (el Config.plist de relleno nunca consigue una sesión real).
+          SIMCTL_CHILD_CI_SKIP_AUTH=1 xcrun simctl launch "$UDID" com.social.app
           sleep 15
           mkdir -p artifacts
           xcrun simctl io "$UDID" screenshot artifacts/social-ios-simulator.png
