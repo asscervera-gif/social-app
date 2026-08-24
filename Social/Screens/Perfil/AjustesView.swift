@@ -136,7 +136,7 @@ struct AjustesView: View {
             struct IsAdminRow: Decodable { let is_admin: Bool }
             let row: IsAdminRow? = try? await SupabaseManager.shared.client
                 .from("profiles")
-                .select(columns: "is_admin")
+                .select("is_admin")
                 .eq("id", value: userID)
                 .single()
                 .execute()

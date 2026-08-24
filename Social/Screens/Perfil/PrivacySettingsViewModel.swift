@@ -62,7 +62,7 @@ final class PrivacySettingsViewModel: ObservableObject {
         do {
             let row: PrivacyRow = try await SupabaseManager.shared.client
                 .from("profiles")
-                .select(columns: "compat_public,location_public")
+                .select("compat_public,location_public")
                 .eq("id", value: userID)
                 .single()
                 .execute()

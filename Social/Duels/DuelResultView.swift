@@ -81,7 +81,7 @@ struct DuelResultView: View {
                     struct NameRow: Decodable { let display_name: String }
                     let nameRow: NameRow? = try? await SupabaseManager.shared.client
                         .from("profiles")
-                        .select(columns: "display_name")
+                        .select("display_name")
                         .eq("id", value: otherID)
                         .single()
                         .execute()

@@ -131,7 +131,7 @@ final class ChatListViewModel: ObservableObject {
         struct NameRow: Decodable { let display_name: String }
         let row: NameRow? = try? await SupabaseManager.shared.client
             .from("profiles")
-            .select(columns: "display_name")
+            .select("display_name")
             .eq("id", value: id)
             .single()
             .execute()
@@ -147,7 +147,7 @@ final class ChatListViewModel: ObservableObject {
     private func lastMessage(chatID: UUID) async -> LastMessageRow? {
         try? await SupabaseManager.shared.client
             .from("messages")
-            .select(columns: "body,created_at")
+            .select("body,created_at")
             .eq("chat_id", value: chatID)
             .order("created_at", ascending: false)
             .limit(1)

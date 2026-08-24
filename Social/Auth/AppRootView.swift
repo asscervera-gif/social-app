@@ -74,7 +74,7 @@ struct AppRootView: View {
         struct AvatarConfigRow: Decodable { let avatar_config: [String: String]? }
         let row: AvatarConfigRow? = try? await SupabaseManager.shared.client
             .from("profiles")
-            .select(columns: "avatar_config")
+            .select("avatar_config")
             .eq("id", value: userID)
             .single()
             .execute()

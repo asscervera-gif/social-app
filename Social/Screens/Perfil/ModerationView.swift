@@ -39,7 +39,7 @@ final class ModerationViewModel: ObservableObject {
         struct NameRow: Decodable { let display_name: String }
         let row: NameRow? = try? await SupabaseManager.shared.client
             .from("profiles")
-            .select(columns: "display_name")
+            .select("display_name")
             .eq("id", value: userID)
             .single()
             .execute()

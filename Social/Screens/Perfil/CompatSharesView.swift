@@ -34,7 +34,7 @@ final class CompatSharesViewModel: ObservableObject {
             // ChatViewModel.loadHistory() esta pasada).
             let rows: [RequestRow] = try await SupabaseManager.shared.client
                 .from("compat_requests")
-                .select(columns: "id,requester_id")
+                .select("id,requester_id")
                 .eq("target_id", value: userID)
                 .eq("status", value: "accepted")
                 .limit(100)
@@ -57,7 +57,7 @@ final class CompatSharesViewModel: ObservableObject {
         struct NameRow: Decodable { let display_name: String }
         let row: NameRow? = try? await SupabaseManager.shared.client
             .from("profiles")
-            .select(columns: "display_name")
+            .select("display_name")
             .eq("id", value: id)
             .single()
             .execute()
