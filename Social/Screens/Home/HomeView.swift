@@ -3,14 +3,15 @@
 //  Social
 //
 //  Feed de publicaciones (like y comentarios reales, ver 0007_likes.sql /
-//  0008_comments.sql), recomendados con % de compatibilidad, y acceso a
-//  "Find" (placeholder de mapa, sin implementar todavía). Sin scroll
-//  infinito ni algoritmo de adicción: lista paginada y finita.
+//  0008_comments.sql) y recomendados con % de compatibilidad. Sin scroll
+//  infinito ni algoritmo de adicción — lista finita, igual que
+//  HomeScreen.kt.
 //
-//  Corrección de honestidad: este comentario afirmaba antes "Historias,
-//  comentar, enviar, guardar" como si existieran — like, comentar, enviar
-//  (ShareLink nativo) y guardar ya son reales; solo Historias sigue sin
-//  implementar en ninguna plataforma. Ver LOOP_STATE.md > Pendiente real.
+//  Corrección de honestidad (2026-08-25, mismo hallazgo ya corregido en
+//  HomeScreen.kt): este docstring afirmaba que Historias seguía sin
+//  implementar — falso, StoriesBar() (más abajo) ya está construida y
+//  montada. Like, comentar, enviar (ShareLink nativo), guardar e
+//  Historias son todos reales.
 //
 
 import SwiftUI
@@ -28,6 +29,15 @@ struct HomeView: View {
         NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 20) {
+                    // Cabecera de marca real (antes: título de texto plano
+                    // "Home" + iconos de sistema en la barra de navegación)
+                    // — puesta en línea con el resto del rediseño visual
+                    // (logo real, degradado de marca), mismo patrón que
+                    // HomeScreen.kt. "Find" y "Buscar" (función real detrás,
+                    // ver FindLocationsViewModel.swift/SearchViewModel.swift)
+                    // se mantienen, solo cambia su presentación.
+                    header
+                        .padding(.horizontal)
                     // Hallazgo real: no había ningún cliente para Historias
                     // en ninguna plataforma pese a que el esquema/RLS ya
                     // estaban completos desde el principio (ver
@@ -47,32 +57,23 @@ struct HomeView: View {
             .refreshable {
                 await viewModel.load()
             }
-            .navigationTitle("Home")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        showNewPost = true
-                    } label: {
-                        Image(systemName: "plus.circle")
-                    }
+            .toolbar(.hidden, for: .navigationBar)
+            .overlay(alignment: .bottomTrailing) {
+                // "Nuevo post" — antes un icono en la barra de navegación,
+                // ahora un botón flotante (mismo cambio que
+                // HomeScreen.kt: FloatingActionButton), ya que la cabecera
+                // de marca no deja sitio para un tercer icono de sistema.
+                Button {
+                    showNewPost = true
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.title2.bold())
+                        .foregroundStyle(.white)
+                        .frame(width: 56, height: 56)
+                        .background(Circle().fill(Color.accentColor))
+                        .shadow(radius: 4)
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    // Hallazgo real: comparado con Instagram/TikTok/Snapchat,
-                    // no había ningún buscador de personas en la app (ver
-                    // SearchViewModel.swift).
-                    NavigationLink {
-                        SearchView()
-                    } label: {
-                        Image(systemName: "magnifyingglass")
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showFind = true
-                    } label: {
-                        Image(systemName: "map")
-                    }
-                }
+                .padding()
             }
             .task { await viewModel.load() }
             // Hallazgo real (CI real, GitHub Actions, 2026-08-24):
@@ -102,6 +103,31 @@ struct HomeView: View {
                     onDismiss: { showNewPost = false },
                     onPosted: { Task { await viewModel.load() } }
                 )
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack {
+            RoundedRectangle(cornerRadius: 9)
+                .fill(LinearGradient(colors: [Color(red: 0.302, green: 0.671, blue: 0.969), Color(red: 0.647, green: 0.369, blue: 0.918)], startPoint: .leading, endPoint: .trailing))
+                .frame(width: 32, height: 32)
+                .overlay(Text("F").foregroundStyle(.white).font(.headline))
+                .onTapGesture { showFind = true }
+            Spacer()
+            Image("social_logo")
+                .resizable()
+                .scaledToFit()
+                .frame(height: 28)
+            Spacer()
+            // Hallazgo real: comparado con Instagram/TikTok/Snapchat, no
+            // había ningún buscador de personas en la app (ver
+            // SearchViewModel.swift).
+            NavigationLink {
+                SearchView()
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.primary)
             }
         }
     }

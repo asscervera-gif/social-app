@@ -45,3 +45,14 @@ targets:
         IPHONEOS_DEPLOYMENT_TARGET: "16.0"
         DEVELOPMENT_TEAM: ""
         CODE_SIGN_STYLE: Automatic
+        # Hallazgo real (CI real, GitHub Actions, 2026-08-24): al añadir el
+        # primer Assets.xcassets del proyecto (AccentColor + social_logo),
+        # Xcode empezó a exigir un app icon set llamado "AppIcon" que nunca
+        # se ha diseñado ("None of the input catalogs contained a matching
+        # ... app icon set named 'AppIcon'") — sin catálogo de assets antes,
+        # esa comprobación ni se activaba. Un icono de app real (1024x1024,
+        # sin transparencia, pensado como icono) es trabajo de diseño
+        # aparte, no algo a fabricar deprisa a partir del logo/wordmark
+        # existente solo para que compile. Desactivado explícitamente hasta
+        # que exista un icono real — pendiente documentado, no fingido.
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
