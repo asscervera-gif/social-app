@@ -8,6 +8,7 @@
 //
 
 import SwiftUI
+import Supabase
 
 @MainActor
 final class ChangePasswordViewModel: ObservableObject {
@@ -51,7 +52,7 @@ struct ChangePasswordSection: View {
             Text(error).font(.caption).foregroundStyle(.red)
         }
         if let success = viewModel.successMessage {
-            Text(success).font(.caption).foregroundStyle(.accentColor)
+            Text(success).font(.caption).foregroundStyle(Color.accentColor)
         }
         Button {
             Task { await viewModel.changePassword(newPassword) }

@@ -31,6 +31,12 @@ struct AppRootView: View {
 
     var body: some View {
         Group {
+            // Hallazgo real (CI real, GitHub Actions): switch sobre un
+            // Bool? con patrones literales `true`/`false`/`nil` no lo
+            // reconoce el comprobador de exhaustividad de Swift como
+            // exhaustivo (usa el operador de coincidencia de expresiones,
+            // no los casos canónicos .some/.none) — necesita un `default`
+            // aunque los 3 casos ya cubran toda la realidad.
             switch isAuthenticated {
             case true:
                 RootTabView()
@@ -39,7 +45,7 @@ struct AppRootView: View {
                     }
             case false:
                 AuthView()
-            case nil:
+            default:
                 ProgressView()
             }
         }
@@ -61,7 +67,7 @@ struct AppRootView: View {
                 // sesión en el mismo dispositivo vería un badge ajeno
                 // hasta el próximo evento de Realtime.
                 if wasAuthenticated && state.session == nil {
-                    UNUserNotificationCenter.current().setBadgeCount(0)
+                    try? await UNUserNotificationCenter.current().setBadgeCount(0)
                     UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
                     UNUserNotificationCenter.current().removeAllDeliveredNotifications()
                 }

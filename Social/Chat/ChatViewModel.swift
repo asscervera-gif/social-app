@@ -314,27 +314,22 @@ final class ChatViewModel: ObservableObject {
             }
         }
 
-        // Aviso de honestidad (más fuerte de lo habitual): a diferencia del
-        // resto de APIs de supabase-swift usadas en esta sesión (razonadas
-        // por analogía directa con un método hermano ya usado, como
-        // `broadcastStream` junto a `broadcast`), la superficie exacta de
-        // Presence en supabase-swift 2.x no se ha visto en ningún otro
-        // sitio de este proyecto — `track(_:)`/`presenceChange()` con
-        // `PresenceAction.joins`/`.leaves` es la forma razonada por
-        // simetría con `RealtimeChannel.track`/`presenceChangeFlow` de
-        // Kotlin (mismo SDK, mismo diseño de API entre plataformas), pero
-        // el riesgo de que el nombre exacto difiera es mayor aquí que en
-        // el resto de esta pasada. Sin verificación de compilador real
-        // (límite de plataforma) — si la firma difiere, es el único sitio
-        // a ajustar.
+        // Hallazgo real (CI real, GitHub Actions, 2026-08-24): confirmado
+        // el riesgo que ya avisaba el comentario anterior — la firma real
+        // (leída del código fuente de
+        // supabase/supabase-swift/Sources/RealtimeV2/RealtimeChannelV2.swift
+        // y PresenceAction.swift) es `track(state: JSONObject) async` (con
+        // etiqueta, sin throws) y `PresenceAction.joins/.leaves` son
+        // `[String: PresenceV2]`, no `[String: Presence]` (tipo v1, ya no
+        // existe en la API actual).
         Task {
             let myID = currentUserID.uuidString
-            try? await ch.track(["user_id": .string(myID)])
+            await ch.track(state: ["user_id": .string(myID)])
         }
         let presenceEvents = ch.presenceChange()
         Task {
             for await action in presenceEvents {
-                func decode(_ presences: [String: Presence]) -> [String] {
+                func decode(_ presences: [String: PresenceV2]) -> [String] {
                     presences.values.compactMap { $0.state["user_id"]?.stringValue }
                 }
                 decode(action.joins).forEach { onlineUserIDs.insert($0) }

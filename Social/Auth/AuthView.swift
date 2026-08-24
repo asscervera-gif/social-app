@@ -67,7 +67,11 @@ struct AuthView: View {
                     Text(error).font(.footnote).foregroundStyle(.red)
                 }
                 if let info = viewModel.infoMessage {
-                    Text(info).font(.footnote).foregroundStyle(.accentColor)
+                    // Hallazgo real (CI real): `.foregroundStyle(.accentColor)`
+                    // busca `accentColor` como miembro estático del propio
+                    // protocolo ShapeStyle (no existe) — `Color.accentColor`
+                    // sí existe y sí conforma a ShapeStyle.
+                    Text(info).font(.footnote).foregroundStyle(Color.accentColor)
                 }
 
                 Button {

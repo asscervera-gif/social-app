@@ -93,7 +93,13 @@ final class ClothingStore: ObservableObject {
         Task.detached { [weak self] in
             for await update in Transaction.updates {
                 guard case .verified(let transaction) = update else { continue }
-                await self?.purchasedIDs.insert(transaction.productID)
+                // Hallazgo real (CI real): `await self?.purchasedIDs.insert(...)`
+                // no compila — `await` antes de una propiedad no salta de
+                // actor por sí solo para una mutación, solo funciona para
+                // llamar a un método/propiedad realmente async. `purchasedIDs`
+                // es @MainActor (la clase lo es); `MainActor.run` sí hace el
+                // salto de actor real desde este contexto no aislado.
+                await MainActor.run { self?.purchasedIDs.insert(transaction.productID) }
                 await transaction.finish()
             }
         }
