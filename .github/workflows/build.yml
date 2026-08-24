@@ -42,16 +42,23 @@ jobs:
           sudo xcode-select -s "$LATEST"
           xcodebuild -version
 
-      - name: Generar Social.xcodeproj
-        run: xcodegen generate
-
       # Config.plist real está en .gitignore (credenciales) — sin esto,
       # SupabaseManager.swift hace fatalError() al arrancar (por diseño,
-      # ver el comentario en ese archivo) y ni siquiera se podría lanzar
-      # en el simulador para la captura de pantalla de abajo. Credenciales
-      # de relleno, no reales — solo para que la app arranque en CI; las
-      # llamadas reales a Supabase fallarán limpiamente (cada ViewModel ya
-      # captura el error y lo muestra, no hay ningún crash esperado por eso).
+      # ver el comentario en ese archivo). Credenciales de relleno, no
+      # reales — solo para que la app arranque en CI; las llamadas reales
+      # a Supabase fallarán limpiamente (cada ViewModel ya captura el
+      # error y lo muestra, no hay ningún crash esperado por eso).
+      #
+      # Hallazgo real (2026-08-24, tras varios rounds de diagnóstico serio
+      # — log real del sistema, comprobación de proceso vivo, nada de
+      # esto era timing ni SpringBoard): la app SÍ llegaba a primer plano
+      # de verdad, pero acababa cayendo con el fatalError real de
+      # SupabaseManager.swift:42 ("No se pudo leer 'SUPABASE_URL' de
+      # Config.plist"). Causa: este paso se generaba DESPUÉS de
+      # `xcodegen generate`, y en project.yml el recurso está marcado
+      # `optional: true` — XcodeGen solo añade la referencia real de
+      # Copy Bundle Resources si el archivo YA existe en el momento de
+      # generar el proyecto. Debe crearse ANTES de generar, no después.
       - name: Crear Config.plist de CI (credenciales de relleno, no reales)
         run: |
           cat > Social/Backend/Config.plist << 'EOF'
@@ -66,6 +73,9 @@ jobs:
           </dict>
           </plist>
           EOF
+
+      - name: Generar Social.xcodeproj
+        run: xcodegen generate
 
       # "generic/platform=iOS Simulator" compila para el SDK del
       # simulador sin necesitar que exista un dispositivo concreto (p.ej.
@@ -96,36 +106,21 @@ jobs:
           xcrun simctl bootstatus "$UDID" -b
           APP_PATH=$(find build/Build/Products -maxdepth 3 -iname "Social.app" | head -1)
           xcrun simctl install "$UDID" "$APP_PATH"
-          # Hallazgo real (primera pantalla capturada, 2026-08-24): 8s no
-          # bastaban tras un arranque en frío del simulador (el propio
-          # `bootstatus` tardó ~15s solo en "Data Migration") — la captura
-          # salió mostrando la pantalla de inicio de iOS, no la app, porque
-          # SpringBoard todavía no había procesado el `launch`. Se relanza
-          # una segunda vez justo antes de capturar, con más margen.
-          # Hallazgo real (confirmado con el log real del sistema, no una
-          # suposición): un solo `launch` SÍ llega a primer plano de
-          # verdad — SpringBoard registra
-          # "visibility: Foreground"/"Window did become application key"
-          # con normalidad. Relanzar una segunda vez (intento anterior)
-          # interrumpía esa transición justo antes de la captura, que es
-          # lo que realmente causaba la pantalla de inicio en las 2
-          # capturas previas — no timing insuficiente, sino un relanzamiento
-          # innecesario.
           xcrun simctl launch "$UDID" com.social.app
           sleep 15
-          echo "=== ¿sigue vivo el proceso justo antes de capturar? ==="
-          xcrun simctl spawn "$UDID" launchctl list | grep -i social || echo "NO aparece en launchctl list"
           mkdir -p artifacts
           xcrun simctl io "$UDID" screenshot artifacts/social-ios-simulator.png
 
-      # Diagnóstico de reserva, solo si algo vuelve a fallar (ver el
-      # historial de commits de este archivo, 2026-08-24, para el proceso
-      # real que ya se siguió con esto: confirmó vía el log real del
-      # sistema que la app SÍ llega a primer plano — "visibility:
-      # Foreground" en SpringBoard — el problema era un relanzamiento
-      # innecesario, ya corregido arriba, no timing ni crash).
+      # Diagnóstico de reserva, solo si algo vuelve a fallar — ver el
+      # historial de commits de este archivo (2026-08-24) para el proceso
+      # real ya seguido con esto: encontró que la app SÍ llegaba a primer
+      # plano de verdad (log real de SpringBoard) pero luego caía con un
+      # fatalError real de SupabaseManager.swift (Config.plist generado
+      # DESPUÉS de `xcodegen generate`, cuando el recurso es `optional`
+      # en project.yml y solo se referencia si ya existe al generar) — ya
+      # corregido arriba, reordenando los pasos.
       - name: Diagnóstico si el lanzamiento vuelve a fallar
-        if: always()
+        if: failure()
         run: |
           REPORTS="$HOME/Library/Logs/DiagnosticReports"
           if ls "$REPORTS"/Social-*.ips >/dev/null 2>&1; then
