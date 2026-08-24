@@ -26,18 +26,24 @@ jobs:
       - name: Instalar XcodeGen
         run: brew install xcodegen
 
+      # Hallazgo real (2026-08-24, primeros 2 fallos reales de CI): el
+      # Xcode por defecto del runner YA era 15.4, y aun así XcodeGen
+      # generaba un .pbxproj en formato de proyecto 77 ("future Xcode
+      # project file format") — XcodeGen fija ese formato en su propio
+      # binario, no según el Xcode activo, y 77 es más nuevo que lo que
+      # Xcode 15.4 sabe abrir. La única versión de Xcode que puede abrir
+      # ese formato es la más reciente instalada en el runner (macos-14
+      # trae varias) — se selecciona explícitamente antes de generar, en
+      # vez de asumir cuál es "la" versión correcta.
+      - name: Seleccionar la versión de Xcode más reciente disponible
+        run: |
+          LATEST=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          echo "Usando: $LATEST"
+          sudo xcode-select -s "$LATEST"
+          xcodebuild -version
+
       - name: Generar Social.xcodeproj
         run: xcodegen generate
-
-      # Hallazgo real (primer fallo real de CI, 2026-08-24): fijar una
-      # versión concreta de Xcode (p.ej. 15.4) DESPUÉS de `xcodegen
-      # generate` rompe el build — XcodeGen escribe el formato del
-      # .pbxproj (objectVersion) según el Xcode POR DEFECTO del runner en
-      # el momento de generar, que en macos-14 suele ser más reciente que
-      # 15.4; el Xcode más antiguo luego no puede ni abrir ese proyecto
-      # ("future Xcode project file format"). Corregido dejando que
-      # xcodegen y xcodebuild usen el mismo Xcode (el que ya está activo
-      # por defecto en el runner) en vez de forzar una versión concreta.
 
       # Config.plist real está en .gitignore (credenciales) — sin esto,
       # SupabaseManager.swift hace fatalError() al arrancar (por diseño,
