@@ -37,6 +37,28 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        # Hallazgo real GRAVE (encontrado por fin gracias al CI real,
+        # 2026-08-24 — no solo un problema de CI, habría fallado igual en
+        # un dispositivo físico o en Xcode local): `xcodegen generate`
+        # ESCRIBE Social/Info.plist en esta misma ruta a partir SOLO de
+        # las claves listadas aquí abajo — el archivo committeado en el
+        # repo con los textos reales de permisos (NSCameraUsageDescription
+        # etc.) se sobreescribía en cada `xcodegen generate`, perdiendo
+        # todas las claves que no estuvieran también aquí. Confirmado en
+        # el log real del sistema: "This app has crashed because it
+        # attempted to access privacy-sensitive data without a usage
+        # description... NSCameraUsageDescription" — un crash real de
+        # verdad, no solo de CI. Todas las claves movidas aquí, texto
+        # idéntico al que ya existía en Social/Info.plist.
+        NSNearbyInteractionUsageDescription: "SOCIAL usa la interacción cercana para medir la distancia y dirección de las personas a tu alrededor y mostrarte su avatar en la cámara."
+        NSBluetoothAlwaysUsageDescription: "SOCIAL usa Bluetooth para descubrir e intercambiar de forma segura la información inicial con otros dispositivos cercanos antes de medir la distancia."
+        NSLocationWhenInUseUsageDescription: "SOCIAL usa tu ubicación para detectar si estás dentro de un evento activo (Modo Evento) y, si lo activas, para mostrarte en el mapa de \"Find\"."
+        NSCameraUsageDescription: "SOCIAL usa la cámara para mostrarte, en tiempo real, el avatar de las personas que tienes cerca cuando enfocas hacia ellas."
+        NSMicrophoneUsageDescription: "SOCIAL usa el micrófono para grabar notas de voz en el chat."
+        NSLocalNetworkUsageDescription: "SOCIAL usa la red local para descubrir a otras personas cercanas con la app abierta, antes de medir la distancia real por UWB."
+        NSBonjourServices:
+          - _social-uwb._tcp
+          - _social-uwb._udp
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.social.app
