@@ -29,8 +29,15 @@ jobs:
       - name: Generar Social.xcodeproj
         run: xcodegen generate
 
-      - name: Seleccionar versión de Xcode
-        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+      # Hallazgo real (primer fallo real de CI, 2026-08-24): fijar una
+      # versión concreta de Xcode (p.ej. 15.4) DESPUÉS de `xcodegen
+      # generate` rompe el build — XcodeGen escribe el formato del
+      # .pbxproj (objectVersion) según el Xcode POR DEFECTO del runner en
+      # el momento de generar, que en macos-14 suele ser más reciente que
+      # 15.4; el Xcode más antiguo luego no puede ni abrir ese proyecto
+      # ("future Xcode project file format"). Corregido dejando que
+      # xcodegen y xcodebuild usen el mismo Xcode (el que ya está activo
+      # por defecto en el runner) en vez de forzar una versión concreta.
 
       # Config.plist real está en .gitignore (credenciales) — sin esto,
       # SupabaseManager.swift hace fatalError() al arrancar (por diseño,
@@ -54,13 +61,18 @@ jobs:
           </plist>
           EOF
 
+      # "generic/platform=iOS Simulator" compila para el SDK del
+      # simulador sin necesitar que exista un dispositivo concreto (p.ej.
+      # "iPhone 15") ya creado en el runner — evita otro acoplamiento a un
+      # nombre de simulador que puede no existir según qué Xcode termine
+      # siendo el por defecto.
       - name: Compilar para el simulador
         run: |
           xcodebuild build \
             -project Social.xcodeproj \
             -scheme Social \
             -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 15' \
+            -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO
 
@@ -73,10 +85,10 @@ jobs:
         run: |
           set -e
           UDID=$(xcrun simctl list devices available -j | \
-            /usr/bin/python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(dev['udid'] for rt in d.values() for dev in rt if dev['name']=='iPhone 15'))")
+            /usr/bin/python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(dev['udid'] for rt in d.values() for dev in rt if dev['name'].startswith('iPhone')))")
           xcrun simctl boot "$UDID"
           xcrun simctl bootstatus "$UDID" -b
-          APP_PATH=$(find build/Build/Products -maxdepth 1 -iname "Social.app" | head -1)
+          APP_PATH=$(find build/Build/Products -maxdepth 3 -iname "Social.app" | head -1)
           xcrun simctl install "$UDID" "$APP_PATH"
           xcrun simctl launch "$UDID" com.social.app
           sleep 8
