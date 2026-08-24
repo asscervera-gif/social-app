@@ -102,12 +102,32 @@ jobs:
           # salió mostrando la pantalla de inicio de iOS, no la app, porque
           # SpringBoard todavía no había procesado el `launch`. Se relanza
           # una segunda vez justo antes de capturar, con más margen.
-          xcrun simctl launch "$UDID" com.social.app
+          xcrun simctl launch "$UDID" com.social.app || true
           sleep 10
-          xcrun simctl launch "$UDID" com.social.app
+          xcrun simctl launch "$UDID" com.social.app || true
           sleep 8
           mkdir -p artifacts
           xcrun simctl io "$UDID" screenshot artifacts/social-ios-simulator.png
+
+      # Hallazgo real: la segunda captura (más tiempo de espera) seguía
+      # mostrando la pantalla de inicio de iOS, no la app — descarta un
+      # problema de tiempo, apunta a un crash real al arrancar. Los
+      # informes de crash del Simulador se escriben en el Mac anfitrión
+      # (misma ruta que para un dispositivo real), no dentro del propio
+      # simulador — se vucan aquí para ver la causa real en el log de CI.
+      - name: Volcar informe de crash si lo hay
+        if: always()
+        run: |
+          REPORTS="$HOME/Library/Logs/DiagnosticReports"
+          if ls "$REPORTS"/Social-*.ips >/dev/null 2>&1; then
+            echo "=== Informe(s) de crash encontrados ==="
+            for f in "$REPORTS"/Social-*.ips; do
+              echo "--- $f ---"
+              cat "$f"
+            done
+          else
+            echo "No se encontró ningún informe de crash para Social en $REPORTS"
+          fi
 
       - name: Subir captura como artefacto
         if: always()
