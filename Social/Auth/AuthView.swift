@@ -15,7 +15,13 @@ import SwiftUI
 
 struct AuthView: View {
     @StateObject private var viewModel = AuthViewModel()
-    @State private var isSignUp = true
+    // Hallazgo real (redisenio, mismo patrón ya aplicado en
+    // AuthScreen.kt): la app entraba directa al formulario completo de
+    // registro al abrir, sin darle a elegir a alguien que YA tiene cuenta
+    // la opción de iniciar sesión antes de ver seis campos que no le
+    // hacen falta. nil = pantalla de bienvenida real, true/false = el
+    // formulario para cada caso.
+    @State private var authMode: Bool?
     @State private var email = ""
     @State private var password = ""
     @State private var displayName = ""
@@ -27,13 +33,40 @@ struct AuthView: View {
     @State private var showTerms = false
     @State private var showPrivacy = false
 
+    private var isSignUp: Bool { authMode ?? true }
+
     var body: some View {
+        if authMode == nil {
+            WelcomeView(
+                onSignIn: { authMode = false },
+                onCreateAccount: { authMode = true }
+            )
+        } else {
+            form
+        }
+    }
+
+    private var form: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("SOCIAL").font(.largeTitle.bold())
+                Button("← Volver") { authMode = nil }
+                    .font(.footnote)
+
+                // Logo real de marca en vez del texto "SOCIAL" — mismo
+                // asset que Android (Assets.xcassets/social_logo, copiado
+                // de Android/app/.../drawable/social_logo.png).
+                HStack {
+                    Spacer()
+                    Image("social_logo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(height: 70)
+                    Spacer()
+                }
                 Text(isSignUp ? "Crea tu cuenta" : "Inicia sesión")
                     .font(.title3)
                     .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
 
                 if isSignUp {
                     TextField("Nombre", text: $displayName)
@@ -93,7 +126,7 @@ struct AuthView: View {
                 .disabled(viewModel.isLoading || email.isEmpty || password.isEmpty || (isSignUp && !acceptedTerms))
 
                 Button(isSignUp ? "¿Ya tienes cuenta? Inicia sesión" : "¿No tienes cuenta? Regístrate") {
-                    isSignUp.toggle()
+                    authMode = !isSignUp
                 }
                 .font(.footnote)
 
@@ -115,5 +148,38 @@ struct AuthView: View {
         .sheet(isPresented: $showPrivacy) {
             NavigationStack { PrivacyPolicyView() }
         }
+    }
+}
+
+/// Pantalla de bienvenida real (equivalente de WelcomeScreen en
+/// AuthScreen.kt) — logo + eslogan + las dos acciones, en vez de entrar
+/// directo al formulario de seis campos.
+private struct WelcomeView: View {
+    let onSignIn: () -> Void
+    let onCreateAccount: () -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image("social_logo")
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: 280, maxHeight: 120)
+            Text("Descubre a la gente que tienes cerca de verdad")
+                .font(.title3)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 32)
+                .padding(.bottom, 32)
+            Button(action: onCreateAccount) {
+                Text("Crear cuenta").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            Button("Ya tengo cuenta — Iniciar sesión", action: onSignIn)
+                .font(.footnote)
+            Spacer()
+            Spacer()
+        }
+        .padding(.horizontal, 24)
     }
 }
