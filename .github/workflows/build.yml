@@ -134,7 +134,7 @@ jobs:
       # en project.yml y solo se referencia si ya existe al generar) — ya
       # corregido arriba, reordenando los pasos.
       - name: Diagnóstico si el lanzamiento vuelve a fallar
-        if: failure()
+        if: always()
         run: |
           REPORTS="$HOME/Library/Logs/DiagnosticReports"
           if ls "$REPORTS"/Social-*.ips >/dev/null 2>&1; then
@@ -142,6 +142,9 @@ jobs:
           else
             echo "Sin informe de crash para Social en $REPORTS"
           fi
+          UDID=$(xcrun simctl list devices available -j | \
+            /usr/bin/python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(dev['udid'] for rt in d.values() for dev in rt if dev['name'].startswith('iPhone')))")
+          xcrun simctl spawn "$UDID" log show --last 2m --predicate 'process == "Social" OR eventMessage CONTAINS "Social"' --style compact 2>&1 | tail -200
           UDID=$(xcrun simctl list devices available -j | \
             /usr/bin/python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(dev['udid'] for rt in d.values() for dev in rt if dev['name'].startswith('iPhone')))")
           xcrun simctl spawn "$UDID" log show --last 2m --predicate 'process == "Social" OR eventMessage CONTAINS "Social"' --style compact 2>&1 | tail -150
