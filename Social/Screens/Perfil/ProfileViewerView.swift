@@ -47,7 +47,7 @@ struct ProfileViewerView: View {
                 // este visor, solo "seguir de vuelta" desde una
                 // notificación — ver FollowManager.swift para el detalle.
                 if let myID, myID != profileID {
-                    Button(isFollowing ? "Siguiendo" : "Seguir") {
+                    let toggleFollow = {
                         followBusy = true
                         Task {
                             if isFollowing {
@@ -59,8 +59,21 @@ struct ProfileViewerView: View {
                             followBusy = false
                         }
                     }
-                    .buttonStyle(isFollowing ? .bordered : .borderedProminent)
-                    .disabled(followBusy)
+                    // Hallazgo real (CI real): `.buttonStyle(cond ? .bordered
+                    // : .borderedProminent)` no compila — un ternario exige
+                    // que ambas ramas sean el MISMO tipo concreto, y
+                    // `.bordered`/`.borderedProminent` son tipos opacos
+                    // distintos (BorderedButtonStyle/BorderedProminentButtonStyle),
+                    // no miembros intercambiables de ButtonStyle en sí.
+                    if isFollowing {
+                        Button("Siguiendo", action: toggleFollow)
+                            .buttonStyle(.bordered)
+                            .disabled(followBusy)
+                    } else {
+                        Button("Seguir", action: toggleFollow)
+                            .buttonStyle(.borderedProminent)
+                            .disabled(followBusy)
+                    }
                 }
 
                 // Solo se muestran las secciones marcadas como públicas —
