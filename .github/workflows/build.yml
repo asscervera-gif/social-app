@@ -102,42 +102,35 @@ jobs:
           # salió mostrando la pantalla de inicio de iOS, no la app, porque
           # SpringBoard todavía no había procesado el `launch`. Se relanza
           # una segunda vez justo antes de capturar, con más margen.
-          xcrun simctl launch "$UDID" com.social.app || true
-          sleep 10
-          xcrun simctl launch "$UDID" com.social.app || true
-          sleep 8
+          # Hallazgo real (confirmado con el log real del sistema, no una
+          # suposición): un solo `launch` SÍ llega a primer plano de
+          # verdad — SpringBoard registra
+          # "visibility: Foreground"/"Window did become application key"
+          # con normalidad. Relanzar una segunda vez (intento anterior)
+          # interrumpía esa transición justo antes de la captura, que es
+          # lo que realmente causaba la pantalla de inicio en las 2
+          # capturas previas — no timing insuficiente, sino un relanzamiento
+          # innecesario.
+          xcrun simctl launch "$UDID" com.social.app
+          sleep 15
           mkdir -p artifacts
           xcrun simctl io "$UDID" screenshot artifacts/social-ios-simulator.png
 
-      # Hallazgo real: la segunda captura (más tiempo de espera) seguía
-      # mostrando la pantalla de inicio de iOS, no la app — descarta un
-      # problema de tiempo, apunta a un crash real al arrancar. Los
-      # informes de crash del Simulador se escriben en el Mac anfitrión
-      # (misma ruta que para un dispositivo real), no dentro del propio
-      # simulador — se vucan aquí para ver la causa real en el log de CI.
-      - name: Volcar informe de crash si lo hay
-        if: always()
+      # Diagnóstico de reserva, solo si algo vuelve a fallar (ver el
+      # historial de commits de este archivo, 2026-08-24, para el proceso
+      # real que ya se siguió con esto: confirmó vía el log real del
+      # sistema que la app SÍ llega a primer plano — "visibility:
+      # Foreground" en SpringBoard — el problema era un relanzamiento
+      # innecesario, ya corregido arriba, no timing ni crash).
+      - name: Diagnóstico si el lanzamiento vuelve a fallar
+        if: failure()
         run: |
           REPORTS="$HOME/Library/Logs/DiagnosticReports"
           if ls "$REPORTS"/Social-*.ips >/dev/null 2>&1; then
-            echo "=== Informe(s) de crash encontrados ==="
-            for f in "$REPORTS"/Social-*.ips; do
-              echo "--- $f ---"
-              cat "$f"
-            done
+            for f in "$REPORTS"/Social-*.ips; do echo "--- $f ---"; cat "$f"; done
           else
-            echo "No se encontró ningún informe de crash para Social en $REPORTS"
+            echo "Sin informe de crash para Social en $REPORTS"
           fi
-
-      # Hallazgo real: simctl launch devolvió un PID real las dos veces
-      # (proceso vivo, sin crash) pero la captura seguía en la pantalla de
-      # inicio — ni timing ni crash. Vuelca el log del sistema de esa
-      # ventana de tiempo por si hay un watchdog/hang real (p.ej. la
-      # cámara/permiso de ubicación bloqueando el arranque de forma
-      # síncrona en un runner sin cámara real).
-      - name: Volcar log del sistema de la ventana de lanzamiento
-        if: always()
-        run: |
           UDID=$(xcrun simctl list devices available -j | \
             /usr/bin/python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(dev['udid'] for rt in d.values() for dev in rt if dev['name'].startswith('iPhone')))")
           xcrun simctl spawn "$UDID" log show --last 2m --predicate 'process == "Social" OR eventMessage CONTAINS "Social"' --style compact 2>&1 | tail -150
