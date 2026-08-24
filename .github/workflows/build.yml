@@ -96,6 +96,14 @@ jobs:
           xcrun simctl bootstatus "$UDID" -b
           APP_PATH=$(find build/Build/Products -maxdepth 3 -iname "Social.app" | head -1)
           xcrun simctl install "$UDID" "$APP_PATH"
+          # Hallazgo real (primera pantalla capturada, 2026-08-24): 8s no
+          # bastaban tras un arranque en frío del simulador (el propio
+          # `bootstatus` tardó ~15s solo en "Data Migration") — la captura
+          # salió mostrando la pantalla de inicio de iOS, no la app, porque
+          # SpringBoard todavía no había procesado el `launch`. Se relanza
+          # una segunda vez justo antes de capturar, con más margen.
+          xcrun simctl launch "$UDID" com.social.app
+          sleep 10
           xcrun simctl launch "$UDID" com.social.app
           sleep 8
           mkdir -p artifacts
