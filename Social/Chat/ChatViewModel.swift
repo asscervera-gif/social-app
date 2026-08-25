@@ -21,6 +21,14 @@ final class ChatViewModel: ObservableObject {
     @Published var suggestedActivity: String?
     @Published var errorMessage: String?
     @Published var opponentID: UUID?
+    // Paginación hacia atrás -- hueco real documentado desde que loadHistory()
+    // se limitó a los últimos 100 mensajes (ver comentario ahí): sin esto, un
+    // chat con más de 100 mensajes perdía silenciosamente todo lo anterior,
+    // sin forma de volver a verlo. Equivalente de
+    // ChatViewModel.kt.loadOlderMessages().
+    @Published var hasMoreHistory = false
+    @Published var isLoadingOlder = false
+    private let olderPageSize = 50
     // Última pieza real de "chat funcional con fotos, voz, reacciones,
     // read receipts" alcanzable sin infraestructura mayor — solo queda voz
     // (grabación nativa, alcance propio, documentado aparte).
@@ -177,6 +185,7 @@ final class ChatViewModel: ObservableObject {
                 .limit(100)
                 .execute()
                 .value
+            hasMoreHistory = recent.count >= 100
             messages = Array(recent.reversed())
 
             let chat: Chat = try await client
@@ -193,6 +202,30 @@ final class ChatViewModel: ObservableObject {
             if messages.isEmpty { await loadIcebreaker() }
         } catch {
             errorMessage = "No se pudo cargar el chat: \(error.localizedDescription)"
+        }
+    }
+
+    /// "Cargar mensajes anteriores" -- pide la página de mensajes justo antes
+    /// del más antiguo ya cargado (mismo criterio de orden que loadHistory()),
+    /// y la antepone a la lista actual.
+    func loadOlderMessages() async {
+        guard !isLoadingOlder, hasMoreHistory, let oldest = messages.first?.createdAt else { return }
+        isLoadingOlder = true
+        defer { isLoadingOlder = false }
+        do {
+            let older: [ChatMessage] = try await SupabaseManager.shared.client
+                .from("messages")
+                .select()
+                .eq("chat_id", value: chatID)
+                .lt("created_at", value: oldest)
+                .order("created_at", ascending: false)
+                .limit(olderPageSize)
+                .execute()
+                .value
+            hasMoreHistory = older.count >= olderPageSize
+            messages = older.reversed() + messages
+        } catch {
+            errorMessage = "No se pudieron cargar mensajes anteriores."
         }
     }
 

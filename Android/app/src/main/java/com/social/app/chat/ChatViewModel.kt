@@ -52,6 +52,18 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
+    // Paginación hacia atrás -- hueco real documentado desde que loadHistory()
+    // se limitó a los últimos 100 mensajes (ver comentario ahí): sin esto, un
+    // chat con más de 100 mensajes perdía silenciosamente todo lo anterior,
+    // sin forma de volver a verlo.
+    private val _isLoadingOlder = MutableStateFlow(false)
+    val isLoadingOlder: StateFlow<Boolean> = _isLoadingOlder.asStateFlow()
+
+    private val _hasMoreHistory = MutableStateFlow(false)
+    val hasMoreHistory: StateFlow<Boolean> = _hasMoreHistory.asStateFlow()
+
+    private val olderPageSize = 50L
+
     // Última pieza real de "chat funcional con fotos, voz, reacciones,
     // read receipts" alcanzable sin infraestructura mayor — solo queda voz
     // (grabación nativa, alcance propio, documentado aparte).
@@ -212,14 +224,15 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
             // recientes, que es lo que de verdad se quiere ver al abrir un
             // chat. Paginar hacia atrás (cargar más historial antiguo) no
             // se construye aquí — hueco real documentado, no inventado.
-            _messages.value = SupabaseManager.client.from("messages")
+            val recent = SupabaseManager.client.from("messages")
                 .select {
                     filter { eq("chat_id", chatId) }
                     order("created_at", Order.DESCENDING)
                     limit(100)
                 }
                 .decodeList<ChatMessage>()
-                .reversed()
+            _hasMoreHistory.value = recent.size >= 100
+            _messages.value = recent.reversed()
 
             val chat = SupabaseManager.client.from("chats")
                 .select { filter { eq("id", chatId) } }
@@ -236,6 +249,36 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
             if (_messages.value.isEmpty()) loadIcebreaker()
         } catch (e: Exception) {
             _errorMessage.value = "No se pudo cargar el chat: ${e.message}"
+        }
+    }
+
+    /** "Cargar mensajes anteriores" -- pide la página de mensajes justo antes
+     * del más antiguo ya cargado (mismo criterio de orden que loadHistory()),
+     * y la antepone a la lista actual. `_hasMoreHistory` se pone a `false` en
+     * cuanto una página vuelve incompleta, para dejar de mostrar el botón. */
+    fun loadOlderMessages() {
+        if (_isLoadingOlder.value || !_hasMoreHistory.value) return
+        val oldest = _messages.value.firstOrNull()?.createdAt ?: return
+        _isLoadingOlder.value = true
+        viewModelScope.launch {
+            try {
+                val older = SupabaseManager.client.from("messages")
+                    .select {
+                        filter {
+                            eq("chat_id", chatId)
+                            lt("created_at", oldest)
+                        }
+                        order("created_at", Order.DESCENDING)
+                        limit(olderPageSize)
+                    }
+                    .decodeList<ChatMessage>()
+                _hasMoreHistory.value = older.size >= olderPageSize
+                _messages.value = older.reversed() + _messages.value
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudieron cargar mensajes anteriores."
+            } finally {
+                _isLoadingOlder.value = false
+            }
         }
     }
 

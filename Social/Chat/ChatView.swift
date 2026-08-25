@@ -45,6 +45,22 @@ struct ChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 8) {
+                        // Hueco real: sin esto, un chat con más de 100
+                        // mensajes perdía silenciosamente todo lo anterior a
+                        // los últimos 100, sin forma de volver a verlo (ver
+                        // ChatViewModel.loadOlderMessages()).
+                        if viewModel.hasMoreHistory {
+                            if viewModel.isLoadingOlder {
+                                ProgressView()
+                                    .padding(.vertical, 8)
+                            } else {
+                                Button("Cargar mensajes anteriores") {
+                                    Task { await viewModel.loadOlderMessages() }
+                                }
+                                .buttonStyle(.bordered)
+                                .padding(.vertical, 4)
+                            }
+                        }
                         ForEach(viewModel.messages) { message in
                             MessageBubble(
                                 message: message,

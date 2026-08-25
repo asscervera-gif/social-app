@@ -56,6 +56,8 @@ fun ChatScreen(chatId: String, currentUserId: String, onStartDuel: (opponentId: 
     val opponentId by viewModel.opponentId.collectAsState()
     val suggestedActivity by viewModel.suggestedActivity.collectAsState()
     val icebreaker by viewModel.icebreaker.collectAsState()
+    val hasMoreHistory by viewModel.hasMoreHistory.collectAsState()
+    val isLoadingOlder by viewModel.isLoadingOlder.collectAsState()
     var draft by remember { mutableStateOf("") }
     val context = LocalContext.current
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -131,6 +133,25 @@ fun ChatScreen(chatId: String, currentUserId: String, onStartDuel: (opponentId: 
 
         val reactionEmojis = listOf("❤", "😂", "😮", "😢", "👍")
         LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp)) {
+            // Hueco real: sin esto, un chat con más de 100 mensajes perdía
+            // silenciosamente todo lo anterior a los últimos 100, sin forma
+            // de volver a verlo (ver ChatViewModel.loadOlderMessages()).
+            if (hasMoreHistory) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        if (isLoadingOlder) {
+                            androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                        } else {
+                            OutlinedButton(onClick = { viewModel.loadOlderMessages() }) {
+                                Text("Cargar mensajes anteriores")
+                            }
+                        }
+                    }
+                }
+            }
             items(messages) { message ->
                 val isMine = message.senderId == currentUserId
                 var showPicker by remember { mutableStateOf(false) }
