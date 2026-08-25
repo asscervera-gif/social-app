@@ -66,10 +66,16 @@ fun SocialsListScreen(viewModel: SocialsListViewModel = viewModel(), onOpenProfi
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(
-                            entry.displayName,
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.weight(1f).clickable { onOpenProfile(entry.profileId) }
-                        )
+                        ) {
+                            // Hallazgo real, mismo hueco raíz ya cerrado en
+                            // el feed/comentarios/chats/duelos/avisos:
+                            // "Tus socials" tampoco mostraba avatar.
+                            com.social.app.avatar.AvatarView(config = entry.avatarConfig ?: emptyMap(), size = 40.dp)
+                            Text(entry.displayName, modifier = Modifier.padding(start = 10.dp))
+                        }
                         // Hallazgo real: no había forma de quitar un social
                         // aceptado — `socials` no tenía ninguna política de
                         // delete hasta esta pasada (0020_socials_delete.sql).

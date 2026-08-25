@@ -14,7 +14,15 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-data class SocialEntry(val socialId: String, val profileId: String, val displayName: String)
+data class SocialEntry(
+    val socialId: String,
+    val profileId: String,
+    val displayName: String,
+    // Hallazgo real, mismo hueco raíz ya cerrado en el feed/comentarios/
+    // chats/duelos/avisos: "Tus socials" -- la relación central de la
+    // app -- tampoco mostraba avatar, solo el nombre.
+    val avatarConfig: Map<String, String>? = null
+)
 
 /**
  * Hallazgo real: "socials" (vínculo mutuo, distinto de "follow" — requiere
@@ -42,7 +50,10 @@ class SocialsListViewModel : ViewModel() {
     )
 
     @Serializable
-    private data class NameRow(@SerialName("display_name") val displayName: String)
+    private data class NameRow(
+        @SerialName("display_name") val displayName: String,
+        @SerialName("avatar_config") val avatarConfig: Map<String, String>? = null
+    )
 
     @Serializable
     private data class BlockRow(@SerialName("blocked_id") val blockedId: String)
@@ -85,14 +96,14 @@ class SocialsListViewModel : ViewModel() {
                 _socials.value = rows.mapNotNull { row ->
                     val otherId = if (row.requesterId == userId) row.addresseeId else row.requesterId
                     if (otherId in blockedIds) return@mapNotNull null
-                    val name = try {
+                    val profile = try {
                         SupabaseManager.client.from("profiles")
-                            .select(columns = Columns.raw("display_name")) { filter { eq("id", otherId) } }
-                            .decodeSingleOrNull<NameRow>()?.displayName
+                            .select(columns = Columns.raw("display_name,avatar_config")) { filter { eq("id", otherId) } }
+                            .decodeSingleOrNull<NameRow>()
                     } catch (e: Exception) {
                         null
                     } ?: return@mapNotNull null
-                    SocialEntry(row.id, otherId, name)
+                    SocialEntry(row.id, otherId, profile.displayName, profile.avatarConfig)
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudieron cargar tus socials."

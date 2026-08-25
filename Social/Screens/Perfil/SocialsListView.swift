@@ -23,8 +23,16 @@ struct SocialsListView: View {
             }
             ForEach(viewModel.socials) { entry in
                 HStack {
-                    NavigationLink(entry.displayName) {
+                    // Hallazgo real, mismo hueco raíz ya cerrado en el
+                    // feed/comentarios/chats/duelos/avisos: "Tus socials"
+                    // tampoco mostraba avatar, solo el nombre.
+                    NavigationLink {
                         ProfileViewerView(profileID: entry.id)
+                    } label: {
+                        HStack(spacing: 10) {
+                            ActiveAvatarProvider.shared.avatarView(config: entry.avatarConfig ?? [:], size: 40)
+                            Text(entry.displayName)
+                        }
                     }
                     Spacer()
                     // Hallazgo real: no había forma de quitar un social

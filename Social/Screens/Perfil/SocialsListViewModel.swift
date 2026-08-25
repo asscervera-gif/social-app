@@ -17,6 +17,10 @@ struct SocialEntry: Identifiable {
     let id: UUID
     let socialID: UUID
     let displayName: String
+    // Hallazgo real, mismo hueco raíz ya cerrado en el feed/comentarios/
+    // chats/duelos/avisos: "Tus socials" -- la relación central de la
+    // app -- tampoco mostraba avatar, solo el nombre.
+    let avatarConfig: [String: String]?
 }
 
 @MainActor
@@ -66,8 +70,11 @@ final class SocialsListViewModel: ObservableObject {
             for row in rows {
                 let otherID = row.requester_id == userID ? row.addressee_id : row.requester_id
                 if blockedIDs.contains(otherID) { continue }
-                if let name = await displayName(for: otherID) {
-                    entries.append(SocialEntry(id: otherID, socialID: row.id, displayName: name))
+                if let profile = await profileInfo(for: otherID) {
+                    entries.append(SocialEntry(
+                        id: otherID, socialID: row.id,
+                        displayName: profile.display_name, avatarConfig: profile.avatar_config
+                    ))
                 }
             }
             socials = entries
@@ -95,15 +102,18 @@ final class SocialsListViewModel: ObservableObject {
         }
     }
 
-    private func displayName(for id: UUID) async -> String? {
-        struct NameRow: Decodable { let display_name: String }
-        let row: NameRow? = try? await SupabaseManager.shared.client
+    private struct NameRow: Decodable {
+        let display_name: String
+        let avatar_config: [String: String]?
+    }
+
+    private func profileInfo(for id: UUID) async -> NameRow? {
+        try? await SupabaseManager.shared.client
             .from("profiles")
-            .select("display_name")
+            .select("display_name,avatar_config")
             .eq("id", value: id)
             .single()
             .execute()
             .value
-        return row?.display_name
     }
 }
