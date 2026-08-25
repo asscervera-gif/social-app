@@ -28,6 +28,13 @@ struct AppRootView: View {
     // llamaban desde ningún sitio — se dispara aquí, una vez, cuando el
     // perfil recién autenticado todavía no tiene avatar_config.
     @State private var showAvatarOnboarding = false
+    // Hallazgo real: ninguna plataforma explicaba qué es o cómo funciona
+    // la detección UWB antes de soltar al usuario en la cámara —
+    // comparado con cualquier app grande (Instagram/TikTok/Snapchat, que
+    // sí muestran un carrusel de bienvenida), un hueco real de
+    // onboarding. Se muestra una sola vez por dispositivo, encima de
+    // RootTabView, la primera vez que hay sesión real.
+    @State private var showHowItWorks = false
 
     var body: some View {
         Group {
@@ -42,6 +49,9 @@ struct AppRootView: View {
                 RootTabView()
                     .sheet(isPresented: $showAvatarOnboarding) {
                         OnboardingAvatarView(onFinished: { showAvatarOnboarding = false })
+                    }
+                    .fullScreenCover(isPresented: $showHowItWorks) {
+                        HowItWorksView(onFinished: { showHowItWorks = false })
                     }
             case false:
                 AuthView()
@@ -65,13 +75,17 @@ struct AppRootView: View {
 
             let session = try? await SupabaseManager.shared.client.auth.session
             isAuthenticated = session != nil
-            if session != nil { await checkNeedsAvatarOnboarding() }
+            if session != nil {
+                await checkNeedsAvatarOnboarding()
+                showHowItWorks = !HowItWorksSeen.value
+            }
 
             for await state in SupabaseManager.shared.client.auth.authStateChanges {
                 let wasAuthenticated = isAuthenticated == true
                 isAuthenticated = state.session != nil
                 if !wasAuthenticated && state.session != nil {
                     await checkNeedsAvatarOnboarding()
+                    showHowItWorks = !HowItWorksSeen.value
                 }
                 // Hallazgo real: al cerrar sesión, el número rojo del
                 // icono de la app (y cualquier notificación local
