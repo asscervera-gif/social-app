@@ -489,6 +489,43 @@ async function main() {
   const unhiddenAfterMessage = (await db.query(`select hidden_by_b from chats where id = $1`, [chat.id])).rows[0];
   check('unhide_chat_on_new_message: un mensaje nuevo real deshace el ocultado de u2, no se pierde de la vista', unhiddenAfterMessage.hidden_by_b === false);
 
+  // --- notify_new_message (0047): un mensaje nuevo real SÍ genera un
+  // aviso real para el destinatario -- el hueco de mensajería más grande
+  // de la sesión, antes NINGÚN mensaje generaba nunca un aviso (ni badge,
+  // ni notificación local, ni push real). ---
+  await asUser(u2);
+  const messageNotif = (await db.query(
+    `select actor_id, payload from notifications where recipient_id = $1 and kind = 'message'`, [u2]
+  )).rows;
+  check('notify_new_message: u2 (destinatario real) recibe el aviso del mensaje de u1', messageNotif.length === 1);
+  check('notify_new_message: actor_id es quien mandó el mensaje (u1)', messageNotif[0]?.actor_id === u1);
+  check('notify_new_message: payload trae el chat_id real', messageNotif[0]?.payload?.chat_id === chat.id);
+
+  // --- protect_chat_muted_flags / silenciar (0047): mismo patrón exacto
+  // que protect_chat_hidden_flags -- cada quien solo silencia SU PROPIA
+  // copia, nunca la de la otra persona. ---
+  await asUser(u2); // u2 es user_b_id del chat
+  await db.query(`update chats set muted_by_b = true where id = $1`, [chat.id]);
+  await asSuperuser();
+  const mutedByB = (await db.query(`select muted_by_a, muted_by_b from chats where id = $1`, [chat.id])).rows[0];
+  check('protect_chat_muted_flags: u2 (user_b) SÍ silencia su propia copia', mutedByB.muted_by_b === true && mutedByB.muted_by_a === false);
+
+  await asUser(u2);
+  await db.query(`update chats set muted_by_a = true where id = $1`, [chat.id]);
+  await asSuperuser();
+  const stillNotMutedByA = (await db.query(`select muted_by_a from chats where id = $1`, [chat.id])).rows[0];
+  check('protect_chat_muted_flags: u2 NO puede silenciar la copia de u1 (revertido en silencio, no lanza)', stillNotMutedByA.muted_by_a === false);
+
+  // --- silenciado SÍ suprime el aviso de mensajes nuevos, sin bloquear
+  // ni ocultar nada (u2 ya silenció su propia copia justo arriba). ---
+  await asUser(u1);
+  await db.query(`insert into messages (chat_id, sender_id, body) values ($1, $2, 'otro mensaje, u2 ya silenció')`, [chat.id, u1]);
+  await asUser(u2);
+  const messageNotifAfterMute = (await db.query(
+    `select 1 from notifications where recipient_id = $1 and kind = 'message'`, [u2]
+  )).rows;
+  check('notify_new_message: silenciado por u2, el segundo mensaje NO genera un aviso nuevo (sigue habiendo solo 1)', messageNotifAfterMute.length === 1);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

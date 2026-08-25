@@ -70,7 +70,49 @@ final class ChatViewModel: ObservableObject {
         await loadHistory()
         await subscribeToRealtime()
         await markMessagesRead()
+        await markMessageNotificationsRead()
         await loadReactions()
+    }
+
+    /// Hallazgo real, el hueco de mensajería más grande de la sesión:
+    /// ningún mensaje nuevo generaba nunca un aviso -- ver
+    /// 0047_message_notify_mute.sql. Sin esto, el badge de Avisos
+    /// acumularía avisos de mensajes que el usuario ya vio aquí mismo, en
+    /// el propio chat. Dos pasos (traer + filtrar en cliente + actualizar
+    /// por id) en vez de filtrar por `payload->>chat_id` directo en el
+    /// servidor -- sin precedente verificado de filtro sobre una columna
+    /// jsonb en este proyecto, mismo criterio de no adivinar una sintaxis
+    /// no probada que ya se aplica al resto del código. Equivalente de
+    /// ChatViewModel.kt.markMessageNotificationsRead().
+    private func markMessageNotificationsRead() async {
+        struct MessageNotifRow: Decodable {
+            let id: UUID
+            let payload: [String: String]
+            let readAt: Date?
+            enum CodingKeys: String, CodingKey {
+                case id, payload
+                case readAt = "read_at"
+            }
+        }
+        do {
+            let rows: [MessageNotifRow] = try await SupabaseManager.shared.client
+                .from("notifications")
+                .select("id,payload,read_at")
+                .eq("kind", value: "message")
+                .eq("recipient_id", value: currentUserID)
+                .limit(200)
+                .execute()
+                .value
+            let matchingIDs = rows.filter { $0.readAt == nil && $0.payload["chat_id"] == chatID.uuidString }.map { $0.id }
+            guard !matchingIDs.isEmpty else { return }
+            try await SupabaseManager.shared.client
+                .from("notifications")
+                .update(["read_at": ISO8601DateFormatter().string(from: Date())])
+                .in("id", values: matchingIDs)
+                .execute()
+        } catch {
+            // No bloquea el resto del chat si falla.
+        }
     }
 
     /// Llamado desde ChatView en cada pulsación del campo de texto — mismo

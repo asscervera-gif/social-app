@@ -60,6 +60,14 @@ interface DeviceTokenRow {
 
 // Mismo texto que AvisosViewModel.kt.icon()/title() — el aviso en la app
 // y el push real deben decir lo mismo, no dos redacciones distintas.
+//
+// Hallazgo real (0047_message_notify_mute.sql): esta es la TERCERA copia
+// de este mapeo kind -> texto (junto a AvisosViewModel.swift/.kt) -- al
+// añadir "social_accepted"/"compat_accepted" en la pasada anterior
+// (0046_notify_accepted.sql) se actualizaron las dos primeras pero se
+// olvidó esta, así que un push real para esos dos avisos habría caído en
+// el "🔔"/"Notificación" genérico aunque la app ya mostrara el texto
+// correcto -- corregido aquí junto con "message" (nuevo esta pasada).
 function iconFor(kind: string): string {
   switch (kind) {
     case "social": return "👥";
@@ -67,6 +75,9 @@ function iconFor(kind: string): string {
     case "fight": return "⚡";
     case "like": return "❤";
     case "compat_request": return "%";
+    case "social_accepted": return "✅";
+    case "compat_accepted": return "%";
+    case "message": return "💬";
     default: return "🔔";
   }
 }
@@ -77,6 +88,9 @@ function titleFor(kind: string): string {
     case "fight": return "Duelo completado";
     case "like": return "Le gustó tu publicación";
     case "compat_request": return "Quiere ver tu compatibilidad";
+    case "social_accepted": return "Aceptó tu social";
+    case "compat_accepted": return "Compartió su compatibilidad contigo";
+    case "message": return "Nuevo mensaje";
     default: return "Notificación";
   }
 }

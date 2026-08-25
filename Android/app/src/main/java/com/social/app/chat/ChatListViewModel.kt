@@ -34,7 +34,11 @@ data class ChatListEntry(
     // ninguna forma de quitar una conversación de "Tus chats" -- ver
     // 0044_chats_hide.sql. Necesario para saber qué columna
     // (hidden_by_a/hidden_by_b) me corresponde a MÍ en este chat.
-    val iAmUserA: Boolean
+    val iAmUserA: Boolean,
+    // Hallazgo real, comparado con WhatsApp/Instagram/Messenger: no había
+    // ninguna forma de silenciar una conversación sin salir ni bloquear --
+    // ver 0047_message_notify_mute.sql.
+    val isMutedForMe: Boolean
 )
 
 // Hallazgo real, comparado con WhatsApp/Instagram/Messenger: la lista de
@@ -63,7 +67,9 @@ private data class ChatRow(
     @SerialName("compatibility_score") val compatibilityScore: Int = 50,
     @SerialName("created_at") val createdAt: String,
     @SerialName("hidden_by_a") val hiddenByA: Boolean = false,
-    @SerialName("hidden_by_b") val hiddenByB: Boolean = false
+    @SerialName("hidden_by_b") val hiddenByB: Boolean = false,
+    @SerialName("muted_by_a") val mutedByA: Boolean = false,
+    @SerialName("muted_by_b") val mutedByB: Boolean = false
 )
 
 /**
@@ -155,7 +161,7 @@ class ChatListViewModel : ViewModel() {
                 // convención del resto del proyecto (mismo patrón
                 // corregido en ChatViewModel.loadHistory() esta pasada).
                 val myChats = SupabaseManager.client.from("chats")
-                    .select(columns = Columns.raw("id,user_a_id,user_b_id,compatibility_score,created_at,hidden_by_a,hidden_by_b")) {
+                    .select(columns = Columns.raw("id,user_a_id,user_b_id,compatibility_score,created_at,hidden_by_a,hidden_by_b,muted_by_a,muted_by_b")) {
                         filter {
                             or {
                                 eq("user_a_id", userId)
@@ -206,7 +212,8 @@ class ChatListViewModel : ViewModel() {
                         otherAvatarConfig = otherProfile?.avatarConfig,
                         lastMessage = lastMessage?.body,
                         lastActivity = lastMessage?.createdAt ?: row.createdAt,
-                        iAmUserA = row.userAId == userId
+                        iAmUserA = row.userAId == userId,
+                        isMutedForMe = if (row.userAId == userId) row.mutedByA else row.mutedByB
                     )
                 }
                 _chats.value = entries.sortedByDescending { it.lastActivity }
@@ -232,6 +239,29 @@ class ChatListViewModel : ViewModel() {
                     .update({ set(column, true) }) { filter { eq("id", entry.chat.id) } }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo ocultar la conversación."
+                load()
+            }
+        }
+    }
+
+    /** Silenciar/activar -- solo afecta a MI copia (columna
+     * muted_by_a/muted_by_b según corresponda), nunca a la de la otra
+     * persona (protect_chat_muted_flags, 0047_message_notify_mute.sql, lo
+     * garantiza también del lado del servidor). A diferencia de ocultar,
+     * silenciado no se deshace solo al llegar un mensaje -- deshacerlo
+     * automáticamente contradiría el propósito de la función. */
+    fun toggleMute(entry: ChatListEntry) {
+        val newValue = !entry.isMutedForMe
+        _chats.update { list ->
+            list.map { if (it.chat.id == entry.chat.id) it.copy(isMutedForMe = newValue) else it }
+        }
+        viewModelScope.launch {
+            try {
+                val column = if (entry.iAmUserA) "muted_by_a" else "muted_by_b"
+                SupabaseManager.client.from("chats")
+                    .update({ set(column, newValue) }) { filter { eq("id", entry.chat.id) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo cambiar el silencio de la conversación."
                 load()
             }
         }

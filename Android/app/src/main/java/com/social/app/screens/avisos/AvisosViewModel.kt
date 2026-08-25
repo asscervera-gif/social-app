@@ -155,6 +155,10 @@ fun NotificationEntry.icon(): String = when (kind) {
     "compat_request" -> "%"
     "social_accepted" -> "✅"
     "compat_accepted" -> "%"
+    // Hallazgo real, el hueco de mensajería más grande de la sesión:
+    // ningún mensaje nuevo generaba nunca un aviso -- ver
+    // 0047_message_notify_mute.sql.
+    "message" -> "💬"
     else -> "🔔"
 }
 
@@ -166,5 +170,6 @@ fun NotificationEntry.title(): String = when (kind) {
     "compat_request" -> "Quiere ver tu compatibilidad"
     "social_accepted" -> "Aceptó tu social"
     "compat_accepted" -> "Compartió su compatibilidad contigo"
+    "message" -> "Nuevo mensaje"
     else -> "Notificación"
 }

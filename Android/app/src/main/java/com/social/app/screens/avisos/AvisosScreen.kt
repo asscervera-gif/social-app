@@ -116,6 +116,13 @@ fun AvisosScreen(
                     // -- ver 0046_notify_accepted.sql.
                     entry.kind == "social_accepted" -> selected = entry
                     entry.kind == "compat_accepted" -> selected = entry
+                    // Hallazgo real, el hueco de mensajería más grande de
+                    // la sesión: ningún mensaje nuevo generaba nunca un
+                    // aviso -- ver 0047_message_notify_mute.sql. Va
+                    // directo al chat, mismo criterio que "social" con
+                    // chat_id: un aviso de mensaje no tiene ninguna acción
+                    // que mostrar en la hoja genérica, solo abrir el chat.
+                    entry.kind == "message" && chatId != null -> onOpenChat(chatId)
                 }
             })
         }

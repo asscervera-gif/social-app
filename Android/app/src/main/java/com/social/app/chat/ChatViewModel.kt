@@ -8,6 +8,7 @@ import com.social.app.backend.model.ChatMessage
 import io.github.jan.supabase.functions.functions
 import io.github.jan.supabase.gotrue.auth
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
 import io.github.jan.supabase.realtime.PostgresAction
 import io.github.jan.supabase.realtime.RealtimeChannel
@@ -118,7 +119,46 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
             loadHistory()
             subscribeToRealtime()
             markMessagesRead()
+            markMessageNotificationsRead()
             loadReactions()
+        }
+    }
+
+    @Serializable
+    private data class MessageNotifRow(
+        val id: String,
+        val payload: Map<String, String>,
+        @SerialName("read_at") val readAt: String? = null
+    )
+
+    /** Hallazgo real, el hueco de mensajería más grande de la sesión:
+     * ningún mensaje nuevo generaba nunca un aviso -- ver
+     * 0047_message_notify_mute.sql. Sin esto, el badge de Avisos
+     * acumularía avisos de mensajes que el usuario ya vio aquí mismo, en
+     * el propio chat. Dos pasos (traer + filtrar en cliente + actualizar
+     * por id) en vez de filtrar por `payload->>chat_id` directo en el
+     * servidor -- sin precedente verificado de filtro sobre una columna
+     * jsonb en este proyecto, mismo criterio de no adivinar una sintaxis
+     * no probada que ya se aplica al resto del código. */
+    private suspend fun markMessageNotificationsRead() {
+        try {
+            val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return
+            val rows = SupabaseManager.client.from("notifications")
+                .select(columns = Columns.raw("id,payload,read_at")) {
+                    filter {
+                        eq("kind", "message")
+                        eq("recipient_id", userId)
+                    }
+                    limit(200)
+                }
+                .decodeList<MessageNotifRow>()
+            val matchingIds = rows.filter { it.readAt == null && it.payload["chat_id"] == chatId }.map { it.id }
+            if (matchingIds.isEmpty()) return
+            val nowIso = java.time.Instant.now().toString()
+            SupabaseManager.client.from("notifications")
+                .update({ set("read_at", nowIso) }) { filter { isIn("id", matchingIds) } }
+        } catch (e: Exception) {
+            // No bloquea el resto del chat si falla.
         }
     }
 

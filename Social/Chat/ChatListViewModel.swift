@@ -32,6 +32,10 @@ struct ChatListEntry: Identifiable {
     // 0044_chats_hide.sql. Necesario para saber qué columna
     // (hidden_by_a/hidden_by_b) me corresponde a MÍ en este chat.
     let iAmUserA: Bool
+    // Hallazgo real, comparado con WhatsApp/Instagram/Messenger: no había
+    // ninguna forma de silenciar una conversación sin salir ni bloquear --
+    // ver 0047_message_notify_mute.sql.
+    let isMutedForMe: Bool
 }
 
 @MainActor
@@ -132,7 +136,8 @@ final class ChatListViewModel: ObservableObject {
                     otherName: otherProfile?.display_name ?? "Perfil",
                     otherAvatarConfig: otherProfile?.avatar_config,
                     lastMessage: last?.body, lastActivity: last?.created_at ?? chat.createdAt,
-                    iAmUserA: chat.userAID == userID
+                    iAmUserA: chat.userAID == userID,
+                    isMutedForMe: chat.userAID == userID ? chat.mutedByA : chat.mutedByB
                 ))
             }
             chats = entries.sorted { $0.lastActivity > $1.lastActivity }
@@ -197,6 +202,44 @@ final class ChatListViewModel: ObservableObject {
                 }
             } catch {
                 errorMessage = "No se pudo ocultar la conversación."
+                await load()
+            }
+        }
+    }
+
+    /// Silenciar/activar -- solo afecta a MI copia (columna
+    /// muted_by_a/muted_by_b según corresponda), nunca a la de la otra
+    /// persona (protect_chat_muted_flags, 0047_message_notify_mute.sql,
+    /// lo garantiza también del lado del servidor). A diferencia de
+    /// ocultar, silenciado no se deshace solo al llegar un mensaje --
+    /// deshacerlo automáticamente contradiría el propósito de la función.
+    /// Equivalente de ChatListViewModel.kt.toggleMute().
+    func toggleMute(_ entry: ChatListEntry) {
+        let newValue = !entry.isMutedForMe
+        if let index = chats.firstIndex(where: { $0.id == entry.id }) {
+            chats[index] = ChatListEntry(
+                id: entry.id, chat: entry.chat, otherName: entry.otherName,
+                otherAvatarConfig: entry.otherAvatarConfig, lastMessage: entry.lastMessage,
+                lastActivity: entry.lastActivity, iAmUserA: entry.iAmUserA, isMutedForMe: newValue
+            )
+        }
+        Task {
+            do {
+                if entry.iAmUserA {
+                    try await SupabaseManager.shared.client
+                        .from("chats")
+                        .update(["muted_by_a": newValue])
+                        .eq("id", value: entry.chat.id)
+                        .execute()
+                } else {
+                    try await SupabaseManager.shared.client
+                        .from("chats")
+                        .update(["muted_by_b": newValue])
+                        .eq("id", value: entry.chat.id)
+                        .execute()
+                }
+            } catch {
+                errorMessage = "No se pudo cambiar el silencio de la conversación."
                 await load()
             }
         }

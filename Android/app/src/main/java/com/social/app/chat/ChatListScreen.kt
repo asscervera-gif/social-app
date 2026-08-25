@@ -94,7 +94,7 @@ fun ChatListScreen(viewModel: ChatListViewModel = viewModel(), onOpenChat: (Stri
                     // identificador visual principal de cualquier lista
                     // de conversaciones.
                     com.social.app.avatar.AvatarView(config = entry.otherAvatarConfig ?: emptyMap(), size = 44.dp)
-                    Column(modifier = Modifier.padding(start = 12.dp)) {
+                    Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
                         Text(entry.otherName, style = MaterialTheme.typography.titleSmall)
                         Text(
                             entry.lastMessage?.takeIf { it.isNotBlank() } ?: "Sin mensajes todavía",
@@ -102,6 +102,15 @@ fun ChatListScreen(viewModel: ChatListViewModel = viewModel(), onOpenChat: (Stri
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1
                         )
+                    }
+                    // Hallazgo real, comparado con WhatsApp/Instagram/
+                    // Messenger: no había ninguna forma de silenciar una
+                    // conversación sin salir ni bloquear -- ver
+                    // 0047_message_notify_mute.sql. El propio icono ya
+                    // comunica el estado (🔔 activo / 🔕 silenciado), sin
+                    // necesitar una insignia aparte junto al nombre.
+                    androidx.compose.material3.IconButton(onClick = { viewModel.toggleMute(entry) }) {
+                        Text(if (entry.isMutedForMe) "🔕" else "🔔")
                     }
                 }
                 HorizontalDivider()

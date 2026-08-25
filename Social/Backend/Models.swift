@@ -109,6 +109,11 @@ struct Chat: Codable, Identifiable {
     // 0044_chats_hide.sql/ChatListViewModel.hideChat().
     var hiddenByA: Bool
     var hiddenByB: Bool
+    // Hallazgo real, comparado con WhatsApp/Instagram/Messenger: no había
+    // ninguna forma de silenciar una conversación sin salir ni bloquear --
+    // ver 0047_message_notify_mute.sql/ChatListViewModel.muteChat().
+    var mutedByA: Bool
+    var mutedByB: Bool
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -118,6 +123,8 @@ struct Chat: Codable, Identifiable {
         case createdAt = "created_at"
         case hiddenByA = "hidden_by_a"
         case hiddenByB = "hidden_by_b"
+        case mutedByA = "muted_by_a"
+        case mutedByB = "muted_by_b"
     }
 }
 

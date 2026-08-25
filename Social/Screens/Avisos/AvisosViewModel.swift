@@ -178,6 +178,10 @@ extension AvisosViewModel.NotificationEntry {
         // 0046_notify_accepted.sql.
         case "social_accepted": return "checkmark.circle.fill"
         case "compat_accepted": return "percent"
+        // Hallazgo real, el hueco de mensajería más grande de la sesión:
+        // ningún mensaje nuevo generaba nunca un aviso -- ver
+        // 0047_message_notify_mute.sql.
+        case "message": return "message.fill"
         default: return "bell"
         }
     }
@@ -191,6 +195,7 @@ extension AvisosViewModel.NotificationEntry {
         case "compat_request": return "Quiere ver tu compatibilidad"
         case "social_accepted": return "Aceptó tu social"
         case "compat_accepted": return "Compartió su compatibilidad contigo"
+        case "message": return "Nuevo mensaje"
         default: return "Notificación"
         }
     }

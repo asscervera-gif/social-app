@@ -11,13 +11,30 @@ import SwiftUI
 struct AvisosView: View {
 
     @StateObject private var viewModel = AvisosViewModel()
+    // Hallazgo real, el hueco de mensajería más grande de la sesión:
+    // ningún mensaje nuevo generaba nunca un aviso -- ver
+    // 0047_message_notify_mute.sql. Mismo patrón ya usado en
+    // PerfilView.swift para abrir un chat desde "Tus chats"
+    // (`.navigationDestination(isPresented:)`, no `(item:)` -- exclusivo
+    // de iOS 17+, no compila contra el deployment target real de este
+    // proyecto, iOS 16).
+    @State private var selectedChatID: UUID?
+    @State private var showOpenedChat = false
+    @State private var currentUserID: UUID?
 
     var body: some View {
         NavigationStack {
             List(viewModel.notifications) { entry in
                 Button {
-                    viewModel.selected = entry
                     Task { await viewModel.markRead(entry) }
+                    if entry.kind == "message",
+                       let chatIDString = entry.payload["chat_id"],
+                       let chatID = UUID(uuidString: chatIDString) {
+                        selectedChatID = chatID
+                        showOpenedChat = true
+                    } else {
+                        viewModel.selected = entry
+                    }
                 } label: {
                     HStack(spacing: 14) {
                         // Hallazgo real, mismo hueco raíz ya cerrado en el
@@ -63,6 +80,12 @@ struct AvisosView: View {
                 }
             }
             .task { await viewModel.start() }
+            .task { currentUserID = try? await SupabaseManager.shared.client.auth.session.user.id }
+            .navigationDestination(isPresented: $showOpenedChat) {
+                if let selectedChatID, let currentUserID {
+                    ChatView(chatID: selectedChatID, currentUserID: currentUserID)
+                }
+            }
             .onDisappear { Task { await viewModel.stop() } }
             // Hallazgo real: comparado con Instagram/Twitter/Facebook (y
             // con Home/Match, ya con .refreshable), Avisos no tenía

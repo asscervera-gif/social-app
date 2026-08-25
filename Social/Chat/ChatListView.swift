@@ -32,7 +32,19 @@ struct ChatListView: View {
                         // nunca el avatar de la otra persona.
                         ActiveAvatarProvider.shared.avatarView(config: entry.otherAvatarConfig ?? [:], size: 44)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(entry.otherName).font(.headline)
+                            HStack(spacing: 4) {
+                                Text(entry.otherName).font(.headline)
+                                // Hallazgo real, comparado con WhatsApp/
+                                // Instagram/Messenger: no había ninguna
+                                // forma de silenciar una conversación sin
+                                // salir ni bloquear -- ver
+                                // 0047_message_notify_mute.sql.
+                                if entry.isMutedForMe {
+                                    Image(systemName: "bell.slash.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
                             Text(entry.lastMessage?.isEmpty == false ? entry.lastMessage! : "Sin mensajes todavía")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
@@ -48,6 +60,10 @@ struct ChatListView: View {
                     Button("Ocultar", role: .destructive) {
                         viewModel.hideChat(entry)
                     }
+                    Button(entry.isMutedForMe ? "Activar" : "Silenciar") {
+                        viewModel.toggleMute(entry)
+                    }
+                    .tint(.gray)
                 }
             }
         }
