@@ -516,6 +516,32 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
+    /// Hallazgo real, comparado con WhatsApp/Telegram/Messenger: un mensaje
+    /// mal escrito solo se podía borrar entero, nunca corregir --
+    /// `messages` no tenía ninguna política de UPDATE que dejara al
+    /// remitente tocar su propio `body` hasta esta pasada (ver
+    /// 0049_messages_edit.sql). Mismo límite real que
+    /// `messages_body_length` (0023, 2000 caracteres). Sin ventana de
+    /// tiempo límite para editar (alcance deliberado, ver la propia
+    /// migración). Equivalente de ChatViewModel.kt.editMessage().
+    func editMessage(_ messageID: UUID, newBody: String) async {
+        guard !newBody.isEmpty, newBody.count <= 2000 else { return }
+        let now = Date()
+        if let index = messages.firstIndex(where: { $0.id == messageID }) {
+            messages[index].body = newBody
+            messages[index].editedAt = now
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("messages")
+                .update(["body": newBody, "edited_at": ISO8601DateFormatter().string(from: now)])
+                .eq("id", value: messageID)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo editar el mensaje."
+        }
+    }
+
     /// Vota +1/+10/+100 o -1/-10/-100 en la barra de compatibilidad.
     /// Hallazgo de seguridad real (corregido en
     /// 0032_protect_compatibility_score.sql): antes esta función calculaba

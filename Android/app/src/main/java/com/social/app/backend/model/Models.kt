@@ -108,7 +108,11 @@ data class ChatMessage(
     // Mensajes de voz — separado de mediaUrl a propósito, ver
     // 0019_message_audio.sql: el cliente necesita distinguir explícitamente
     // reproductor de imagen, no adivinar por la extensión del archivo.
-    @SerialName("audio_url") val audioUrl: String? = null
+    @SerialName("audio_url") val audioUrl: String? = null,
+    // Hallazgo real, comparado con WhatsApp/Telegram/Messenger: un mensaje
+    // mal escrito solo se podía borrar entero, nunca corregir -- ver
+    // 0049_messages_edit.sql/ChatViewModel.editMessage().
+    @SerialName("edited_at") val editedAt: String? = null
 )
 
 /** Hallazgo de integridad corregido (ver duel-ai/index.ts): antes incluía

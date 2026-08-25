@@ -80,6 +80,14 @@ fun ChatScreen(chatId: String, currentUserId: String, onStartDuel: (opponentId: 
     // mantener pulsado para borrar) lo denuncia con referencia real al
     // mensaje. Ver 0048_reports_message_reference.sql.
     var reportMessageId by remember { mutableStateOf<String?>(null) }
+    // Hallazgo real, comparado con WhatsApp/Telegram/Messenger: mantener
+    // pulsado un mensaje propio lo borraba al instante, SIN confirmación
+    // -- y no había forma de corregirlo, solo de borrarlo entero. Ahora
+    // mantener pulsado abre un menú real (Editar/Borrar/Cancelar) en vez
+    // de un borrado directo -- ver 0049_messages_edit.sql.
+    var managingMessage by remember { mutableStateOf<com.social.app.backend.model.ChatMessage?>(null) }
+    var editingMessage by remember { mutableStateOf<com.social.app.backend.model.ChatMessage?>(null) }
+    var editedMessageText by remember { mutableStateOf("") }
     val context = LocalContext.current
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) viewModel.sendPhoto(context, uri)
@@ -196,7 +204,7 @@ fun ChatScreen(chatId: String, currentUserId: String, onStartDuel: (opponentId: 
                         // 0022_messages_delete.sql).
                         modifier = Modifier.combinedClickable(
                             onClick = { showPicker = !showPicker },
-                            onLongClick = { if (isMine) viewModel.deleteMessage(message.id) else reportMessageId = message.id }
+                            onLongClick = { if (isMine) managingMessage = message else reportMessageId = message.id }
                         )
                     ) {
                         // Hallazgo real: el chat solo soportaba texto — ver
@@ -214,7 +222,7 @@ fun ChatScreen(chatId: String, currentUserId: String, onStartDuel: (opponentId: 
                                 modifier = Modifier.size(200.dp).clip(RoundedCornerShape(14.dp))
                                     .combinedClickable(
                                         onClick = { fullScreenImageUrl = message.mediaUrl },
-                                        onLongClick = { if (isMine) viewModel.deleteMessage(message.id) else reportMessageId = message.id }
+                                        onLongClick = { if (isMine) managingMessage = message else reportMessageId = message.id }
                                     )
                             )
                         } else if (message.audioUrl != null) {
@@ -259,6 +267,17 @@ fun ChatScreen(chatId: String, currentUserId: String, onStartDuel: (opponentId: 
                                 )
                             }
                         }
+                    }
+                    // Hallazgo real, comparado con WhatsApp/Telegram/
+                    // Messenger: mismo aviso visual que esas apps cuando un
+                    // mensaje se corrigió después de enviarse -- ver
+                    // 0049_messages_edit.sql.
+                    if (message.editedAt != null) {
+                        Text(
+                            "Editado",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                     if (isMine) {
                         Text(
@@ -367,6 +386,64 @@ fun ChatScreen(chatId: String, currentUserId: String, onStartDuel: (opponentId: 
                 onDismiss = { reportMessageId = null }
             )
         }
+    }
+    // Hallazgo real, comparado con WhatsApp/Telegram/Messenger: mantener
+    // pulsado un mensaje propio lo borraba al instante sin confirmación --
+    // ahora un menú real, ver 0049_messages_edit.sql.
+    managingMessage?.let { message ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { managingMessage = null },
+            title = { Text("Mensaje") },
+            text = {},
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    editingMessage = message
+                    editedMessageText = message.body ?: ""
+                    managingMessage = null
+                }) { Text("Editar") }
+            },
+            dismissButton = {
+                Row {
+                    androidx.compose.material3.TextButton(onClick = {
+                        viewModel.deleteMessage(message.id)
+                        managingMessage = null
+                    }) { Text("Borrar") }
+                    androidx.compose.material3.TextButton(onClick = { managingMessage = null }) { Text("Cancelar") }
+                }
+            }
+        )
+    }
+    editingMessage?.let { message ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { editingMessage = null },
+            title = { Text("Editar mensaje") },
+            text = {
+                Column {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = editedMessageText,
+                        onValueChange = { editedMessageText = it },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        "${editedMessageText.length}/2000",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (editedMessageText.length > 2000) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        viewModel.editMessage(message.id, editedMessageText)
+                        editingMessage = null
+                    },
+                    enabled = editedMessageText.isNotEmpty() && editedMessageText.length <= 2000
+                ) { Text("Guardar") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { editingMessage = null }) { Text("Cancelar") }
+            }
+        )
     }
 }
 

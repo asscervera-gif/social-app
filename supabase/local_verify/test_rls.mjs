@@ -595,6 +595,52 @@ async function main() {
   )).rows;
   check('notify_new_message: silenciado por u2, el segundo mensaje NO genera un aviso nuevo (sigue habiendo solo 1)', messageNotifAfterMute.length === 1);
 
+  // --- messages_update_own / protect_message_columns (0049): un mensaje
+  // mal escrito solo se podía borrar entero, nunca corregir -- comparado
+  // con WhatsApp/Telegram/Messenger. De paso, hallazgo de seguridad real
+  // encontrado escribiendo este mismo test: messages_update_read (0017)
+  // ya dejaba a CUALQUIER destinatario tocar `body` (RLS combina
+  // políticas por fila, no por columna) -- protect_message_columns lo
+  // cierra revirtiendo en silencio, mismo patrón que
+  // protect_chat_hidden_flags/protect_chat_muted_flags. ---
+  await asSuperuser();
+  const messageToEdit = (await db.query(
+    `insert into messages (chat_id, sender_id, body) values ($1, $2, 'mensaje con una errata') returning id`, [chat.id, u1]
+  )).rows[0];
+  // Nota de robustez de pruebas (no de producción, ver 0044_chats_hide.sql):
+  // primera evaluación real de auth.uid() dentro de ESTA función de
+  // trigger concreta (protect_message_columns, plan propio) en la
+  // sesión -- un toque de service_role primero la "calienta", mismo
+  // mecanismo ya documentado y usado para protect_chat_hidden_flags.
+  await db.query(`update messages set edited_at = null where id = $1`, [messageToEdit.id]);
+  await asUser(u1);
+  await expectOk('messages_update_own: el REMITENTE real SÍ puede editar su propio mensaje', async () => {
+    await db.query(`update messages set body = 'mensaje corregido de verdad', edited_at = now() where id = $1`, [messageToEdit.id]);
+  });
+  // u2 puede seguir marcando read_at como destinatario real (0017, sin
+  // cambios) -- protect_message_columns no debe romper el caso legítimo.
+  await asUser(u2);
+  await expectOk('messages_update_read: el DESTINATARIO real sigue pudiendo marcar como leído tras 0049', async () => {
+    await db.query(`update messages set read_at = now() where id = $1`, [messageToEdit.id]);
+  });
+  // El intento de u2 de tocar body a la vez que read_at "tiene éxito"
+  // (chats_update ya deja tocar la fila), pero protect_message_columns
+  // revierte body/media_url/audio_url/edited_at en silencio -- mismo
+  // criterio que protect_ban_columns/protect_chat_hidden_flags.
+  await asUser(u2);
+  await db.query(`update messages set body = 'intento ajeno', read_at = now() where id = $1`, [messageToEdit.id]);
+  await asSuperuser();
+  const messageAfterForeignEditAttempt = (await db.query(`select body from messages where id = $1`, [messageToEdit.id])).rows[0];
+  check('protect_message_columns: un tercero (u2, no remitente) NO puede editar el mensaje ajeno (revertido en silencio, no lanza)', messageAfterForeignEditAttempt.body === 'mensaje corregido de verdad');
+
+  // El propio remitente tampoco debe poder mentirse sobre si SU mensaje
+  // fue leído -- por consistencia, aunque el impacto real sea cosmético.
+  await asUser(u1);
+  await db.query(`update messages set read_at = now() where id = $1`, [messageToEdit.id]);
+  await asSuperuser();
+  const messageAfterSenderFakeRead = (await db.query(`select read_at from messages where id = $1`, [messageToEdit.id])).rows[0];
+  check('protect_message_columns: el remitente NO puede fijar read_at de su propio mensaje (sigue siendo el de u2, no null)', messageAfterSenderFakeRead.read_at !== null);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

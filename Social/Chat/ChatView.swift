@@ -31,6 +31,14 @@ struct ChatView: View {
     // forma de denunciar un MENSAJE concreto, solo a la otra persona en
     // general -- ver 0048_reports_message_reference.sql.
     @State private var reportMessageID: UUID?
+    // Hallazgo real, comparado con WhatsApp/Telegram/Messenger: mantener
+    // pulsado un mensaje propio lo borraba al instante, SIN confirmación
+    // -- y no había ninguna forma de corregirlo, solo de borrarlo entero.
+    // Ahora mantener pulsado abre un menú real (Editar/Borrar/Cancelar) en
+    // vez de un borrado directo -- ver 0049_messages_edit.sql.
+    @State private var managingMessage: ChatMessage?
+    @State private var editingMessage: ChatMessage?
+    @State private var editedMessageText = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -95,8 +103,8 @@ struct ChatView: View {
                                 onToggleReaction: { emoji in
                                     Task { await viewModel.toggleReaction(messageID: message.id, emoji: emoji) }
                                 },
-                                onDelete: {
-                                    Task { await viewModel.deleteMessage(message.id) }
+                                onManage: {
+                                    managingMessage = message
                                 },
                                 onReport: {
                                     reportMessageID = message.id
@@ -152,6 +160,54 @@ struct ChatView: View {
         .navigationTitle("Chat")
         .task { await viewModel.start() }
         .onDisappear { Task { await viewModel.stop() } }
+        // Hallazgo real, comparado con WhatsApp/Telegram/Messenger:
+        // mantener pulsado un mensaje propio lo borraba al instante, sin
+        // confirmación -- ahora un menú real con Editar/Borrar/Cancelar,
+        // ver 0049_messages_edit.sql.
+        .confirmationDialog(
+            "Mensaje",
+            isPresented: Binding(
+                get: { managingMessage != nil },
+                set: { if !$0 { managingMessage = nil } }
+            ),
+            titleVisibility: .hidden
+        ) {
+            if let managingMessage {
+                Button("Editar") {
+                    editingMessage = managingMessage
+                    editedMessageText = managingMessage.body ?? ""
+                }
+                Button("Borrar", role: .destructive) {
+                    Task { await viewModel.deleteMessage(managingMessage.id) }
+                }
+                Button("Cancelar", role: .cancel) {}
+            }
+        }
+        .sheet(item: $editingMessage) { message in
+            NavigationStack {
+                Form {
+                    TextField("Mensaje", text: $editedMessageText, axis: .vertical)
+                    Text("\(editedMessageText.count)/2000")
+                        .font(.caption2)
+                        .foregroundStyle(editedMessageText.count > 2000 ? .red : .secondary)
+                }
+                .navigationTitle("Editar mensaje")
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Guardar") {
+                            Task {
+                                await viewModel.editMessage(message.id, newBody: editedMessageText)
+                                editingMessage = nil
+                            }
+                        }
+                        .disabled(editedMessageText.isEmpty || editedMessageText.count > 2000)
+                    }
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancelar") { editingMessage = nil }
+                    }
+                }
+            }
+        }
     }
 
     private var compatibilityBar: some View {
@@ -264,7 +320,11 @@ private struct MessageBubble: View {
     let currentUserID: UUID
     let reactions: [ChatViewModel.MessageReaction]
     let onToggleReaction: (String) -> Void
-    var onDelete: () -> Void = {}
+    // Hallazgo real, comparado con WhatsApp/Telegram/Messenger: mantener
+    // pulsado un mensaje propio borraba al instante sin confirmación --
+    // ahora abre un menú real (Editar/Borrar/Cancelar), ver
+    // 0049_messages_edit.sql.
+    var onManage: () -> Void = {}
     // Hallazgo real, comparado con Instagram/WhatsApp/Messenger: no había
     // forma de denunciar un MENSAJE concreto -- ver
     // 0048_reports_message_reference.sql.
@@ -317,7 +377,7 @@ private struct MessageBubble: View {
                 // — mantener pulsado el tuyo lo borra (ver
                 // 0022_messages_delete.sql).
                 .onLongPressGesture {
-                    if isMine { onDelete() } else { onReport() }
+                    if isMine { onManage() } else { onReport() }
                 }
                 if !isMine { Spacer() }
             }
@@ -344,6 +404,14 @@ private struct MessageBubble: View {
                         }
                     }
                 }
+            }
+            // Hallazgo real, comparado con WhatsApp/Telegram/Messenger:
+            // mismo aviso visual que esas apps cuando un mensaje se
+            // corrigió después de enviarse -- ver 0049_messages_edit.sql.
+            if message.editedAt != nil {
+                Text("Editado")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
             if isMine {
                 Text(message.readAt != nil ? "Leído ✓✓" : "Enviado ✓")

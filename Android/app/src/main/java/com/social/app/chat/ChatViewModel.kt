@@ -581,6 +581,30 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
         }
     }
 
+    /** Hallazgo real, comparado con WhatsApp/Telegram/Messenger: un
+     * mensaje mal escrito solo se podía borrar entero, nunca corregir --
+     * `messages` no tenía ninguna política de UPDATE que dejara al
+     * remitente tocar su propio `body` hasta esta pasada (ver
+     * 0049_messages_edit.sql). Mismo límite real que
+     * `messages_body_length` (0023, 2000 caracteres). Sin ventana de
+     * tiempo límite para editar (alcance deliberado, ver la propia
+     * migración). */
+    fun editMessage(messageId: String, newBody: String) {
+        if (newBody.isEmpty() || newBody.length > 2000) return
+        val nowIso = java.time.Instant.now().toString()
+        _messages.update { list ->
+            list.map { if (it.id == messageId) it.copy(body = newBody, editedAt = nowIso) else it }
+        }
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("messages")
+                    .update({ set("body", newBody); set("edited_at", nowIso) }) { filter { eq("id", messageId) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo editar el mensaje."
+            }
+        }
+    }
+
     @Serializable
     private data class NewVote(
         @SerialName("chat_id") val chatId: String,

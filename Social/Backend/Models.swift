@@ -145,6 +145,10 @@ struct ChatMessage: Codable, Identifiable {
     // read receipts" — separado de mediaURL a propósito (0019_message_audio.sql):
     // el cliente necesita distinguir reproductor de imagen explícitamente.
     var audioURL: String?
+    // Hallazgo real, comparado con WhatsApp/Telegram/Messenger: un mensaje
+    // mal escrito solo se podía borrar entero, nunca corregir -- ver
+    // 0049_messages_edit.sql/ChatViewModel.editMessage().
+    var editedAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -155,6 +159,7 @@ struct ChatMessage: Codable, Identifiable {
         case createdAt = "created_at"
         case readAt = "read_at"
         case audioURL = "audio_url"
+        case editedAt = "edited_at"
     }
 }
 
