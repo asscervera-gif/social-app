@@ -728,6 +728,73 @@ async function main() {
   const viewsAsStranger = (await db.query(`select viewer_id from story_views where story_id = $1`, [story.id])).rows;
   check('story_views_select_own_story: un tercero (u1, no autor) NO ve quién vio la historia de u3', viewsAsStranger.length === 0);
 
+  // --- comment_likes (0054_comment_likes.sql): dar like a un comentario
+  // concreto, comparado con Instagram/Twitter/Facebook -- antes solo se
+  // podía dar like a la publicación entera, no a un comentario suyo.
+  // Post nuevo de u2 (no de u1: para este punto del archivo u1 ya está
+  // bloqueado con u2 Y con u3, así que un post suyo no serviría para
+  // probar el caso SIN bloqueo). ---
+  await asUser(u2);
+  const post2 = (await db.query(`insert into posts (author_id, caption) values ($1, 'post real de u2') returning id`, [u2])).rows[0];
+  await asUser(u3);
+  const comment = (await db.query(
+    `insert into comments (post_id, author_id, body) values ($1, $2, 'comentario real de u3') returning id`, [post2.id, u3]
+  )).rows[0];
+  await expectOk('comment_likes_insert_own: sin bloqueo, u2 SÍ puede dar like al comentario de u3', async () => {
+    await asUser(u2);
+    await db.query(`insert into comment_likes (comment_id, user_id) values ($1, $2)`, [comment.id, u2]);
+  });
+  await asSuperuser();
+  const commentAfterLike = (await db.query(`select like_count from comments where id = $1`, [comment.id])).rows[0];
+  check('sync_comment_like_count: like_count real sube a 1 tras el insert', commentAfterLike.like_count === 1);
+  await asUser(u3);
+  const commentLikeNotif = (await db.query(
+    `select actor_id, payload from notifications where recipient_id = $1 and kind = 'comment_like'`, [u3]
+  )).rows;
+  check('notify_new_comment_like: u3 (autor del comentario) recibe el aviso real del like de u2', commentLikeNotif.length === 1);
+  check('notify_new_comment_like: actor_id es quien dio like (u2)', commentLikeNotif[0]?.actor_id === u2);
+  check('notify_new_comment_like: payload trae el comment_id real', commentLikeNotif[0]?.payload?.comment_id === comment.id);
+
+  // comment_likes_insert_own con bloqueo: u1 y u3 ya están bloqueados entre
+  // sí (bloqueo insertado en la sección de reel_likes de más arriba) --
+  // u1 no puede dar like al comentario de u3.
+  await asUser(u1);
+  await expectFail('comment_likes_insert_own: bloqueado (u1 y u3 se bloquearon), u1 no puede dar like al comentario de u3', async () => {
+    await db.query(`insert into comment_likes (comment_id, user_id) values ($1, $2)`, [comment.id, u1]);
+  });
+
+  // --- reel_comment_likes (0054_comment_likes.sql): mismo patrón, para
+  // comentarios de reels. Reutiliza `reelComment` (autor u2, en el reel
+  // público de u3) creado en la sección de reel_comments de más arriba. ---
+  await expectOk('reel_comment_likes_insert_own: sin bloqueo, u3 SÍ puede dar like al comentario de u2', async () => {
+    await asUser(u3);
+    await db.query(`insert into reel_comment_likes (reel_comment_id, user_id) values ($1, $2)`, [reelComment.id, u3]);
+  });
+  await asSuperuser();
+  const reelCommentAfterLike = (await db.query(`select like_count from reel_comments where id = $1`, [reelComment.id])).rows[0];
+  check('sync_reel_comment_like_count: like_count real sube a 1 tras el insert', reelCommentAfterLike.like_count === 1);
+  await asUser(u2);
+  const reelCommentLikeNotif = (await db.query(
+    `select actor_id, payload from notifications where recipient_id = $1 and kind = 'reel_comment_like'`, [u2]
+  )).rows;
+  check('notify_new_reel_comment_like: u2 (autor del comentario) recibe el aviso real del like de u3', reelCommentLikeNotif.length === 1);
+  check('notify_new_reel_comment_like: actor_id es quien dio like (u3)', reelCommentLikeNotif[0]?.actor_id === u3);
+  check('notify_new_reel_comment_like: payload trae el reel_comment_id real', reelCommentLikeNotif[0]?.payload?.reel_comment_id === reelComment.id);
+
+  // reel_comment_likes_insert_own con bloqueo: el único bloqueo vigente a
+  // esta altura del archivo es u1-u3 (el bloqueo u1-u2 de la sección de
+  // mensajes se BORRÓ de verdad más arriba, línea ~555, al probar
+  // blocks_delete_own) -- se crea un comentario propio de u3 en su reel
+  // público para poder probar el bloqueo real contra su autor.
+  await asUser(u3);
+  const ownReelComment = (await db.query(
+    `insert into reel_comments (reel_id, author_id, body) values ($1, $2, 'comentario de u3 en su propio reel') returning id`, [publicReel.id, u3]
+  )).rows[0];
+  await asUser(u1);
+  await expectFail('reel_comment_likes_insert_own: bloqueado (u1 y u3 se bloquearon), u1 no puede dar like al comentario de u3', async () => {
+    await db.query(`insert into reel_comment_likes (reel_comment_id, user_id) values ($1, $2)`, [ownReelComment.id, u1]);
+  });
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

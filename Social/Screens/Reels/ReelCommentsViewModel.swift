@@ -18,6 +18,9 @@ struct ReelComment: Identifiable, Decodable {
     let author_id: UUID
     let body: String
     let created_at: String
+    // Comparado con Instagram/Twitter/Facebook: dar like a un comentario
+    // concreto de un reel (0054_comment_likes.sql).
+    var like_count: Int = 0
 }
 
 @MainActor
@@ -29,6 +32,10 @@ final class ReelCommentsViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var authorProfiles: [UUID: Profile] = [:]
+    // Comparado con Instagram/Twitter/Facebook: dar like a un comentario
+    // concreto de un reel (0054_comment_likes.sql), mismo patrón que
+    // CommentsViewModel.likedCommentIDs (posts).
+    @Published var likedCommentIDs: Set<UUID> = []
 
     init(reelID: UUID) {
         self.reelID = reelID
@@ -57,8 +64,62 @@ final class ReelCommentsViewModel: ObservableObject {
                    .value {
                 authorProfiles = Dictionary(uniqueKeysWithValues: authors.map { ($0.id, $0) })
             }
+
+            if let userID = try? await SupabaseManager.shared.client.auth.session.user.id {
+                struct LikedReelCommentRow: Decodable { let reel_comment_id: UUID }
+                let commentIDs = loaded.map { $0.id }
+                if !commentIDs.isEmpty,
+                   let likedRows: [LikedReelCommentRow] = try? await SupabaseManager.shared.client
+                       .from("reel_comment_likes")
+                       .select("reel_comment_id")
+                       .eq("user_id", value: userID)
+                       .in("reel_comment_id", values: commentIDs)
+                       .execute()
+                       .value {
+                    likedCommentIDs = Set(likedRows.map { $0.reel_comment_id })
+                }
+            }
         } catch {
             errorMessage = "No se pudieron cargar los comentarios: \(error.localizedDescription)"
+        }
+    }
+
+    /// Toggle real de like/unlike de un comentario de reel -- mismo patrón
+    /// exacto que CommentsViewModel.toggleCommentLike() (posts).
+    func toggleCommentLike(_ comment: ReelComment) async {
+        let currentlyLiked = likedCommentIDs.contains(comment.id)
+        if currentlyLiked {
+            likedCommentIDs.remove(comment.id)
+        } else {
+            likedCommentIDs.insert(comment.id)
+        }
+        if let index = comments.firstIndex(where: { $0.id == comment.id }) {
+            comments[index].like_count = max(0, comments[index].like_count + (currentlyLiked ? -1 : 1))
+        }
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        struct NewReelCommentLike: Encodable {
+            let reel_comment_id: UUID
+            let user_id: UUID
+        }
+        do {
+            if currentlyLiked {
+                try await SupabaseManager.shared.client
+                    .from("reel_comment_likes")
+                    .delete()
+                    .eq("reel_comment_id", value: comment.id)
+                    .eq("user_id", value: userID)
+                    .execute()
+            } else {
+                try await SupabaseManager.shared.client
+                    .from("reel_comment_likes")
+                    .insert(NewReelCommentLike(reel_comment_id: comment.id, user_id: userID))
+                    .execute()
+                AnalyticsManager.track("reel_comment_liked")
+            }
+        } catch {
+            // Mismo criterio que CommentsViewModel.toggleCommentLike(): un
+            // 409 por unique(reel_comment_id, user_id) no es un error
+            // real, el estado deseado ya se cumple.
         }
     }
 

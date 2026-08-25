@@ -50,6 +50,7 @@ fun CommentsSheet(
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     val authorProfiles by viewModel.authorProfiles.collectAsState()
+    val likedCommentIds by viewModel.likedCommentIds.collectAsState()
     var draft by remember { mutableStateOf("") }
     val sheetState = rememberModalBottomSheetState()
     val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
@@ -98,6 +99,23 @@ fun CommentsSheet(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(comment.body, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                            // Comparado con Instagram/Twitter/Facebook: dar
+                            // like a un comentario concreto, no solo a la
+                            // publicación entera (0054_comment_likes.sql).
+                            val liked = likedCommentIds.contains(comment.id)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.clickable { viewModel.toggleCommentLike(comment) }
+                            ) {
+                                Text(if (liked) "❤" else "🤍", style = MaterialTheme.typography.labelMedium)
+                                if (comment.likeCount > 0) {
+                                    Text(
+                                        "${comment.likeCount}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        modifier = Modifier.padding(start = 2.dp)
+                                    )
+                                }
+                            }
                             // Hallazgo real: no había forma de borrar el propio
                             // comentario, comparado con cualquier app grande —
                             // `comments_delete_own` ya lo permitía en RLS.

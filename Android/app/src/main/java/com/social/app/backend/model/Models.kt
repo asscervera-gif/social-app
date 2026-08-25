@@ -59,7 +59,10 @@ data class Comment(
     @SerialName("post_id") val postId: String,
     @SerialName("author_id") val authorId: String,
     val body: String,
-    @SerialName("created_at") val createdAt: String
+    @SerialName("created_at") val createdAt: String,
+    // Comparado con Instagram/Twitter/Facebook: dar like a un comentario
+    // concreto, no solo a la publicación entera (0054_comment_likes.sql).
+    @SerialName("like_count") val likeCount: Int = 0
 )
 
 @Serializable

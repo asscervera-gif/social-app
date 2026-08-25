@@ -22,7 +22,10 @@ data class ReelComment(
     @SerialName("reel_id") val reelId: String,
     @SerialName("author_id") val authorId: String,
     val body: String,
-    @SerialName("created_at") val createdAt: String = ""
+    @SerialName("created_at") val createdAt: String = "",
+    // Comparado con Instagram/Twitter/Facebook: dar like a un comentario
+    // concreto (0054_comment_likes.sql).
+    @SerialName("like_count") val likeCount: Int = 0
 )
 
 /**
@@ -46,12 +49,18 @@ class ReelCommentsViewModel(private val reelId: String) : ViewModel() {
     private val _authorProfiles = MutableStateFlow<Map<String, Profile>>(emptyMap())
     val authorProfiles: StateFlow<Map<String, Profile>> = _authorProfiles.asStateFlow()
 
+    // Comparado con Instagram/Twitter/Facebook: dar like a un comentario
+    // concreto de un reel (0054_comment_likes.sql), mismo patrón que
+    // CommentsViewModel.likedCommentIds (posts).
+    private val _likedCommentIds = MutableStateFlow<Set<String>>(emptySet())
+    val likedCommentIds: StateFlow<Set<String>> = _likedCommentIds.asStateFlow()
+
     fun load() {
         viewModelScope.launch {
             _isLoading.value = true
             try {
                 val loaded = SupabaseManager.client.from("reel_comments")
-                    .select(columns = Columns.raw("id,reel_id,author_id,body,created_at")) {
+                    .select(columns = Columns.raw("id,reel_id,author_id,body,created_at,like_count")) {
                         filter { eq("reel_id", reelId) }
                         order("created_at", Order.ASCENDING)
                     }
@@ -71,10 +80,65 @@ class ReelCommentsViewModel(private val reelId: String) : ViewModel() {
                         // No bloquea el resto de la hoja si falla.
                     }
                 }
+
+                val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
+                val commentIds = loaded.map { it.id }
+                if (myId != null && commentIds.isNotEmpty()) {
+                    try {
+                        _likedCommentIds.value = SupabaseManager.client.from("reel_comment_likes")
+                            .select(columns = Columns.raw("reel_comment_id")) {
+                                filter { eq("user_id", myId); isIn("reel_comment_id", commentIds) }
+                            }
+                            .decodeList<LikedReelCommentRow>()
+                            .map { it.reelCommentId }
+                            .toSet()
+                    } catch (e: Exception) {
+                        // No bloquea el resto de la hoja si falla.
+                    }
+                }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudieron cargar los comentarios: ${e.message}"
             } finally {
                 _isLoading.value = false
+            }
+        }
+    }
+
+    @Serializable
+    private data class LikedReelCommentRow(@SerialName("reel_comment_id") val reelCommentId: String)
+
+    @Serializable
+    private data class NewReelCommentLike(
+        @SerialName("reel_comment_id") val reelCommentId: String,
+        @SerialName("user_id") val userId: String
+    )
+
+    /** Toggle real de like/unlike de un comentario de reel -- mismo patrón
+     * exacto que CommentsViewModel.toggleCommentLike() (posts). */
+    fun toggleCommentLike(comment: ReelComment) {
+        val currentlyLiked = _likedCommentIds.value.contains(comment.id)
+        _likedCommentIds.update { if (currentlyLiked) it - comment.id else it + comment.id }
+        _comments.update { list ->
+            list.map {
+                if (it.id == comment.id) it.copy(likeCount = (it.likeCount + if (currentlyLiked) -1 else 1).coerceAtLeast(0))
+                else it
+            }
+        }
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                if (currentlyLiked) {
+                    SupabaseManager.client.from("reel_comment_likes").delete {
+                        filter { eq("reel_comment_id", comment.id); eq("user_id", userId) }
+                    }
+                } else {
+                    SupabaseManager.client.from("reel_comment_likes").insert(NewReelCommentLike(comment.id, userId))
+                    com.social.app.backend.AnalyticsManager.track("reel_comment_liked")
+                }
+            } catch (e: Exception) {
+                // Mismo criterio que CommentsViewModel.toggleCommentLike():
+                // un 409 por unique(reel_comment_id, user_id) no es un error
+                // real, el estado deseado ya se cumple.
             }
         }
     }

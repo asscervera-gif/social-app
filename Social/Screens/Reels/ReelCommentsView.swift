@@ -58,6 +58,20 @@ struct ReelCommentsView: View {
                         HStack {
                             Text(comment.body)
                             Spacer()
+                            // Comparado con Instagram/Twitter/Facebook: dar
+                            // like a un comentario concreto (0054_comment_likes.sql).
+                            Button {
+                                Task { await viewModel.toggleCommentLike(comment) }
+                            } label: {
+                                HStack(spacing: 2) {
+                                    Text(viewModel.likedCommentIDs.contains(comment.id) ? "❤" : "🤍")
+                                    if comment.like_count > 0 {
+                                        Text("\(comment.like_count)").font(.caption2)
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .font(.caption)
                             if comment.author_id == myID {
                                 Button("Borrar", role: .destructive) {
                                     Task { await viewModel.deleteComment(comment, onCommentRemoved: onCommentRemoved) }

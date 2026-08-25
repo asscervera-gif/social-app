@@ -44,12 +44,18 @@ class CommentsViewModel(private val postId: String) : ViewModel() {
     private val _authorProfiles = MutableStateFlow<Map<String, Profile>>(emptyMap())
     val authorProfiles: StateFlow<Map<String, Profile>> = _authorProfiles.asStateFlow()
 
+    // Comparado con Instagram/Twitter/Facebook: dar like a un comentario
+    // concreto (0054_comment_likes.sql) -- mismo patrón que
+    // HomeViewModel.likedPostIds, aquí a nivel de comentario individual.
+    private val _likedCommentIds = MutableStateFlow<Set<String>>(emptySet())
+    val likedCommentIds: StateFlow<Set<String>> = _likedCommentIds.asStateFlow()
+
     fun load() {
         viewModelScope.launch {
             _isLoading.value = true
             try {
                 val loaded = SupabaseManager.client.from("comments")
-                    .select(columns = Columns.raw("id,post_id,author_id,body,created_at")) {
+                    .select(columns = Columns.raw("id,post_id,author_id,body,created_at,like_count")) {
                         filter { eq("post_id", postId) }
                         order("created_at", Order.ASCENDING)
                     }
@@ -71,10 +77,67 @@ class CommentsViewModel(private val postId: String) : ViewModel() {
                         // pueda mostrar quién los escribió.
                     }
                 }
+
+                val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
+                val commentIds = loaded.map { it.id }
+                if (myId != null && commentIds.isNotEmpty()) {
+                    try {
+                        _likedCommentIds.value = SupabaseManager.client.from("comment_likes")
+                            .select(columns = Columns.raw("comment_id")) {
+                                filter { eq("user_id", myId); isIn("comment_id", commentIds) }
+                            }
+                            .decodeList<LikedCommentRow>()
+                            .map { it.commentId }
+                            .toSet()
+                    } catch (e: Exception) {
+                        // No bloquea el resto de la hoja si falla.
+                    }
+                }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudieron cargar los comentarios: ${e.message}"
             } finally {
                 _isLoading.value = false
+            }
+        }
+    }
+
+    @Serializable
+    private data class LikedCommentRow(@SerialName("comment_id") val commentId: String)
+
+    @Serializable
+    private data class NewCommentLike(
+        @SerialName("comment_id") val commentId: String,
+        @SerialName("user_id") val userId: String
+    )
+
+    /** Toggle real de like/unlike de un comentario -- mismo patrón exacto
+     * que HomeViewModel.toggleLike() para posts. `comments.like_count` lo
+     * mantiene sincronizado el trigger real de 0054_comment_likes.sql, no
+     * este código -- aquí solo se registra/borra el like del usuario. */
+    fun toggleCommentLike(comment: Comment) {
+        val currentlyLiked = _likedCommentIds.value.contains(comment.id)
+        _likedCommentIds.update { if (currentlyLiked) it - comment.id else it + comment.id }
+        _comments.update { list ->
+            list.map {
+                if (it.id == comment.id) it.copy(likeCount = (it.likeCount + if (currentlyLiked) -1 else 1).coerceAtLeast(0))
+                else it
+            }
+        }
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                if (currentlyLiked) {
+                    SupabaseManager.client.from("comment_likes").delete {
+                        filter { eq("comment_id", comment.id); eq("user_id", userId) }
+                    }
+                } else {
+                    SupabaseManager.client.from("comment_likes").insert(NewCommentLike(comment.id, userId))
+                    com.social.app.backend.AnalyticsManager.track("comment_liked")
+                }
+            } catch (e: Exception) {
+                // Restricción unique(comment_id, user_id): si ya existía el
+                // like, Postgrest devuelve un 409 — mismo criterio que
+                // HomeViewModel.toggleLike(), el estado deseado ya se cumple.
             }
         }
     }
