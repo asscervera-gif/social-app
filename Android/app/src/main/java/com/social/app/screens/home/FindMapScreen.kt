@@ -32,7 +32,7 @@ import org.osmdroid.views.overlay.Marker
  * vía osmdroid en vez de Google Maps — sin API key de pago.
  */
 @Composable
-fun FindMapScreen(viewModel: FindLocationsViewModel = viewModel()) {
+fun FindMapScreen(viewModel: FindLocationsViewModel = viewModel(), onOpenProfile: (String) -> Unit = {}) {
     val locations by viewModel.locations.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     val context = LocalContext.current
@@ -66,6 +66,15 @@ fun FindMapScreen(viewModel: FindLocationsViewModel = viewModel()) {
                     val marker = Marker(mapView)
                     marker.position = GeoPoint(location.lat, location.lng)
                     marker.title = location.displayName
+                    // Hallazgo real, comparado con Snapchat Map/BeReal:
+                    // el marcador solo mostraba el nombre en la burbuja
+                    // por defecto de OSM, sin ninguna forma de tocar para
+                    // ver el perfil completo de esa persona.
+                    marker.relatedObject = location.id
+                    marker.setOnMarkerClickListener { clickedMarker, _ ->
+                        (clickedMarker.relatedObject as? String)?.let(onOpenProfile)
+                        true
+                    }
                     mapView.overlays.add(marker)
                 }
                 mapView.invalidate()

@@ -25,24 +25,48 @@ struct FindMapView: View {
         center: CLLocationCoordinate2D(latitude: 40.4168, longitude: -3.7038), // Madrid, centro por defecto sin ubicación propia real.
         span: MKCoordinateSpan(latitudeDelta: 20, longitudeDelta: 20)
     )
+    // Hallazgo real, comparado con Snapchat Map/BeReal: el marcador solo
+    // mostraba el nombre, sin ninguna forma de tocar para ver el perfil
+    // completo de esa persona. Equivalente de FindMapScreen.kt
+    // (marker.setOnMarkerClickListener).
+    @State private var openedProfileID: UUID?
 
     var body: some View {
         ZStack(alignment: .top) {
             Map(coordinateRegion: $region, annotationItems: viewModel.locations) { location in
                 MapAnnotation(coordinate: location.coordinate) {
-                    VStack(spacing: 2) {
-                        Image(systemName: "mappin.circle.fill")
-                            .foregroundStyle(.red)
-                            .font(.title2)
-                        Text(location.displayName)
-                            .font(.caption2)
-                            .padding(.horizontal, 4)
-                            .background(.thinMaterial)
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                    Button {
+                        openedProfileID = location.id
+                    } label: {
+                        VStack(spacing: 2) {
+                            Image(systemName: "mappin.circle.fill")
+                                .foregroundStyle(.red)
+                                .font(.title2)
+                            Text(location.displayName)
+                                .font(.caption2)
+                                .padding(.horizontal, 4)
+                                .background(.thinMaterial)
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                        }
                     }
+                    .buttonStyle(.plain)
                 }
             }
             .ignoresSafeArea(edges: .bottom)
+            // Mismo patrón ya usado en HomeView.swift para un `UUID?`/
+            // `String?` no Identifiable: `.sheet(item:)` exige
+            // `Identifiable`, así que se ata a un Binding derivado en vez
+            // de forzar la conformidad solo para esto.
+            .sheet(isPresented: Binding(
+                get: { openedProfileID != nil },
+                set: { isPresented in if !isPresented { openedProfileID = nil } }
+            )) {
+                if let profileID = openedProfileID {
+                    NavigationStack {
+                        ProfileViewerView(profileID: profileID)
+                    }
+                }
+            }
 
             if let error = viewModel.errorMessage {
                 Text(error).font(.footnote).foregroundStyle(.red).padding()

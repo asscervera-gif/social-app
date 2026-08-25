@@ -189,7 +189,9 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                     )
                 }
                 composable(FIND_ROUTE) {
-                    com.social.app.screens.home.FindMapScreen()
+                    com.social.app.screens.home.FindMapScreen(
+                        onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
+                    )
                 }
                 composable(Tab.MATCH.route) {
                     MatchScreen(onOpenProfile = { profileId -> navController.navigate("profile/$profileId") })
