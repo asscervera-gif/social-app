@@ -22,8 +22,29 @@ object PushTokenManager {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /**
+     * Bug real encontrado ejecutando la app de verdad en el emulador (no
+     * simulado): `FirebaseMessaging.getInstance()` lanza
+     * `IllegalStateException` de inmediato si `FirebaseApp` nunca se
+     * inicializó -- y solo se inicializa si existe un
+     * `app/google-services.json` real (el plugin `google-services` se
+     * aplica condicionalmente, ver `build.gradle.kts`). Sin un proyecto
+     * Firebase real todavía (documentado en LOOP_STATE.md), esta llamada
+     * crasheaba la app ENTERA en cuanto se concedía el permiso de
+     * notificaciones -- justo al arrancar, en cualquier instalación sin
+     * credenciales de Firebase reales. Mismo criterio de "sin credenciales
+     * reales, funciona igual pero no envía nada" que duel-ai/send-push/
+     * icebreaker-ai: registrar el token de push es opcional para que la
+     * app funcione, nunca debe tumbarla.
+     */
     fun registerCurrentToken() {
-        FirebaseMessaging.getInstance().token.addOnSuccessListener { token -> register(token) }
+        try {
+            FirebaseMessaging.getInstance().token.addOnSuccessListener { token -> register(token) }
+        } catch (e: IllegalStateException) {
+            // FirebaseApp no inicializado (sin google-services.json real) --
+            // no hay push real que registrar, pero el resto de la app debe
+            // seguir funcionando con total normalidad.
+        }
     }
 
     fun register(token: String) {
