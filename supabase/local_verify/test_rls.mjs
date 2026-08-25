@@ -831,6 +831,75 @@ async function main() {
   const socialOnlyExtraPhotoAsStranger = (await db.query(`select id from post_media where id = $1`, [socialOnlyExtraPhoto.id])).rows;
   check('post_media_select: un tercero sin social NO ve la foto extra de un post "solo socials"', socialOnlyExtraPhotoAsStranger.length === 0);
 
+  // --- live_streams / live_stream_viewers (0056_live_streams.sql):
+  // "Directo" real por primera vez, comparado con Instagram/TikTok Live.
+  // Ronda de backend (mismo orden que Reels): tabla + RLS + contador de
+  // espectadores real, cliente LiveKit pendiente de una ronda aparte. ---
+  await asUser(u3);
+  const liveStream = (await db.query(
+    `insert into live_streams (host_id, title) values ($1, 'directo público de u3') returning id`, [u3]
+  )).rows[0];
+  await expectOk('live_stream_viewers_insert_own: sin bloqueo, u2 SÍ puede unirse al directo de u3', async () => {
+    await asUser(u2);
+    await db.query(`insert into live_stream_viewers (stream_id, viewer_id) values ($1, $2)`, [liveStream.id, u2]);
+  });
+  await asSuperuser();
+  const streamAfterJoin = (await db.query(`select viewer_count from live_streams where id = $1`, [liveStream.id])).rows[0];
+  check('sync_live_stream_viewer_count: viewer_count real sube a 1 tras unirse', streamAfterJoin.viewer_count === 1);
+  await asUser(u3);
+  const viewersAsHost = (await db.query(`select viewer_id from live_stream_viewers where stream_id = $1`, [liveStream.id])).rows;
+  check('live_stream_viewers_select_own_stream: el HOST real (u3) SÍ ve quién está viendo su directo', viewersAsHost.length === 1 && viewersAsHost[0].viewer_id === u2);
+  // Aviso de espectador solo ve SU PROPIA fila (nunca la lista completa
+  // ajena) -- imprescindible además de correcto: en Postgres, DELETE/
+  // UPDATE solo pueden operar sobre filas que la propia fila también deje
+  // ver por SELECT, así que sin este "viewer_id = auth.uid()" en la
+  // política de SELECT, ningún espectador podría salir nunca de un
+  // directo (ver más abajo, hallazgo real de este mismo arnés de pruebas).
+  await asUser(u1);
+  const viewersAsStranger = (await db.query(`select viewer_id from live_stream_viewers where stream_id = $1`, [liveStream.id])).rows;
+  check('live_stream_viewers_select_own_stream: un tercero (u1, no host, no espectador) NO ve la fila de u2', viewersAsStranger.length === 0);
+  await expectFail('live_stream_viewers_insert_own: bloqueado (u1 y u3 se bloquearon), u1 no puede unirse al directo de u3', async () => {
+    await db.query(`insert into live_stream_viewers (stream_id, viewer_id) values ($1, $2)`, [liveStream.id, u1]);
+  });
+
+  // protect_live_stream_viewer_count: ni el propio host puede inflar el
+  // contador a mano (mismo criterio que protect_reel_counts, 0050_reels.sql).
+  await asUser(u3);
+  await db.query(`update live_streams set viewer_count = 999, title = 'título editado de verdad' where id = $1`, [liveStream.id]);
+  await asSuperuser();
+  const streamAfterFakeCount = (await db.query(`select viewer_count, title from live_streams where id = $1`, [liveStream.id])).rows[0];
+  check('protect_live_stream_viewer_count: viewer_count NO se puede fijar a mano (sigue siendo 1, el real)', streamAfterFakeCount.viewer_count === 1);
+  check('protect_live_stream_viewer_count: el resto de la fila (title) sí se actualiza con normalidad', streamAfterFakeCount.title === 'título editado de verdad');
+
+  // Espectador SÍ ve su PROPIA fila (necesario para poder encontrarla y
+  // borrarla al salir) sin que eso le deje ver la lista completa ajena.
+  await asUser(u2);
+  const ownViewerRow = (await db.query(`select viewer_id from live_stream_viewers where stream_id = $1`, [liveStream.id])).rows;
+  check('live_stream_viewers_select_own_stream: el propio espectador (u2) SÍ ve su propia fila', ownViewerRow.length === 1 && ownViewerRow[0].viewer_id === u2);
+
+  // Salir del directo real SÍ borra la fila y baja el contador de verdad.
+  await expectOk('live_stream_viewers_delete_own: u2 SÍ puede borrar su propia fila al salir del directo', async () => {
+    await db.query(`delete from live_stream_viewers where stream_id = $1 and viewer_id = $2`, [liveStream.id, u2]);
+  });
+  await asSuperuser();
+  const streamAfterLeave = (await db.query(`select viewer_count from live_streams where id = $1`, [liveStream.id])).rows[0];
+  check('sync_live_stream_viewer_count: viewer_count real baja a 0 al salir del directo', streamAfterLeave.viewer_count === 0);
+
+  // live_streams_select: mismo criterio de visibilidad que posts_select/
+  // reels_select -- un directo "solo socials" de u2 SÍ lo ve u1 (social
+  // aceptado real con u2 desde el principio del archivo), NO lo ve u3
+  // (sin ningún social con u2).
+  await asUser(u2);
+  const socialOnlyStream = (await db.query(
+    `insert into live_streams (host_id, title, is_social_only) values ($1, 'directo solo socials de u2', true) returning id`, [u2]
+  )).rows[0];
+  await asUser(u1);
+  const socialOnlyStreamAsSocial = (await db.query(`select id from live_streams where id = $1`, [socialOnlyStream.id])).rows;
+  check('live_streams_select: el social aceptado real (u1) SÍ ve el directo "solo socials" de u2', socialOnlyStreamAsSocial.length === 1);
+  await asUser(u3);
+  const socialOnlyStreamAsStranger = (await db.query(`select id from live_streams where id = $1`, [socialOnlyStream.id])).rows;
+  check('live_streams_select: un tercero sin social (u3) NO ve el directo "solo socials" de u2', socialOnlyStreamAsStranger.length === 0);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado
