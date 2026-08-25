@@ -18,7 +18,8 @@ import Foundation
 final class HomeViewModel: ObservableObject {
 
     @Published var feed: [Post] = []
-    @Published var recommended: [(profile: Profile, compatibility: Int?)] = []
+    @Published var recommended: [(profile: Profile, compatibility: Int?, requestSent: Bool)] = []
+    private var cachedMyInterests: Set<String> = []
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var savedPostIDs: Set<UUID> = []
@@ -127,8 +128,15 @@ final class HomeViewModel: ObservableObject {
             // Misma heurística de solapamiento de intereses que
             // MatchViewModel.estimatedCompatibility — ver el comentario allí
             // sobre por qué no hay otra fuente real de "% con un desconocido".
+            // Cacheado a nivel de instancia -- ver compatibilityFor(), que
+            // reutiliza este mismo cálculo para mostrar el % de
+            // compatibilidad en la cabecera de cada post del feed, no solo
+            // en el carrusel de "Recomendados" (hallazgo real comparado
+            // con SOCIAL_APP.html: el boceto muestra el % también en cada
+            // publicación).
+            cachedMyInterests = myInterests
             recommended = candidates.map { profile in
-                (profile: profile, compatibility: estimatedCompatibility(with: profile, myInterests: myInterests))
+                (profile: profile, compatibility: estimatedCompatibility(with: profile, myInterests: myInterests), requestSent: false)
             }
         } catch {
             errorMessage = "No se pudo cargar el feed: \(error.localizedDescription)"
@@ -143,6 +151,39 @@ final class HomeViewModel: ObservableObject {
         let union = myInterests.union(theirInterests).count
         guard union > 0 else { return nil }
         return Int((Double(intersection) / Double(union)) * 100)
+    }
+
+    /// Expone el mismo cálculo para el autor de un post del feed -- mismo
+    /// criterio real que SOCIAL_APP.html (compat% en la cabecera de cada
+    /// publicación, no solo en "Recomendados"). Equivalente de
+    /// HomeViewModel.kt.compatibilityFor().
+    func compatibilityFor(_ profile: Profile) -> Int? {
+        estimatedCompatibility(with: profile, myInterests: cachedMyInterests)
+    }
+
+    /// Solicitar ver la compatibilidad real de alguien que la tiene privada
+    /// -- mismo patrón exacto que MatchViewModel.requestCompatibility(),
+    /// hasta ahora solo construido en Match. Comparado con SOCIAL_APP.html:
+    /// "Recomendados" (y ahora la cabecera de cada post) mostraba "?%" sin
+    /// ninguna forma real de pedir verlo, a diferencia de Match.
+    func requestCompatibility(profileID: UUID) async {
+        if let index = recommended.firstIndex(where: { $0.profile.id == profileID }) {
+            recommended[index].requestSent = true
+        }
+        struct NewRequest: Encodable {
+            let requester_id: UUID
+            let target_id: UUID
+        }
+        do {
+            guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+            try await SupabaseManager.shared.client
+                .from("compat_requests")
+                .insert(NewRequest(requester_id: userID, target_id: profileID))
+                .execute()
+            AnalyticsManager.track("compat_request_sent")
+        } catch {
+            errorMessage = "No se pudo enviar la solicitud de compatibilidad."
+        }
     }
 
     /// Toggle real de like/unlike — antes era solo `like()`, un botón de un

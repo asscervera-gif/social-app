@@ -22,7 +22,7 @@ import kotlinx.serialization.Serializable
  * honestidad en HomeView.swift/HomeScreen.kt). */
 class HomeViewModel : ViewModel() {
 
-    data class Recommended(val profile: Profile, val compatibility: Int?)
+    data class Recommended(val profile: Profile, val compatibility: Int?, val requestSent: Boolean = false)
 
     @Serializable
     private data class BlockRow(@SerialName("blocked_id") val blockedId: String)
@@ -38,6 +38,8 @@ class HomeViewModel : ViewModel() {
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
+    private var cachedMyInterests: Set<String> = emptySet()
 
     private val _savedPostIds = MutableStateFlow<Set<String>>(emptySet())
     val savedPostIds: StateFlow<Set<String>> = _savedPostIds.asStateFlow()
@@ -147,6 +149,13 @@ class HomeViewModel : ViewModel() {
                         emptySet()
                     }
                 } ?: emptySet()
+                // Cacheado a nivel de clase -- ver compatibilityFor(), que
+                // reutiliza este mismo cálculo para mostrar el % de
+                // compatibilidad en la cabecera de cada post del feed, no
+                // solo en la tarjeta de "Recomendados" (hallazgo real
+                // comparado con SOCIAL_APP.html: el boceto muestra el %
+                // también en cada publicación, no solo en el carrusel).
+                cachedMyInterests = myInterests
 
                 // `blockedIds` ya se calculó arriba (reutilizado también
                 // para el feed) — mismo criterio que MatchViewModel.kt: a
@@ -187,6 +196,39 @@ class HomeViewModel : ViewModel() {
         val union = myInterests.union(theirInterests).size
         if (union == 0) return null
         return ((intersection.toDouble() / union) * 100).toInt()
+    }
+
+    /** Expone el mismo cálculo que arriba para el autor de un post del feed
+     * -- mismo criterio real que SOCIAL_APP.html (compat% en la cabecera de
+     * cada publicación, no solo en "Recomendados"). */
+    fun compatibilityFor(profile: Profile): Int? = estimatedCompatibility(profile, cachedMyInterests)
+
+    @Serializable
+    private data class NewCompatRequest(
+        @SerialName("requester_id") val requesterId: String,
+        @SerialName("target_id") val targetId: String
+    )
+
+    /** Solicitar ver la compatibilidad real de alguien que la tiene privada
+     * -- mismo patrón exacto que MatchViewModel.requestCompatibility(),
+     * hasta ahora solo construido en Match. Comparado con SOCIAL_APP.html:
+     * "Recomendados" (y ahora la cabecera de cada post) mostraba "?%" sin
+     * ninguna forma real de pedir verlo, a diferencia de Match. */
+    fun requestCompatibility(profileId: String) {
+        _recommended.update { list ->
+            list.map { if (it.profile.id == profileId) it.copy(requestSent = true) else it }
+        }
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                SupabaseManager.client.from("compat_requests").insert(
+                    NewCompatRequest(requesterId = userId, targetId = profileId)
+                )
+                com.social.app.backend.AnalyticsManager.track("compat_request_sent")
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo enviar la solicitud de compatibilidad."
+            }
+        }
     }
 
     @Serializable

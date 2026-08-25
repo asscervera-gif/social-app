@@ -154,7 +154,12 @@ struct HomeView: View {
                             NavigationLink {
                                 ProfileViewerView(profileID: entry.profile.id)
                             } label: {
-                                RecommendedCard(profile: entry.profile, compatibility: entry.compatibility)
+                                RecommendedCard(
+                                    profile: entry.profile,
+                                    compatibility: entry.compatibility,
+                                    requestSent: entry.requestSent,
+                                    onRequest: { Task { await viewModel.requestCompatibility(profileID: entry.profile.id) } }
+                                )
                             }
                             .buttonStyle(.plain)
                         }
@@ -171,9 +176,11 @@ struct HomeView: View {
                 ProgressView().padding(.horizontal)
             }
             ForEach(viewModel.feed) { post in
+                let author = viewModel.authorProfiles[post.authorID]
                 PostCard(
                     post: post,
-                    author: viewModel.authorProfiles[post.authorID],
+                    author: author,
+                    compatibility: author.flatMap { viewModel.compatibilityFor($0) },
                     isSaved: viewModel.savedPostIDs.contains(post.id),
                     isLiked: viewModel.likedPostIDs.contains(post.id),
                     onLike: {
@@ -188,7 +195,10 @@ struct HomeView: View {
                     onToggleSave: {
                         Task { await viewModel.toggleSave(post) }
                     },
-                    onOpenHashtag: { tag in hashtagToOpen = tag }
+                    onOpenHashtag: { tag in hashtagToOpen = tag },
+                    onRequestCompat: {
+                        Task { await viewModel.requestCompatibility(profileID: post.authorID) }
+                    }
                 )
             }
         }
@@ -223,6 +233,8 @@ private func hashtagAttributedString(_ caption: String) -> AttributedString {
 private struct RecommendedCard: View {
     let profile: Profile
     let compatibility: Int?
+    let requestSent: Bool
+    let onRequest: () -> Void
 
     var body: some View {
         VStack(spacing: 6) {
@@ -230,17 +242,50 @@ private struct RecommendedCard: View {
             Text(profile.displayName)
                 .font(.caption.bold())
                 .lineLimit(1)
-            Text(compatibility.map { "\($0)%" } ?? "?%")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+            CompatBadge(compatibility: compatibility, requestSent: requestSent, onRequest: onRequest)
         }
         .frame(width: 84)
+    }
+}
+
+/// Hallazgo real, comparado con SOCIAL_APP.html (`reqCompat()`): "?%" era
+/// texto fijo, sin ninguna forma de pedir ver la compatibilidad real
+/// cuando es privada -- a diferencia de Match, que ya tenía este mismo
+/// flujo (CompatBadge en MatchView.swift) desde antes. Mismos 3 estados
+/// reales (público/pendiente/pedir), reutilizados aquí en Recomendados y
+/// en la cabecera de cada post del feed. `Button` real (no Text+
+/// onTapGesture) porque esta tarjeta vive dentro de la etiqueta de un
+/// NavigationLink -- mismo criterio ya establecido en
+/// MatchView.CompatBadge.
+private struct CompatBadge: View {
+    let compatibility: Int?
+    let requestSent: Bool
+    let onRequest: () -> Void
+
+    var body: some View {
+        if let compat = compatibility {
+            Text("\(compat)% compat.")
+                .font(.caption2.bold())
+                .foregroundStyle(.green)
+        } else if requestSent {
+            Text("Pendiente")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        } else {
+            Button(action: onRequest) {
+                Text("?% · Pedir")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
     }
 }
 
 private struct PostCard: View {
     let post: Post
     let author: Profile?
+    var compatibility: Int? = nil
     let isSaved: Bool
     let isLiked: Bool
     let onLike: () -> Void
@@ -248,7 +293,14 @@ private struct PostCard: View {
     var onCommentRemoved: () -> Void = {}
     let onToggleSave: () -> Void
     var onOpenHashtag: (String) -> Void = { _ in }
+    var onRequestCompat: () -> Void = {}
     @State private var showComments = false
+    // Hallazgo real, comparado con SOCIAL_APP.html: cada post del feed
+    // muestra el % de compatibilidad con el autor en su cabecera, no solo
+    // el carrusel de "Recomendados" -- estado local (no en el ViewModel,
+    // a diferencia de Recomendados) porque aquí no hay una lista estable
+    // de "entries" a la que atar el estado "pendiente" real.
+    @State private var compatRequestSent = false
     // Hallazgo real: comparado con cualquier app grande, no había forma de
     // denunciar una publicación directamente — solo existía la denuncia
     // global de usuario. `reports.reported_id` no tiene columna de post_id,
@@ -272,6 +324,19 @@ private struct PostCard: View {
                     Text(author?.displayName ?? "…")
                         .font(.subheadline.bold())
                         .foregroundStyle(.primary)
+                    Spacer()
+                    // Hallazgo real, comparado con SOCIAL_APP.html
+                    // (`.pcompat` en la cabecera de cada post): la app real
+                    // solo mostraba el % de compatibilidad en
+                    // "Recomendados", nunca junto al autor de una
+                    // publicación normal del feed.
+                    if let author, author.id != myID {
+                        CompatBadge(
+                            compatibility: compatibility,
+                            requestSent: compatRequestSent,
+                            onRequest: { compatRequestSent = true; onRequestCompat() }
+                        )
+                    }
                 }
             }
             .buttonStyle(.plain)

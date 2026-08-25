@@ -49,6 +49,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.social.app.ui.theme.SocialColors
 import com.social.app.util.relativeTime
 import io.github.jan.supabase.gotrue.auth
 import com.social.app.backend.model.Post
@@ -163,22 +164,29 @@ fun HomeScreen(
                 item {
                     androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(recommended) { entry ->
-                            RecommendedCard(entry, onClick = { onOpenProfile(entry.profile.id) })
+                            RecommendedCard(
+                                entry,
+                                onClick = { onOpenProfile(entry.profile.id) },
+                                onRequest = { viewModel.requestCompatibility(entry.profile.id) }
+                            )
                         }
                     }
                 }
             }
             items(feed) { post ->
+                val author = authorProfiles[post.authorId]
                 PostCard(
                     post = post,
-                    author = authorProfiles[post.authorId],
+                    author = author,
+                    compatibility = author?.let { viewModel.compatibilityFor(it) },
                     isSaved = savedPostIds.contains(post.id),
                     isLiked = likedPostIds.contains(post.id),
                     onLike = { viewModel.toggleLike(post) },
                     onOpenComments = { commentsPostId = post.id },
                     onToggleSave = { viewModel.toggleSave(post) },
                     onOpenHashtag = onOpenHashtag,
-                    onOpenProfile = { onOpenProfile(post.authorId) }
+                    onOpenProfile = { onOpenProfile(post.authorId) },
+                    onRequestCompat = { viewModel.requestCompatibility(post.authorId) }
                 )
             }
         }
@@ -249,7 +257,7 @@ private fun buildAnnotatedStringWithHashtags(caption: String, linkColor: android
 }
 
 @Composable
-private fun RecommendedCard(entry: HomeViewModel.Recommended, onClick: () -> Unit) {
+private fun RecommendedCard(entry: HomeViewModel.Recommended, onClick: () -> Unit, onRequest: () -> Unit) {
     // Hallazgo real, mismo hueco raíz ya cerrado en el feed principal
     // (PostCard sin onOpenProfile): "Recomendados" tampoco llevaba a
     // ningún perfil al tocarlo, comparado con "Sugeridos para ti" de
@@ -258,22 +266,49 @@ private fun RecommendedCard(entry: HomeViewModel.Recommended, onClick: () -> Uni
         Column(modifier = Modifier.padding(10.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
             com.social.app.avatar.AvatarView(config = entry.profile.avatarConfig ?: emptyMap(), size = 56.dp)
             Text(entry.profile.displayName, style = androidx.compose.material3.MaterialTheme.typography.labelMedium)
-            Text(entry.compatibility?.let { "$it%" } ?: "?%", style = androidx.compose.material3.MaterialTheme.typography.labelSmall)
+            CompatBadge(compatibility = entry.compatibility, requestSent = entry.requestSent, onRequest = onRequest)
         }
     }
+}
+
+/**
+ * Hallazgo real, comparado con SOCIAL_APP.html (`reqCompat()`): "?%" era
+ * texto fijo, sin ninguna forma de pedir ver la compatibilidad real cuando
+ * es privada -- a diferencia de Match, que ya tenía este mismo flujo
+ * (`MatchViewModel.requestCompatibility`/`MatchScreen.MatchCard`) desde
+ * antes. Mismos 3 estados reales (público/pendiente/pedir), reutilizados
+ * aquí en Recomendados y en la cabecera de cada post del feed.
+ */
+@Composable
+private fun CompatBadge(compatibility: Int?, requestSent: Boolean, onRequest: () -> Unit) {
+    val (text, clickable) = when {
+        compatibility != null -> "$compatibility% compat." to false
+        requestSent -> "Pendiente" to false
+        else -> "?% · Pedir" to true
+    }
+    Text(
+        text,
+        style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+        color = if (compatibility != null) SocialColors.Green else androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .padding(top = 2.dp)
+            .let { if (clickable) it.clickable(onClick = onRequest) else it }
+    )
 }
 
 @Composable
 private fun PostCard(
     post: Post,
     author: com.social.app.backend.model.Profile?,
+    compatibility: Int?,
     isSaved: Boolean,
     isLiked: Boolean,
     onLike: () -> Unit,
     onOpenComments: () -> Unit,
     onToggleSave: () -> Unit,
     onOpenHashtag: (String) -> Unit = {},
-    onOpenProfile: () -> Unit = {}
+    onOpenProfile: () -> Unit = {},
+    onRequestCompat: () -> Unit = {}
 ) {
     val context = LocalContext.current
     // Hallazgo real: comparado con cualquier app grande, no había forma de
@@ -283,6 +318,13 @@ private fun PostCard(
     // en los detalles, para que moderación sepa cuál — no se inventa una
     // columna nueva para esto.
     var showReport by remember { mutableStateOf(false) }
+    // Hallazgo real, comparado con SOCIAL_APP.html: cada post del feed
+    // muestra el % de compatibilidad con el autor en su cabecera, no solo
+    // el carrusel de "Recomendados" -- estado local (no en el ViewModel,
+    // a diferencia de Recomendados) porque aquí no hay una lista estable
+    // de "entries" que sobreviva a la recomposición del feed a la que
+    // atar el estado "pendiente" real.
+    var compatRequestSent by remember(post.id) { mutableStateOf(false) }
     // Hallazgo real, comparado con Instagram/Twitter/WhatsApp: no había
     // forma de tocar una imagen para verla a tamaño completo, solo el
     // recorte fijo de la miniatura.
@@ -303,8 +345,19 @@ private fun PostCard(
                 Text(
                     author?.displayName ?: "…",
                     style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(start = 8.dp)
+                    modifier = Modifier.padding(start = 8.dp).weight(1f)
                 )
+                // Hallazgo real, comparado con SOCIAL_APP.html (`.pcompat`
+                // en la cabecera de cada post): la app real solo mostraba
+                // el % de compatibilidad en "Recomendados", nunca junto al
+                // autor de una publicación normal del feed.
+                if (author != null && author.id != myId) {
+                    CompatBadge(
+                        compatibility = compatibility,
+                        requestSent = compatRequestSent,
+                        onRequest = { compatRequestSent = true; onRequestCompat() }
+                    )
+                }
             }
             post.mediaUrl?.let { url ->
                 androidx.compose.foundation.Image(
