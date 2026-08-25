@@ -1,5 +1,6 @@
 package com.social.app.screens.perfil
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -85,6 +86,9 @@ class MyPostsViewModel : ViewModel() {
 fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
     val posts by viewModel.posts.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    // Hallazgo real, mismo hueco ya cerrado en el feed y el chat: no
+    // había forma de tocar la imagen para verla a tamaño completo.
+    var fullScreenUrl by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) { viewModel.load() }
 
@@ -126,6 +130,7 @@ fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
                                 modifier = Modifier.fillMaxWidth().height(180.dp)
                                     .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
                                     .padding(bottom = 6.dp)
+                                    .clickable { fullScreenUrl = url }
                             )
                         }
                         post.caption?.let { Text(it) }
@@ -149,5 +154,8 @@ fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
                 modifier = Modifier.align(Alignment.TopCenter)
             )
         }
+    }
+    fullScreenUrl?.let { url ->
+        com.social.app.util.FullScreenImageViewer(url = url, onDismiss = { fullScreenUrl = null })
     }
 }

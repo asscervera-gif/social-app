@@ -16,6 +16,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -143,6 +146,9 @@ fun SavedPostsScreen(viewModel: SavedPostsViewModel = viewModel(), onOpenProfile
     val posts by viewModel.posts.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     val authorProfiles by viewModel.authorProfiles.collectAsState()
+    // Hallazgo real, mismo hueco ya cerrado en el feed y el chat: no
+    // había forma de tocar la imagen para verla a tamaño completo.
+    var fullScreenUrl by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) { viewModel.load() }
 
@@ -198,6 +204,7 @@ fun SavedPostsScreen(viewModel: SavedPostsViewModel = viewModel(), onOpenProfile
                                 modifier = Modifier.fillMaxWidth().height(180.dp)
                                     .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
                                     .padding(bottom = 6.dp)
+                                    .clickable { fullScreenUrl = url }
                             )
                         }
                         post.caption?.let { Text(it) }
@@ -221,5 +228,8 @@ fun SavedPostsScreen(viewModel: SavedPostsViewModel = viewModel(), onOpenProfile
                 modifier = Modifier.align(Alignment.TopCenter)
             )
         }
+    }
+    fullScreenUrl?.let { url ->
+        com.social.app.util.FullScreenImageViewer(url = url, onDismiss = { fullScreenUrl = null })
     }
 }

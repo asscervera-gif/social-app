@@ -51,6 +51,9 @@ final class MyPostsViewModel: ObservableObject {
 
 struct MyPostsView: View {
     @StateObject private var viewModel = MyPostsViewModel()
+    // Hallazgo real, mismo hueco ya cerrado en el feed y el chat: no
+    // había forma de tocar la imagen para verla a tamaño completo.
+    @State private var fullScreenURL: URL?
 
     var body: some View {
         List {
@@ -75,6 +78,7 @@ struct MyPostsView: View {
                         .frame(height: 160)
                         .clipped()
                         .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .onTapGesture { fullScreenURL = url }
                     }
                     Text(post.caption ?? "")
                     Text("❤ \(post.likeCount) · 💬 \(post.commentCount)")
@@ -95,5 +99,15 @@ struct MyPostsView: View {
         // esta pantalla no tenía pull-to-refresh. Ya construido en la
         // versión Kotlin equivalente.
         .refreshable { await viewModel.load() }
+        // Mismo patrón Binding(get:set:) ya usado en HomeView.swift para
+        // un URL? no Identifiable.
+        .fullScreenCover(isPresented: Binding(
+            get: { fullScreenURL != nil },
+            set: { isPresented in if !isPresented { fullScreenURL = nil } }
+        )) {
+            if let fullScreenURL {
+                FullScreenImageView(url: fullScreenURL, onDismiss: { self.fullScreenURL = nil })
+            }
+        }
     }
 }
