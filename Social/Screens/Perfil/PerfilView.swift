@@ -93,9 +93,11 @@ struct PerfilView: View {
                 EditProfileView(
                     initialName: viewModel.profile?.displayName ?? "",
                     initialBio: viewModel.profile?.bio ?? "",
-                    initialColor: viewModel.profile?.avatarConfig?["colorSeed"] ?? "8B5CF6",
-                    onSave: { name, bio, color in
-                        Task { await viewModel.updateBasicInfo(displayName: name, bio: bio, colorSeed: color) }
+                    initialSkin: viewModel.profile?.avatarConfig?["skin"] ?? AvatarLook.skinTones[0],
+                    initialHair: viewModel.profile?.avatarConfig?["hair"] ?? AvatarLook.hairTones[0],
+                    initialTop: viewModel.profile?.avatarConfig?["top"] ?? AvatarLook.topColors[0],
+                    onSave: { name, bio, skin, hair, top in
+                        Task { await viewModel.updateBasicInfo(displayName: name, bio: bio, skin: skin, hair: hair, top: top) }
                     }
                 )
             }

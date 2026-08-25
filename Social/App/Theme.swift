@@ -51,6 +51,16 @@ enum SocialColors {
     static func color(for key: String) -> Color {
         accents.first(where: { $0.key == key })?.color ?? coral
     }
+
+    // Degradado EXACTO del wordmark "SOCIAL"/icono "S" en SOCIAL_APP.html
+    // (el boceto que el usuario pidió seguir "exactamente igual"):
+    // linear-gradient(90deg,#ff3b3b,#f7b731,#20bf6b,#4dabf7,#a55eea). Fijo
+    // -- es identidad de marca, no un acento que el usuario elija en
+    // Ajustes (eso sigue siendo `accents`, arriba). Equivalente exacto de
+    // SocialColors.WordmarkGradient (Android).
+    static let wordmarkGradient: [Color] = [
+        Color(hex: 0xFF3B3B), Color(hex: 0xF7B731), Color(hex: 0x20BF6B), Color(hex: 0x4DABF7), Color(hex: 0xA55EEA)
+    ]
 }
 
 private extension Color {

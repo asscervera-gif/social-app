@@ -50,6 +50,15 @@ object SocialColors {
         "purple" to Purple,
         "magenta" to Magenta
     )
+
+    // Degradado EXACTO del wordmark "SOCIAL"/icono "S" en SOCIAL_APP.html
+    // (el boceto que el usuario pidió seguir "exactamente igual"):
+    // linear-gradient(90deg,#ff3b3b,#f7b731,#20bf6b,#4dabf7,#a55eea). Fijo
+    // -- es identidad de marca, no un acento que el usuario elija en
+    // Ajustes (eso sigue siendo `accents`, arriba).
+    val WordmarkGradient: List<Color> = listOf(
+        Color(0xFFFF3B3B), Color(0xFFF7B731), Color(0xFF20BF6B), Color(0xFF4DABF7), Color(0xFFA55EEA)
+    )
 }
 
 /**

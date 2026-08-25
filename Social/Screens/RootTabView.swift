@@ -119,12 +119,13 @@ private struct SocialTabIcon: View {
             Text("S")
                 .font(.system(size: 20, weight: .light, design: .rounded))
                 .foregroundStyle(
+                    // Mismo degradado EXACTO que SOCIAL_APP.html (el
+                    // boceto pedido "exactamente igual"), no el arcoíris
+                    // de 7 colores muestreado del logo -- ver
+                    // SocialColors.wordmarkGradient.
                     LinearGradient(
-                        colors: [
-                            SocialColors.magenta, SocialColors.coral, SocialColors.orange,
-                            SocialColors.gold, SocialColors.green, SocialColors.turquoise, SocialColors.purple
-                        ],
-                        startPoint: .topLeading, endPoint: .bottomTrailing
+                        colors: SocialColors.wordmarkGradient,
+                        startPoint: .leading, endPoint: .trailing
                     )
                 )
                 // Aviso de honestidad: UIKit renderiza el icono de

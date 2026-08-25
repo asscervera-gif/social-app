@@ -18,6 +18,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.social.app.avatar.AvatarLook
 import com.social.app.backend.SupabaseManager
 import io.github.jan.supabase.gotrue.auth
 import io.github.jan.supabase.postgrest.from
@@ -46,14 +47,16 @@ fun AvatarOnboardingScreen(onFinished: () -> Unit) {
         scope.launch {
             try {
                 // La foto original nunca se sube ni se guarda — el
-                // "avatar" generado aquí es solo un color derivado
-                // localmente, mismo criterio honesto que
-                // PlaceholderAvatarProvider.generateAvatar en iOS.
-                val colorSeed = String.format("%02X%02X%02X", (0..255).random(), (0..255).random(), (0..255).random())
+                // "avatar" generado aquí es solo un look elegido de una
+                // paleta cerrada (AvatarLook), mismo criterio honesto que
+                // PlaceholderAvatarProvider.generateAvatar en iOS. Estilo
+                // "busto ilustrado" exacto del boceto SOCIAL_APP.html
+                // (ver CartoonAvatar.kt), no un color de degradado suelto.
+                val (skin, hair, top) = AvatarLook.random()
                 val userId = SupabaseManager.client.auth.currentUserOrNull()?.id
                 if (userId != null) {
                     SupabaseManager.client.from("profiles")
-                        .update({ set("avatar_config", mapOf("type" to "placeholder", "colorSeed" to colorSeed)) }) {
+                        .update({ set("avatar_config", mapOf("type" to "cartoon", "skin" to skin, "hair" to hair, "top" to top)) }) {
                             filter { eq("id", userId) }
                         }
                 }

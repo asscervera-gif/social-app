@@ -124,13 +124,15 @@ class PerfilViewModel : ViewModel() {
     )
 
     /** Hallazgo real: comparado con cualquier app grande, no había forma de
-     * editar nombre/bio/color de avatar en ningún sitio — solo las 15
+     * editar nombre/bio/look de avatar en ningún sitio — solo las 15
      * secciones (trabajo, música...) eran editables, no los campos
      * centrales del perfil. Sin selector de foto real (necesitaría cámara
      * + Storage, ver NewPostView para el patrón ya usado en publicaciones
-     * — aquí se prioriza cerrar el hueco de nombre/bio/color primero, que
-     * no dependía de nada más). */
-    fun updateBasicInfo(displayName: String, bio: String, colorSeed: String) {
+     * — aquí se prioriza cerrar el hueco de nombre/bio/look primero, que
+     * no dependía de nada más). `skin`/`hair`/`top` (busto ilustrado,
+     * CartoonAvatar) sustituyen al `colorSeed` único de antes de la pasada
+     * de fidelidad visual con SOCIAL_APP.html. */
+    fun updateBasicInfo(displayName: String, bio: String, skin: String, hair: String, top: String) {
         val id = userId ?: return
         val trimmedName = displayName.trim()
         if (trimmedName.isBlank()) {
@@ -150,7 +152,7 @@ class PerfilViewModel : ViewModel() {
             return
         }
         val currentConfig = _profile.value?.avatarConfig ?: emptyMap()
-        val newConfig = currentConfig + ("colorSeed" to colorSeed)
+        val newConfig = currentConfig + mapOf("type" to "cartoon", "skin" to skin, "hair" to hair, "top" to top)
         _profile.value = _profile.value?.copy(
             displayName = trimmedName,
             bio = bio.ifBlank { null },

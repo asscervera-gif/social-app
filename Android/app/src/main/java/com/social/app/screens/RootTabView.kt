@@ -166,13 +166,11 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                                         tab == Tab.SOCIAL -> Text(
                                             "S",
                                             style = TextStyle(
-                                                brush = Brush.linearGradient(
-                                                    listOf(
-                                                        SocialColors.Magenta, SocialColors.Coral, SocialColors.Orange,
-                                                        SocialColors.Gold, SocialColors.Green, SocialColors.Turquoise,
-                                                        SocialColors.Purple
-                                                    )
-                                                ),
+                                                // Mismo degradado EXACTO que SOCIAL_APP.html
+                                                // (el boceto pedido "exactamente igual"),
+                                                // no el arcoíris de 7 colores muestreado del
+                                                // logo -- ver SocialColors.WordmarkGradient.
+                                                brush = Brush.linearGradient(SocialColors.WordmarkGradient),
                                                 fontWeight = FontWeight.Light,
                                                 fontSize = 22.sp
                                             )

@@ -69,11 +69,13 @@ final class PerfilViewModel: ObservableObject {
     }
 
     /// Hallazgo real: comparado con cualquier app grande, no había forma
-    /// de editar nombre/bio/color de avatar en ningún sitio — solo las 15
+    /// de editar nombre/bio/look de avatar en ningún sitio — solo las 15
     /// secciones eran editables. Sin selector de foto real a propósito
     /// (mismo criterio que EditProfileSheet.kt): la generación de avatar
-    /// 3D sigue sin onboarding construido.
-    func updateBasicInfo(displayName: String, bio: String, colorSeed: String) async {
+    /// 3D sigue sin un motor real (ver AvatarProvider). `skin`/`hair`/`top`
+    /// (busto ilustrado, CartoonAvatarView) sustituyen al `colorSeed`
+    /// único de antes de la pasada de fidelidad visual con SOCIAL_APP.html.
+    func updateBasicInfo(displayName: String, bio: String, skin: String, hair: String, top: String) async {
         guard let userID else { return }
         let trimmedName = displayName.trimmingCharacters(in: .whitespaces)
         guard !trimmedName.isEmpty else {
@@ -95,7 +97,10 @@ final class PerfilViewModel: ObservableObject {
         }
 
         var newConfig = profile?.avatarConfig ?? [:]
-        newConfig["colorSeed"] = colorSeed
+        newConfig["type"] = "cartoon"
+        newConfig["skin"] = skin
+        newConfig["hair"] = hair
+        newConfig["top"] = top
 
         struct ProfileUpdate: Encodable {
             let display_name: String

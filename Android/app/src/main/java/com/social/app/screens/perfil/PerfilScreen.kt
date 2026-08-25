@@ -262,9 +262,11 @@ fun PerfilScreen(
         EditProfileSheet(
             initialName = profile?.displayName ?: "",
             initialBio = profile?.bio ?: "",
-            initialColor = profile?.avatarConfig?.get("colorSeed") ?: "8B5CF6",
+            initialSkin = profile?.avatarConfig?.get("skin") ?: com.social.app.avatar.AvatarLook.SKIN_TONES.first(),
+            initialHair = profile?.avatarConfig?.get("hair") ?: com.social.app.avatar.AvatarLook.HAIR_TONES.first(),
+            initialTop = profile?.avatarConfig?.get("top") ?: com.social.app.avatar.AvatarLook.TOP_COLORS.first(),
             onDismiss = { showEditProfile = false },
-            onSave = { name, bio, color -> viewModel.updateBasicInfo(name, bio, color) }
+            onSave = { name, bio, skin, hair, top -> viewModel.updateBasicInfo(name, bio, skin, hair, top) }
         )
     }
 
