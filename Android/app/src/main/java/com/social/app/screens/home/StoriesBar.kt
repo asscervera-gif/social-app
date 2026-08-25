@@ -8,10 +8,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -101,10 +106,12 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
     }
 }
 
-/** Visor a pantalla completa, avanza a la siguiente historia del mismo
- * autor al tocar, se cierra al llegar al final — mismo patrón simple que
- * Instagram/WhatsApp Status, sin arriesgar gestos/animaciones complejas
- * no verificadas. */
+/** Visor a pantalla completa — antes solo tocar para pasar a mano, sin
+ * barra de progreso ni avance automático, comparado con Instagram/
+ * WhatsApp Status/Snapchat/SOCIAL_APP.html (`.stbar`/`.stbarf`). Ahora
+ * cada historia tiene su propio segmento de progreso que se rellena en
+ * 5s y avanza sola, igual que esas apps; tocar la mitad derecha adelanta,
+ * la izquierda retrocede -- mismo lenguaje de gestos ya estandarizado. */
 @Composable
 private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewModel(), onDismiss: () -> Unit) {
     var index by remember { mutableStateOf(0) }
@@ -115,10 +122,18 @@ private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewMod
     val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
     var showViewers by remember { mutableStateOf(false) }
     var viewers by remember { mutableStateOf<List<StoriesViewModel.StoryViewer>>(emptyList()) }
+    val progress = remember(index) { androidx.compose.animation.core.Animatable(0f) }
 
     if (story == null) {
         onDismiss()
         return
+    }
+
+    fun goNext() {
+        if (index < group.stories.lastIndex) index += 1 else onDismiss()
+    }
+    fun goPrevious() {
+        if (index > 0) index -= 1
     }
 
     LaunchedEffect(story.id) {
@@ -130,6 +145,16 @@ private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewMod
         }
     }
 
+    // 5s por historia, mismo orden de magnitud que Instagram/WhatsApp
+    // Status (SOCIAL_APP.html usaba 4s para su maqueta estática). Si el
+    // usuario avanza a mano antes de que termine, este LaunchedEffect se
+    // cancela por el cambio de `index` -- no se dispara un avance doble.
+    LaunchedEffect(index) {
+        progress.snapTo(0f)
+        progress.animateTo(1f, animationSpec = androidx.compose.animation.core.tween(durationMillis = 5000, easing = androidx.compose.animation.core.LinearEasing))
+        goNext()
+    }
+
     // Dialog con `usePlatformDefaultWidth = false`: sin esto, el visor
     // solo ocuparía el tamaño disponible dentro de la fila de historias
     // (un item de LazyRow), no la pantalla entera.
@@ -138,8 +163,10 @@ private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewMod
             modifier = Modifier
                 .fillMaxSize()
                 .background(androidx.compose.ui.graphics.Color.Black)
-                .clickable {
-                    if (index < group.stories.lastIndex) index += 1 else onDismiss()
+                .pointerInput(index) {
+                    detectTapGestures { offset ->
+                        if (offset.x < size.width / 2) goPrevious() else goNext()
+                    }
                 }
         ) {
             Image(
@@ -148,11 +175,40 @@ private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewMod
                 contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxSize()
             )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .padding(top = 10.dp, start = 8.dp, end = 8.dp)
+            ) {
+                group.stories.indices.forEach { i ->
+                    val fill = when {
+                        i < index -> 1f
+                        i == index -> progress.value
+                        else -> 0f
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(3.dp)
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
+                            .background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.35f))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(fill)
+                                .background(androidx.compose.ui.graphics.Color.White)
+                        )
+                    }
+                }
+            }
             Text(
                 group.authorName,
                 color = androidx.compose.ui.graphics.Color.White,
                 style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(16.dp)
+                modifier = Modifier.padding(top = 24.dp, start = 16.dp, end = 16.dp)
             )
             if (story.authorId == myId) {
                 Text(

@@ -70,8 +70,12 @@ struct StoriesBar: View {
 
 /// Visor a pantalla completa, avanza a la siguiente historia del mismo
 /// autor al tocar, se cierra al llegar al final — mismo patrón simple que
-/// Instagram/WhatsApp Status, sin arriesgar gestos/animaciones complejas
-/// no verificadas.
+/// Instagram/WhatsApp Status -- antes solo tocar para pasar a mano, sin
+/// barra de progreso ni avance automático, comparado con esas apps y con
+/// SOCIAL_APP.html (`.stbar`/`.stbarf`). Ahora cada historia tiene su
+/// propio segmento de progreso que se rellena en 5s y avanza sola; tocar
+/// la mitad derecha adelanta, la izquierda retrocede -- mismo lenguaje de
+/// gestos ya estandarizado.
 private struct StoryViewer: View {
     let group: StoryGroup
     @ObservedObject var viewModel: StoriesViewModel
@@ -83,6 +87,19 @@ private struct StoryViewer: View {
     // registraba quién veía una historia, la tabla no existía.
     @State private var viewers: [StoriesViewModel.StoryViewer] = []
     @State private var showViewers = false
+    @State private var progress: CGFloat = 0
+
+    private func goNext() {
+        if index < group.stories.count - 1 {
+            index += 1
+        } else {
+            dismiss()
+        }
+    }
+
+    private func goPrevious() {
+        if index > 0 { index -= 1 }
+    }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -93,9 +110,37 @@ private struct StoryViewer: View {
                 } placeholder: {
                     ProgressView()
                 }
+
+                HStack(spacing: 0) {
+                    Color.clear
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                        .onTapGesture { goPrevious() }
+                    Color.clear
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                        .onTapGesture { goNext() }
+                }
+
+                HStack(spacing: 4) {
+                    ForEach(group.stories.indices, id: \.self) { i in
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(Color.white.opacity(0.35))
+                                Capsule().fill(Color.white)
+                                    .frame(width: geo.size.width * (i < index ? 1 : (i == index ? progress : 0)))
+                            }
+                        }
+                        .frame(height: 3)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.top, 10)
+
                 Text(group.authorName)
                     .foregroundStyle(.white)
-                    .padding()
+                    .padding(.top, 24)
+                    .padding(.horizontal, 16)
 
                 if story.author_id == myID {
                     VStack {
@@ -114,14 +159,6 @@ private struct StoryViewer: View {
                 }
             }
         }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if index < group.stories.count - 1 {
-                index += 1
-            } else {
-                dismiss()
-            }
-        }
         .task(id: index) {
             showViewers = false
             guard let story = group.stories[safe: index] else { return }
@@ -130,6 +167,17 @@ private struct StoryViewer: View {
             } else {
                 await viewModel.recordView(story)
             }
+        }
+        // 5s por historia, mismo orden de magnitud que Instagram/WhatsApp
+        // Status (SOCIAL_APP.html usaba 4s para su maqueta estática). Si
+        // el usuario avanza a mano antes de que termine, `.task(id:)`
+        // cancela esta tarea al cambiar `index` -- no se dispara un
+        // avance doble.
+        .task(id: index) {
+            progress = 0
+            withAnimation(.linear(duration: 5)) { progress = 1 }
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            if !Task.isCancelled { goNext() }
         }
         .sheet(isPresented: $showViewers) {
             NavigationStack {
