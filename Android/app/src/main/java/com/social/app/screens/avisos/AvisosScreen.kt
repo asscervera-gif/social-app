@@ -111,6 +111,11 @@ fun AvisosScreen(
                     entry.kind == "follow" -> selected = entry
                     entry.kind == "compat_request" -> selected = entry
                     entry.kind == "fight" -> selected = entry
+                    // Hallazgo real: aceptar un social o una solicitud de
+                    // compatibilidad no notificaba nunca a quien la pidió
+                    // -- ver 0046_notify_accepted.sql.
+                    entry.kind == "social_accepted" -> selected = entry
+                    entry.kind == "compat_accepted" -> selected = entry
                 }
             })
         }
@@ -161,7 +166,17 @@ private fun NotificationActionsSheet(
                     modifier = Modifier.padding(top = 16.dp)
                 ) { Text("Seguir de vuelta") }
             }
-            if (socialId != null) {
+            // Hallazgo real: estos botones estaban gateados solo por la
+            // presencia de la clave en el payload, no por entry.kind --
+            // un aviso "social_accepted" (0046_notify_accepted.sql)
+            // también trae social_id, así que sin el chequeo de kind
+            // mostraría "Aceptar social"/"Rechazar" sobre un social YA
+            // aceptado (el UPDATE fallaría en silencio por RLS, ya que
+            // solo el destinatario original puede responder -- ver
+            // socials_update en 0002_rls.sql), confundiendo a quien lo
+            // envió. Mismo criterio que el switch(entry.kind) ya correcto
+            // en AvisosView.swift.
+            if (entry.kind == "social" && socialId != null) {
                 Button(
                     onClick = {
                         scope.launch {
@@ -177,7 +192,7 @@ private fun NotificationActionsSheet(
                     modifier = Modifier.padding(top = 8.dp)
                 ) { Text("Rechazar") }
             }
-            if (compatRequestId != null) {
+            if (entry.kind == "compat_request" && compatRequestId != null) {
                 Button(
                     onClick = { scope.launch { compatRequests.respond(compatRequestId, accept = true); onDismiss() } },
                     modifier = Modifier.padding(top = 16.dp)

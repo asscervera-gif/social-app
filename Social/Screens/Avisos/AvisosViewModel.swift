@@ -173,6 +173,11 @@ extension AvisosViewModel.NotificationEntry {
         case "fight": return "bolt.fill"
         case "like": return "heart.fill"
         case "compat_request": return "percent"
+        // Hallazgo real: aceptar un social o una solicitud de
+        // compatibilidad no notificaba nunca a quien la pidió -- ver
+        // 0046_notify_accepted.sql.
+        case "social_accepted": return "checkmark.circle.fill"
+        case "compat_accepted": return "percent"
         default: return "bell"
         }
     }
@@ -184,6 +189,8 @@ extension AvisosViewModel.NotificationEntry {
         case "fight": return "Duelo completado"
         case "like": return "Le gustó tu publicación"
         case "compat_request": return "Quiere ver tu compatibilidad"
+        case "social_accepted": return "Aceptó tu social"
+        case "compat_accepted": return "Compartió su compatibilidad contigo"
         default: return "Notificación"
         }
     }

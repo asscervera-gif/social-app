@@ -182,12 +182,42 @@ async function main() {
     await db.query(`update socials set status = 'accepted' where id = $1`, [social.id]);
   });
 
+  // --- trg_notify_social_accepted (0046): quien PIDIÓ el social (u1) recibe
+  // un aviso real de que u2 lo aceptó -- antes nadie lo notificaba nunca. ---
+  await asUser(u1);
+  const socialAcceptedNotif = (await db.query(
+    `select actor_id, payload from notifications where recipient_id = $1 and kind = 'social_accepted'`, [u1]
+  )).rows;
+  check('trg_notify_social_accepted: u1 (requester) recibe el aviso real al aceptar u2', socialAcceptedNotif.length === 1);
+  check('trg_notify_social_accepted: actor_id es quien aceptó (u2), no quien pidió', socialAcceptedNotif[0]?.actor_id === u2);
+  check('trg_notify_social_accepted: payload trae el social_id real', socialAcceptedNotif[0]?.payload?.social_id === social.id);
+
   // --- posts_select / profile_sections_select (0002): un tercero sin
   // relación NO ve un post/sección "solo socials", pero SÍ los ve quien
   // tiene un social aceptado real (u2, ya aceptado más arriba) ---
   await asSuperuser();
   const u3 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
   await db.query(`insert into profiles (id, display_name) values ($1, 'Tres') on conflict (id) do nothing`, [u3]);
+
+  // --- trg_notify_compat_accepted (0046): mismo hueco que socials, en
+  // compat_requests -- quien pidió ver el % (u3) no recibía ningún aviso
+  // real cuando el dueño (u1) lo aceptaba. ---
+  await asSuperuser();
+  const compatReq = (await db.query(
+    `insert into compat_requests (requester_id, target_id, status) values ($1, $2, 'pending') returning id`, [u3, u1]
+  )).rows[0];
+  await asUser(u1);
+  await expectOk('compat_requests_update: el DUEÑO real (target) sí puede aceptar la solicitud', async () => {
+    await db.query(`update compat_requests set status = 'accepted' where id = $1`, [compatReq.id]);
+  });
+  await asUser(u3);
+  const compatAcceptedNotif = (await db.query(
+    `select actor_id, payload from notifications where recipient_id = $1 and kind = 'compat_accepted'`, [u3]
+  )).rows;
+  check('trg_notify_compat_accepted: u3 (requester) recibe el aviso real al aceptar u1', compatAcceptedNotif.length === 1);
+  check('trg_notify_compat_accepted: actor_id es quien aceptó (u1), no quien pidió', compatAcceptedNotif[0]?.actor_id === u1);
+  check('trg_notify_compat_accepted: payload trae el compat_request_id real', compatAcceptedNotif[0]?.payload?.compat_request_id === compatReq.id);
+
   await asUser(u2);
   const socialOnlyPost = (await db.query(
     `insert into posts (author_id, caption, is_social_only) values ($1, 'solo para socials', true) returning id`, [u2]

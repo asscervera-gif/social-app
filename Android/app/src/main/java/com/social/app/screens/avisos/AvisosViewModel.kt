@@ -145,12 +145,16 @@ class AvisosViewModel : ViewModel() {
     }
 }
 
+// Hallazgo real: aceptar un social o una solicitud de compatibilidad no
+// notificaba nunca a quien la pidió -- ver 0046_notify_accepted.sql.
 fun NotificationEntry.icon(): String = when (kind) {
     "social" -> "👥"
     "follow" -> "➕"
     "fight" -> "⚡"
     "like" -> "❤"
     "compat_request" -> "%"
+    "social_accepted" -> "✅"
+    "compat_accepted" -> "%"
     else -> "🔔"
 }
 
@@ -160,5 +164,7 @@ fun NotificationEntry.title(): String = when (kind) {
     "fight" -> "Duelo completado"
     "like" -> "Le gustó tu publicación"
     "compat_request" -> "Quiere ver tu compatibilidad"
+    "social_accepted" -> "Aceptó tu social"
+    "compat_accepted" -> "Compartió su compatibilidad contigo"
     else -> "Notificación"
 }
