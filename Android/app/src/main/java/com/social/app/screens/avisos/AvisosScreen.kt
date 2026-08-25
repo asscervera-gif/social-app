@@ -83,6 +83,21 @@ fun AvisosScreen(
         modifier = Modifier.fillMaxWidth().nestedScroll(pullState.nestedScrollConnection)
     ) {
     LazyColumn(modifier = Modifier.fillMaxWidth()) {
+        // Hallazgo real, comparado con Gmail/Instagram/Twitter: cualquier
+        // lista de notificaciones grande deja marcar todo como leído de
+        // una vez, no solo aviso por aviso.
+        if (notifications.any { it.readAt == null }) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    androidx.compose.material3.TextButton(onClick = { viewModel.markAllRead() }) {
+                        Text("Marcar todo leído")
+                    }
+                }
+            }
+        }
         errorMessage?.let { message ->
             item { Text(message, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
         }

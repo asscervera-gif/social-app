@@ -119,6 +119,30 @@ class AvisosViewModel : ViewModel() {
             }
         }
     }
+
+    /** Hallazgo real, comparado con Gmail/Instagram/Twitter -- cualquier
+     * lista de notificaciones grande deja marcar todo como leído de una
+     * vez, no solo aviso por aviso. `notifications_update`
+     * (0002_rls.sql) es por fila (`recipient_id = auth.uid()`), sin
+     * límite de cuántas filas puede tocar una sola sentencia -- un
+     * UPDATE real, no N llamadas. Igual que markMessagesRead()
+     * (ChatViewModel.kt): marcar de nuevo un aviso ya leído es
+     * idempotente, no hace falta filtrar por null (sin `isNull`
+     * verificado en el resto del proyecto). */
+    fun markAllRead() {
+        if (_notifications.value.all { it.readAt != null }) return
+        _notifications.update { list -> list.map { it.copy(readAt = it.readAt ?: "now") } }
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                val nowIso = java.time.Instant.now().toString()
+                SupabaseManager.client.from("notifications")
+                    .update({ set("read_at", nowIso) }) { filter { eq("recipient_id", userId) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudieron marcar todos los avisos como leídos."
+            }
+        }
+    }
 }
 
 fun NotificationEntry.icon(): String = when (kind) {

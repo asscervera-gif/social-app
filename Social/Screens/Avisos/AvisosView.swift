@@ -50,6 +50,18 @@ struct AvisosView: View {
                 .tint(.primary)
             }
             .navigationTitle("Avisos")
+            // Hallazgo real, comparado con Gmail/Instagram/Twitter:
+            // cualquier lista de notificaciones grande deja marcar todo
+            // como leído de una vez, no solo aviso por aviso.
+            .toolbar {
+                if viewModel.notifications.contains(where: { $0.readAt == nil }) {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("Marcar todo leído") {
+                            Task { await viewModel.markAllRead() }
+                        }
+                    }
+                }
+            }
             .task { await viewModel.start() }
             .onDisappear { Task { await viewModel.stop() } }
             // Hallazgo real: comparado con Instagram/Twitter/Facebook (y

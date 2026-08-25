@@ -136,6 +136,33 @@ final class AvisosViewModel: ObservableObject {
             errorMessage = "No se pudo marcar como leído."
         }
     }
+
+    /// Hallazgo real, comparado con Gmail/Instagram/Twitter -- cualquier
+    /// lista de notificaciones grande deja marcar todo como leído de una
+    /// vez, no solo aviso por aviso. `notifications_update` (0002_rls.sql)
+    /// es por fila (`recipient_id = auth.uid()`), sin límite de cuántas
+    /// filas puede tocar una sola sentencia -- un UPDATE real, no N
+    /// llamadas. Equivalente de AvisosViewModel.kt.markAllRead().
+    func markAllRead() async {
+        guard notifications.contains(where: { $0.readAt == nil }) else { return }
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        let now = Date()
+        for index in notifications.indices where notifications[index].readAt == nil {
+            notifications[index] = NotificationEntry(
+                id: notifications[index].id, kind: notifications[index].kind, payload: notifications[index].payload,
+                readAt: now, createdAt: notifications[index].createdAt
+            )
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("notifications")
+                .update(["read_at": ISO8601DateFormatter().string(from: now)])
+                .eq("recipient_id", value: userID)
+                .execute()
+        } catch {
+            errorMessage = "No se pudieron marcar todos los avisos como leídos."
+        }
+    }
 }
 
 extension AvisosViewModel.NotificationEntry {
