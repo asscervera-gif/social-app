@@ -21,6 +21,12 @@ import SwiftUI
 final class SavedPostsViewModel: ObservableObject {
     @Published var posts: [Post] = []
     @Published var errorMessage: String?
+    // Hallazgo real, mismo hueco raíz ya cerrado en el feed y en
+    // comentarios (HomeViewModel/CommentsViewModel.authorProfiles): esta
+    // lista tampoco mostraba QUIÉN escribió cada post guardado -- ni
+    // siquiera la imagen, comparado con la colección "Guardado" real de
+    // Instagram.
+    @Published var authorProfiles: [UUID: Profile] = [:]
 
     private struct SavedPostRow: Decodable {
         let posts: Post?
@@ -50,7 +56,19 @@ final class SavedPostsViewModel: ObservableObject {
                 .order("created_at", ascending: false)
                 .execute()
                 .value
-            posts = rows.compactMap { $0.posts }.filter { !blockedIDs.contains($0.authorID) }
+            let loaded = rows.compactMap { $0.posts }.filter { !blockedIDs.contains($0.authorID) }
+            posts = loaded
+
+            let authorIDs = Array(Set(loaded.map { $0.authorID }))
+            if !authorIDs.isEmpty,
+               let authors: [Profile] = try? await SupabaseManager.shared.client
+                   .from("profiles")
+                   .select()
+                   .in("id", values: authorIDs)
+                   .execute()
+                   .value {
+                authorProfiles = Dictionary(uniqueKeysWithValues: authors.map { ($0.id, $0) })
+            }
         } catch {
             errorMessage = "No se pudieron cargar tus guardados."
         }
@@ -88,6 +106,32 @@ struct SavedPostsView: View {
             }
             ForEach(viewModel.posts) { post in
                 VStack(alignment: .leading, spacing: 4) {
+                    // Hallazgo real, mismo hueco raíz ya cerrado en el
+                    // feed y en comentarios: esta lista tampoco mostraba
+                    // QUIÉN escribió cada post guardado, ni su imagen.
+                    NavigationLink {
+                        ProfileViewerView(profileID: post.authorID)
+                    } label: {
+                        HStack(spacing: 6) {
+                            ActiveAvatarProvider.shared.avatarView(
+                                config: viewModel.authorProfiles[post.authorID]?.avatarConfig ?? [:],
+                                size: 24
+                            )
+                            Text(viewModel.authorProfiles[post.authorID]?.displayName ?? "…")
+                                .font(.caption.bold())
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    if let mediaURL = post.mediaURL, let url = URL(string: mediaURL) {
+                        AsyncImage(url: url) { image in
+                            image.resizable().scaledToFill()
+                        } placeholder: {
+                            RoundedRectangle(cornerRadius: 8).fill(.gray.opacity(0.15))
+                        }
+                        .frame(height: 160)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
                     Text(post.caption ?? "")
                     Text("❤ \(post.likeCount) · 💬 \(post.commentCount)")
                         .font(.caption)

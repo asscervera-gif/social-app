@@ -63,6 +63,19 @@ struct MyPostsView: View {
             }
             ForEach(viewModel.posts) { post in
                 VStack(alignment: .leading, spacing: 4) {
+                    // Hallazgo real, mismo hueco ya cerrado en Guardados:
+                    // esta lista tampoco mostraba la imagen de la
+                    // publicación, solo texto.
+                    if let mediaURL = post.mediaURL, let url = URL(string: mediaURL) {
+                        AsyncImage(url: url) { image in
+                            image.resizable().scaledToFill()
+                        } placeholder: {
+                            RoundedRectangle(cornerRadius: 8).fill(.gray.opacity(0.15))
+                        }
+                        .frame(height: 160)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
                     Text(post.caption ?? "")
                     Text("❤ \(post.likeCount) · 💬 \(post.commentCount)")
                         .font(.caption)

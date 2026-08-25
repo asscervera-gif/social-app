@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -20,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -113,6 +115,19 @@ fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
             LazyColumn(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
                 items(posts, key = { it.id }) { post ->
                     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+                        // Hallazgo real, mismo hueco ya cerrado en
+                        // Guardados: esta lista tampoco mostraba la
+                        // imagen de la publicación, solo texto.
+                        post.mediaUrl?.let { url ->
+                            androidx.compose.foundation.Image(
+                                painter = coil.compose.rememberAsyncImagePainter(url),
+                                contentDescription = null,
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                modifier = Modifier.fillMaxWidth().height(180.dp)
+                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                                    .padding(bottom = 6.dp)
+                            )
+                        }
                         post.caption?.let { Text(it) }
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),

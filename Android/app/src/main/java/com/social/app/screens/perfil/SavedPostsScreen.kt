@@ -1,8 +1,10 @@
 package com.social.app.screens.perfil
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,6 +18,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -23,6 +26,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.social.app.backend.SupabaseManager
 import com.social.app.backend.model.Post
+import com.social.app.backend.model.Profile
 import io.github.jan.supabase.gotrue.auth
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Columns
@@ -52,6 +56,14 @@ class SavedPostsViewModel : ViewModel() {
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
+    // Hallazgo real, mismo hueco raíz ya cerrado en el feed y en
+    // comentarios (HomeViewModel/CommentsViewModel.authorProfiles): esta
+    // lista tampoco mostraba QUIÉN escribió cada post guardado -- ni
+    // siquiera la imagen, comparado con la colección "Guardado" real de
+    // Instagram.
+    private val _authorProfiles = MutableStateFlow<Map<String, Profile>>(emptyMap())
+    val authorProfiles: StateFlow<Map<String, Profile>> = _authorProfiles.asStateFlow()
+
     @Serializable
     private data class SavedPostRow(val posts: Post?)
 
@@ -76,7 +88,7 @@ class SavedPostsViewModel : ViewModel() {
                 } catch (e: Exception) {
                     emptySet()
                 }
-                _posts.value = SupabaseManager.client.from("saved_posts")
+                val loaded = SupabaseManager.client.from("saved_posts")
                     .select(columns = Columns.raw("created_at,posts(*)")) {
                         filter { eq("user_id", userId) }
                         order("created_at", Order.DESCENDING)
@@ -84,6 +96,21 @@ class SavedPostsViewModel : ViewModel() {
                     .decodeList<SavedPostRow>()
                     .mapNotNull { it.posts }
                     .filter { it.authorId !in blockedIds }
+                _posts.value = loaded
+
+                val authorIds = loaded.map { it.authorId }.distinct()
+                if (authorIds.isNotEmpty()) {
+                    try {
+                        _authorProfiles.value = SupabaseManager.client.from("profiles")
+                            .select(columns = Columns.raw("id,display_name,avatar_url,avatar_config")) {
+                                filter { isIn("id", authorIds) }
+                            }
+                            .decodeList<Profile>()
+                            .associateBy { it.id }
+                    } catch (e: Exception) {
+                        // No bloquea el resto de la lista si falla.
+                    }
+                }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudieron cargar tus guardados."
             }
@@ -112,9 +139,10 @@ class SavedPostsViewModel : ViewModel() {
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun SavedPostsScreen(viewModel: SavedPostsViewModel = viewModel()) {
+fun SavedPostsScreen(viewModel: SavedPostsViewModel = viewModel(), onOpenProfile: (String) -> Unit = {}) {
     val posts by viewModel.posts.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    val authorProfiles by viewModel.authorProfiles.collectAsState()
 
     LaunchedEffect(Unit) { viewModel.load() }
 
@@ -145,6 +173,33 @@ fun SavedPostsScreen(viewModel: SavedPostsViewModel = viewModel()) {
             LazyColumn(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
                 items(posts, key = { it.id }) { post ->
                     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+                        // Hallazgo real, mismo hueco raíz ya cerrado en el
+                        // feed y en comentarios: esta lista tampoco
+                        // mostraba QUIÉN escribió cada post guardado, ni
+                        // su imagen -- comparado con la colección
+                        // "Guardado" real de Instagram.
+                        val author = authorProfiles[post.authorId]
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable { onOpenProfile(post.authorId) }.padding(bottom = 6.dp)
+                        ) {
+                            com.social.app.avatar.AvatarView(config = author?.avatarConfig ?: emptyMap(), size = 24.dp)
+                            Text(
+                                author?.displayName ?: "…",
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.padding(start = 6.dp)
+                            )
+                        }
+                        post.mediaUrl?.let { url ->
+                            androidx.compose.foundation.Image(
+                                painter = coil.compose.rememberAsyncImagePainter(url),
+                                contentDescription = null,
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                modifier = Modifier.fillMaxWidth().height(180.dp)
+                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                                    .padding(bottom = 6.dp)
+                            )
+                        }
                         post.caption?.let { Text(it) }
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),

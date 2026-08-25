@@ -216,7 +216,9 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                     com.social.app.screens.perfil.MyPostsScreen()
                 }
                 composable(SAVED_POSTS_ROUTE) {
-                    com.social.app.screens.perfil.SavedPostsScreen()
+                    com.social.app.screens.perfil.SavedPostsScreen(
+                        onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
+                    )
                 }
                 composable(SOCIALS_LIST_ROUTE) {
                     com.social.app.screens.perfil.SocialsListScreen(
