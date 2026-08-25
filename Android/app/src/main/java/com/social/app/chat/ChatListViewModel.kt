@@ -26,12 +26,19 @@ import kotlinx.serialization.Serializable
 data class ChatListEntry(
     val chat: Chat,
     val otherName: String,
+    val otherAvatarConfig: Map<String, String>?,
     val lastMessage: String?,
     val lastActivity: String
 )
 
+// Hallazgo real, comparado con WhatsApp/Instagram/Messenger: la lista de
+// chats solo mostraba el nombre de la otra persona, nunca su avatar --
+// el identificador visual principal de cualquier lista de conversaciones.
 @Serializable
-private data class NameRow(@SerialName("display_name") val displayName: String)
+private data class NameRow(
+    @SerialName("display_name") val displayName: String,
+    @SerialName("avatar_config") val avatarConfig: Map<String, String>? = null
+)
 
 @Serializable
 private data class BlockRow(@SerialName("blocked_id") val blockedId: String)
@@ -164,13 +171,13 @@ class ChatListViewModel : ViewModel() {
                 val entries = myChats.map { row ->
                     val chat = Chat(row.id, row.userAId, row.userBId, row.compatibilityScore)
                     val otherId = if (row.userAId == userId) row.userBId else row.userAId
-                    val name = try {
+                    val otherProfile = try {
                         SupabaseManager.client.from("profiles")
-                            .select(columns = Columns.raw("display_name")) { filter { eq("id", otherId) } }
-                            .decodeSingleOrNull<NameRow>()?.displayName
+                            .select(columns = Columns.raw("display_name,avatar_config")) { filter { eq("id", otherId) } }
+                            .decodeSingleOrNull<NameRow>()
                     } catch (e: Exception) {
                         null
-                    } ?: "Perfil"
+                    }
 
                     val lastMessage = try {
                         SupabaseManager.client.from("messages")
@@ -186,7 +193,8 @@ class ChatListViewModel : ViewModel() {
 
                     ChatListEntry(
                         chat = chat,
-                        otherName = name,
+                        otherName = otherProfile?.displayName ?: "Perfil",
+                        otherAvatarConfig = otherProfile?.avatarConfig,
                         lastMessage = lastMessage?.body,
                         lastActivity = lastMessage?.createdAt ?: row.createdAt
                     )

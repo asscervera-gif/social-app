@@ -71,19 +71,28 @@ fun ChatListScreen(viewModel: ChatListViewModel = viewModel(), onOpenChat: (Stri
         }
         LazyColumn(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
             items(chats, key = { it.chat.id }) { entry ->
-                Column(
+                androidx.compose.foundation.layout.Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { onOpenChat(entry.chat.id) }
                         .padding(vertical = 12.dp)
                 ) {
-                    Text(entry.otherName, style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        entry.lastMessage?.takeIf { it.isNotBlank() } ?: "Sin mensajes todavía",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1
-                    )
+                    // Hallazgo real, comparado con WhatsApp/Instagram/
+                    // Messenger: la lista de chats solo mostraba el
+                    // nombre, nunca el avatar de la otra persona -- el
+                    // identificador visual principal de cualquier lista
+                    // de conversaciones.
+                    com.social.app.avatar.AvatarView(config = entry.otherAvatarConfig ?: emptyMap(), size = 44.dp)
+                    Column(modifier = Modifier.padding(start = 12.dp)) {
+                        Text(entry.otherName, style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            entry.lastMessage?.takeIf { it.isNotBlank() } ?: "Sin mensajes todavía",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
+                    }
                 }
                 HorizontalDivider()
             }

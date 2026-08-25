@@ -26,12 +26,18 @@ struct ChatListView: View {
                 Button {
                     onOpenChat(entry.chat.id)
                 } label: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(entry.otherName).font(.headline)
-                        Text(entry.lastMessage?.isEmpty == false ? entry.lastMessage! : "Sin mensajes todavía")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                    HStack(spacing: 12) {
+                        // Hallazgo real, comparado con WhatsApp/Instagram/
+                        // Messenger: la lista solo mostraba el nombre,
+                        // nunca el avatar de la otra persona.
+                        ActiveAvatarProvider.shared.avatarView(config: entry.otherAvatarConfig ?? [:], size: 44)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(entry.otherName).font(.headline)
+                            Text(entry.lastMessage?.isEmpty == false ? entry.lastMessage! : "Sin mensajes todavía")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
                     }
                 }
                 .buttonStyle(.plain)

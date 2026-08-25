@@ -20,6 +20,11 @@ struct ChatListEntry: Identifiable {
     let id: UUID
     let chat: Chat
     let otherName: String
+    // Hallazgo real, comparado con WhatsApp/Instagram/Messenger: la lista
+    // de chats solo mostraba el nombre de la otra persona, nunca su
+    // avatar -- el identificador visual principal de cualquier lista de
+    // conversaciones. Equivalente de ChatListEntry.otherAvatarConfig (Kotlin).
+    let otherAvatarConfig: [String: String]?
     let lastMessage: String?
     let lastActivity: String
 }
@@ -114,10 +119,12 @@ final class ChatListViewModel: ObservableObject {
             var entries: [ChatListEntry] = []
             for chat in myChats {
                 let otherID = chat.userAID == userID ? chat.userBID : chat.userAID
-                let name = await otherDisplayName(id: otherID) ?? "Perfil"
+                let otherProfile = await otherProfileInfo(id: otherID)
                 let last = await lastMessage(chatID: chat.id)
                 entries.append(ChatListEntry(
-                    id: chat.id, chat: chat, otherName: name,
+                    id: chat.id, chat: chat,
+                    otherName: otherProfile?.display_name ?? "Perfil",
+                    otherAvatarConfig: otherProfile?.avatar_config,
                     lastMessage: last?.body, lastActivity: last?.created_at ?? chat.createdAt
                 ))
             }
@@ -127,16 +134,19 @@ final class ChatListViewModel: ObservableObject {
         }
     }
 
-    private func otherDisplayName(id: UUID) async -> String? {
-        struct NameRow: Decodable { let display_name: String }
-        let row: NameRow? = try? await SupabaseManager.shared.client
+    private struct NameRow: Decodable {
+        let display_name: String
+        let avatar_config: [String: String]?
+    }
+
+    private func otherProfileInfo(id: UUID) async -> NameRow? {
+        try? await SupabaseManager.shared.client
             .from("profiles")
-            .select("display_name")
+            .select("display_name,avatar_config")
             .eq("id", value: id)
             .single()
             .execute()
             .value
-        return row?.display_name
     }
 
     private struct LastMessageRow: Decodable {
