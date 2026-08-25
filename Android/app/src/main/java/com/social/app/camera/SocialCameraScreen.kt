@@ -68,6 +68,29 @@ fun SocialCameraScreen(proximity: SocialProximity, onOpenProfile: (String) -> Un
     val safety: SafetyManager = viewModel()
     val eventMode: EventModeViewModel = viewModel()
     val context = LocalContext.current
+    // Hallazgo real, reportado directamente por el usuario probando la
+    // app de verdad: "el muñeco que sale en social al entrar no
+    // significa nada" -- PeerMarker dibujaba un degradado aleatorio sin
+    // relación con la persona detectada. Se resuelve el perfil real
+    // (nombre + avatar) en cuanto el UWB identifica un profileId, mismo
+    // patrón de caché que fetchActorProfiles en AvisosViewModel.kt.
+    var peerProfiles by remember { mutableStateOf<Map<String, com.social.app.backend.model.Profile>>(emptyMap()) }
+    LaunchedEffect(peers.values.mapNotNull { it.profileId }.toSet()) {
+        val missing = peers.values.mapNotNull { it.profileId }.toSet() - peerProfiles.keys
+        if (missing.isEmpty()) return@LaunchedEffect
+        try {
+            val fetched = SupabaseManager.client.from("profiles")
+                .select(columns = io.github.jan.supabase.postgrest.query.Columns.raw("id,display_name,avatar_config")) {
+                    filter { isIn("id", missing.toList()) }
+                }
+                .decodeList<com.social.app.backend.model.Profile>()
+                .associateBy { it.id }
+            peerProfiles = peerProfiles + fetched
+        } catch (e: Exception) {
+            // Sin perfil resuelto todavía, PeerMarker cae al estado
+            // honesto "Alguien cerca" -- no bloquea el resto de la pantalla.
+        }
+    }
 
     // Ubicación mínima para Modo Evento — comprueba si el usuario está dentro
     // del radio de algún evento activo (mismo criterio que EventLocationProvider
@@ -125,6 +148,15 @@ fun SocialCameraScreen(proximity: SocialProximity, onOpenProfile: (String) -> Un
     Box(modifier = Modifier.fillMaxSize()) {
         CameraPreview(modifier = Modifier.fillMaxSize())
 
+        // Radar de fondo -- comparado con el boceto real
+        // (social_boceto.html, .radar/.sweep): refuerza visualmente que
+        // SOCIAL está escaneando de verdad alrededor tuyo, la "brújula"
+        // pedida directamente por el usuario. Anclado cerca del centro
+        // inferior, detrás de los marcadores reales.
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+            RadarBackground(modifier = Modifier.padding(bottom = 70.dp))
+        }
+
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val widthPx = constraints.maxWidth.toFloat()
             val heightPx = constraints.maxHeight.toFloat()
@@ -134,6 +166,7 @@ fun SocialCameraScreen(proximity: SocialProximity, onOpenProfile: (String) -> Un
                 val density = androidx.compose.ui.platform.LocalDensity.current
                 val xDp = with(density) { offset.x.toDp() }
                 val yDp = with(density) { offset.y.toDp() }
+                val resolvedProfile = proximityEntry.profileId?.let { peerProfiles[it] }
                 Box(
                     modifier = Modifier
                         .padding(start = xDp - 28.dp, top = yDp - 28.dp)
@@ -143,7 +176,11 @@ fun SocialCameraScreen(proximity: SocialProximity, onOpenProfile: (String) -> Un
                             else Modifier
                         )
                 ) {
-                    PeerMarker(distanceMeters = proximityEntry.distanceMeters)
+                    PeerMarker(
+                        distanceMeters = proximityEntry.distanceMeters,
+                        displayName = resolvedProfile?.displayName,
+                        avatarConfig = resolvedProfile?.avatarConfig
+                    )
                 }
             }
         }

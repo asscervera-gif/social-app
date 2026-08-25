@@ -212,21 +212,27 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                     )
                 }
                 composable(SEARCH_ROUTE) {
-                    com.social.app.screens.search.SearchScreen(
-                        onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
-                    )
+                    com.social.app.ui.theme.BackScaffold(title = "Buscar", onBack = { navController.popBackStack() }) {
+                        com.social.app.screens.search.SearchScreen(
+                            onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
+                        )
+                    }
                 }
                 composable(HASHTAG_SEARCH_ROUTE) { routeEntry ->
                     val tag = routeEntry.arguments?.getString("tag").orEmpty()
-                    com.social.app.screens.search.SearchScreen(
-                        onOpenProfile = { profileId -> navController.navigate("profile/$profileId") },
-                        initialHashtag = java.net.URLDecoder.decode(tag, "UTF-8")
-                    )
+                    com.social.app.ui.theme.BackScaffold(title = "Buscar", onBack = { navController.popBackStack() }) {
+                        com.social.app.screens.search.SearchScreen(
+                            onOpenProfile = { profileId -> navController.navigate("profile/$profileId") },
+                            initialHashtag = java.net.URLDecoder.decode(tag, "UTF-8")
+                        )
+                    }
                 }
                 composable(FIND_ROUTE) {
-                    com.social.app.screens.home.FindMapScreen(
-                        onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
-                    )
+                    com.social.app.ui.theme.BackScaffold(title = "Find", onBack = { navController.popBackStack() }) {
+                        com.social.app.screens.home.FindMapScreen(
+                            onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
+                        )
+                    }
                 }
                 composable(Tab.MATCH.route) {
                     MatchScreen(onOpenProfile = { profileId -> navController.navigate("profile/$profileId") })
@@ -254,80 +260,119 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                         onOpenSavedPosts = { navController.navigate(SAVED_POSTS_ROUTE) }
                     )
                 }
+                // Hallazgo real, sistémico, encontrado por el usuario
+                // probando la app de verdad ("no se puede volver atrás"):
+                // NINGUNA pantalla empujada por navegación tenía un botón
+                // de volver real -- dependían solo del gesto de sistema,
+                // casi imposible de repetir con ratón en el emulador (y un
+                // antipatrón de Material Design incluso en un dispositivo
+                // real). `BackScaffold` centraliza la barra superior real
+                // (título + flecha), envolviendo cada pantalla aquí mismo
+                // sin tocar su disposición interna.
                 composable(MY_POSTS_ROUTE) {
-                    com.social.app.screens.perfil.MyPostsScreen()
+                    com.social.app.ui.theme.BackScaffold(title = "Tus publicaciones", onBack = { navController.popBackStack() }) {
+                        com.social.app.screens.perfil.MyPostsScreen()
+                    }
                 }
                 composable(SAVED_POSTS_ROUTE) {
-                    com.social.app.screens.perfil.SavedPostsScreen(
-                        onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
-                    )
+                    com.social.app.ui.theme.BackScaffold(title = "Guardados", onBack = { navController.popBackStack() }) {
+                        com.social.app.screens.perfil.SavedPostsScreen(
+                            onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
+                        )
+                    }
                 }
                 composable(SOCIALS_LIST_ROUTE) {
-                    com.social.app.screens.perfil.SocialsListScreen(
-                        onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
-                    )
+                    com.social.app.ui.theme.BackScaffold(title = "Tus socials", onBack = { navController.popBackStack() }) {
+                        com.social.app.screens.perfil.SocialsListScreen(
+                            onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
+                        )
+                    }
                 }
                 composable(DUEL_HISTORY_ROUTE) {
-                    DuelHistoryScreen(onOpenDuel = { duelId -> navController.navigate("duel_result/$duelId") })
+                    com.social.app.ui.theme.BackScaffold(title = "Duelos", onBack = { navController.popBackStack() }) {
+                        DuelHistoryScreen(onOpenDuel = { duelId -> navController.navigate("duel_result/$duelId") })
+                    }
                 }
                 composable(CHAT_LIST_ROUTE) {
-                    com.social.app.chat.ChatListScreen(onOpenChat = { chatId -> navController.navigate("chat/$chatId") })
+                    com.social.app.ui.theme.BackScaffold(title = "Tus chats", onBack = { navController.popBackStack() }) {
+                        com.social.app.chat.ChatListScreen(onOpenChat = { chatId -> navController.navigate("chat/$chatId") })
+                    }
                 }
                 composable(AJUSTES_ROUTE) {
-                    AjustesScreen(
-                        onAccountDeleted = {
-                            // AccountManager.deleteAccount() ya llama a
-                            // auth.signOut() — AppRoot.kt reacciona a
-                            // sessionStatus y desmonta este NavHost entero
-                            // en favor de AuthScreen automáticamente. Ya no
-                            // hace falta navegar a mano (antes no existía
-                            // ninguna pantalla de login a la que volver).
-                        },
-                        onOpenBlockedUsers = { navController.navigate(BLOCKED_USERS_ROUTE) },
-                        onOpenCompatShares = { navController.navigate(COMPAT_SHARES_ROUTE) },
-                        onOpenPrivacyPolicy = { navController.navigate(PRIVACY_POLICY_ROUTE) },
-                        onOpenModeration = { navController.navigate(MODERATION_ROUTE) }
-                    )
+                    com.social.app.ui.theme.BackScaffold(title = "Ajustes", onBack = { navController.popBackStack() }) {
+                        AjustesScreen(
+                            onAccountDeleted = {
+                                // AccountManager.deleteAccount() ya llama a
+                                // auth.signOut() — AppRoot.kt reacciona a
+                                // sessionStatus y desmonta este NavHost entero
+                                // en favor de AuthScreen automáticamente. Ya no
+                                // hace falta navegar a mano (antes no existía
+                                // ninguna pantalla de login a la que volver).
+                            },
+                            onOpenBlockedUsers = { navController.navigate(BLOCKED_USERS_ROUTE) },
+                            onOpenCompatShares = { navController.navigate(COMPAT_SHARES_ROUTE) },
+                            onOpenPrivacyPolicy = { navController.navigate(PRIVACY_POLICY_ROUTE) },
+                            onOpenModeration = { navController.navigate(MODERATION_ROUTE) }
+                        )
+                    }
                 }
                 composable(MODERATION_ROUTE) {
-                    com.social.app.screens.perfil.ModerationScreen()
+                    com.social.app.ui.theme.BackScaffold(title = "Moderación", onBack = { navController.popBackStack() }) {
+                        com.social.app.screens.perfil.ModerationScreen()
+                    }
                 }
                 composable(COMPAT_SHARES_ROUTE) {
-                    com.social.app.screens.perfil.CompatSharesScreen(
-                        onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
-                    )
+                    com.social.app.ui.theme.BackScaffold(title = "Quién ve tu compatibilidad", onBack = { navController.popBackStack() }) {
+                        com.social.app.screens.perfil.CompatSharesScreen(
+                            onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
+                        )
+                    }
                 }
                 composable(PRIVACY_POLICY_ROUTE) {
-                    com.social.app.screens.perfil.PrivacyPolicyScreen()
+                    com.social.app.ui.theme.BackScaffold(title = "Política de privacidad", onBack = { navController.popBackStack() }) {
+                        com.social.app.screens.perfil.PrivacyPolicyScreen()
+                    }
                 }
                 composable(TERMS_ROUTE) {
-                    com.social.app.screens.perfil.TermsOfServiceScreen()
+                    com.social.app.ui.theme.BackScaffold(title = "Términos del servicio", onBack = { navController.popBackStack() }) {
+                        com.social.app.screens.perfil.TermsOfServiceScreen()
+                    }
                 }
                 composable(BLOCKED_USERS_ROUTE) {
-                    com.social.app.screens.perfil.BlockedUsersScreen()
+                    com.social.app.ui.theme.BackScaffold(title = "Usuarios bloqueados", onBack = { navController.popBackStack() }) {
+                        com.social.app.screens.perfil.BlockedUsersScreen()
+                    }
                 }
 
                 composable(CHAT_ROUTE) { routeEntry ->
                     val chatId = routeEntry.arguments?.getString("chatId") ?: return@composable
                     val currentUserId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@composable
-                    ChatScreen(
-                        chatId = chatId,
-                        currentUserId = currentUserId,
-                        onStartDuel = { opponentId -> navController.navigate("duel/$chatId/$opponentId") }
-                    )
+                    com.social.app.ui.theme.BackScaffold(title = "Chat", onBack = { navController.popBackStack() }) {
+                        ChatScreen(
+                            chatId = chatId,
+                            currentUserId = currentUserId,
+                            onStartDuel = { opponentId -> navController.navigate("duel/$chatId/$opponentId") }
+                        )
+                    }
                 }
                 composable(DUEL_ROUTE) { routeEntry ->
                     val chatId = routeEntry.arguments?.getString("chatId") ?: return@composable
                     val opponentId = routeEntry.arguments?.getString("opponentId") ?: return@composable
-                    DuelEntryPoint(chatId = chatId, opponentId = opponentId)
+                    com.social.app.ui.theme.BackScaffold(title = "Duelo", onBack = { navController.popBackStack() }) {
+                        DuelEntryPoint(chatId = chatId, opponentId = opponentId)
+                    }
                 }
                 composable(PROFILE_ROUTE) { routeEntry ->
                     val profileId = routeEntry.arguments?.getString("profileId") ?: return@composable
-                    ProfileViewerScreen(profileId = profileId)
+                    com.social.app.ui.theme.BackScaffold(title = "Perfil", onBack = { navController.popBackStack() }) {
+                        ProfileViewerScreen(profileId = profileId)
+                    }
                 }
                 composable(DUEL_RESULT_ROUTE) { routeEntry ->
                     val duelId = routeEntry.arguments?.getString("duelId") ?: return@composable
-                    DuelResultScreen(duelId = duelId)
+                    com.social.app.ui.theme.BackScaffold(title = "Resultado del duelo", onBack = { navController.popBackStack() }) {
+                        DuelResultScreen(duelId = duelId)
+                    }
                 }
             }
 
