@@ -147,7 +147,16 @@ struct HomeView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 14) {
                         ForEach(viewModel.recommended, id: \.profile.id) { entry in
-                            RecommendedCard(profile: entry.profile, compatibility: entry.compatibility)
+                            // Hallazgo real, mismo hueco raíz ya cerrado en
+                            // el feed principal: "Recomendados" tampoco
+                            // llevaba a ningún perfil al tocarlo, comparado
+                            // con "Sugeridos para ti" de Instagram.
+                            NavigationLink {
+                                ProfileViewerView(profileID: entry.profile.id)
+                            } label: {
+                                RecommendedCard(profile: entry.profile, compatibility: entry.compatibility)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.horizontal)

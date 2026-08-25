@@ -162,7 +162,9 @@ fun HomeScreen(
                 item { Text("Recomendados", style = androidx.compose.material3.MaterialTheme.typography.titleMedium) }
                 item {
                     androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(recommended) { entry -> RecommendedCard(entry) }
+                        items(recommended) { entry ->
+                            RecommendedCard(entry, onClick = { onOpenProfile(entry.profile.id) })
+                        }
                     }
                 }
             }
@@ -247,8 +249,12 @@ private fun buildAnnotatedStringWithHashtags(caption: String, linkColor: android
 }
 
 @Composable
-private fun RecommendedCard(entry: HomeViewModel.Recommended) {
-    Card(modifier = Modifier.padding(4.dp)) {
+private fun RecommendedCard(entry: HomeViewModel.Recommended, onClick: () -> Unit) {
+    // Hallazgo real, mismo hueco raíz ya cerrado en el feed principal
+    // (PostCard sin onOpenProfile): "Recomendados" tampoco llevaba a
+    // ningún perfil al tocarlo, comparado con "Sugeridos para ti" de
+    // Instagram (siempre tocable).
+    Card(modifier = Modifier.padding(4.dp).clickable(onClick = onClick)) {
         Column(modifier = Modifier.padding(10.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
             com.social.app.avatar.AvatarView(config = entry.profile.avatarConfig ?: emptyMap(), size = 56.dp)
             Text(entry.profile.displayName, style = androidx.compose.material3.MaterialTheme.typography.labelMedium)
