@@ -54,6 +54,10 @@ data class ReportEntry(
     @SerialName("created_at") val createdAt: String,
     @SerialName("post_id") val postId: String? = null,
     @SerialName("comment_id") val commentId: String? = null,
+    // Hallazgo real, comparado con Instagram/WhatsApp/Messenger: mismo
+    // hueco exacto que post_id/comment_id pero en un chat --
+    // 0048_reports_message_reference.sql.
+    @SerialName("message_id") val messageId: String? = null,
     val reporterName: String? = null,
     val reportedName: String? = null,
     // Hallazgo real, comparado con Instagram/TikTok/Facebook: antes un
@@ -62,7 +66,9 @@ data class ReportEntry(
     // comentario real referenciado (0045_reports_content_reference.sql).
     val postCaption: String? = null,
     val postMediaUrl: String? = null,
-    val commentBody: String? = null
+    val commentBody: String? = null,
+    val messageBody: String? = null,
+    val messageMediaUrl: String? = null
 )
 
 /**
@@ -111,6 +117,9 @@ class ModerationViewModel : ViewModel() {
     @Serializable
     private data class CommentContentRow(val body: String)
 
+    @Serializable
+    private data class MessageContentRow(val body: String? = null, @SerialName("media_url") val mediaUrl: String? = null)
+
     /** Resuelve el contenido real denunciado -- si el post/comentario ya
      * se borró (0045: `on delete set null`), simplemente no hay nada que
      * mostrar, la denuncia en sí sigue existiendo para el historial. */
@@ -137,7 +146,27 @@ class ModerationViewModel : ViewModel() {
                 null
             }
         }
-        return entry.copy(postCaption = post?.caption, postMediaUrl = post?.mediaUrl, commentBody = comment?.body)
+        // messages_select_admin (0048) solo deja ver mensajes que SÍ están
+        // referenciados por una denuncia real -- a diferencia de
+        // posts_select_admin/comments_select_admin (0045), no es un bypass
+        // general para cualquier admin: un chat es la superficie más
+        // privada de la app, y aquí el criterio es más conservador a
+        // propósito.
+        val message = entry.messageId?.let { messageId ->
+            try {
+                SupabaseManager.client.from("messages")
+                    .select(columns = io.github.jan.supabase.postgrest.query.Columns.raw("body,media_url")) {
+                        filter { eq("id", messageId) }
+                    }
+                    .decodeSingleOrNull<MessageContentRow>()
+            } catch (e: Exception) {
+                null
+            }
+        }
+        return entry.copy(
+            postCaption = post?.caption, postMediaUrl = post?.mediaUrl, commentBody = comment?.body,
+            messageBody = message?.body, messageMediaUrl = message?.mediaUrl
+        )
     }
 
     fun load() {
@@ -355,6 +384,24 @@ fun ModerationScreen(viewModel: ModerationViewModel = viewModel()) {
                         Column(modifier = Modifier.padding(top = 6.dp)) {
                             Text("Comentario denunciado:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(report.commentBody ?: "(el comentario ya no existe)", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    // Hallazgo real, comparado con Instagram/WhatsApp/
+                    // Messenger: mismo hueco exacto que post/comentario
+                    // pero en un chat -- 0048_reports_message_reference.sql.
+                    if (report.messageId != null) {
+                        Column(modifier = Modifier.padding(top = 6.dp)) {
+                            Text("Mensaje denunciado:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            report.messageMediaUrl?.let { url ->
+                                androidx.compose.foundation.Image(
+                                    painter = coil.compose.rememberAsyncImagePainter(url),
+                                    contentDescription = null,
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                    modifier = Modifier.fillMaxWidth().heightIn(max = 160.dp)
+                                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                                )
+                            }
+                            Text(report.messageBody ?: "(el mensaje ya no existe)", style = MaterialTheme.typography.bodySmall)
                         }
                     }
                     Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {

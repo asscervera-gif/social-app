@@ -27,6 +27,10 @@ struct ChatView: View {
     // cualquier app de mensajería grande. ReportSheet ya existe y ya
     // incluye ambas acciones, solo faltaba este punto de entrada.
     @State private var showReportSheet = false
+    // Hallazgo real, comparado con Instagram/WhatsApp/Messenger: no había
+    // forma de denunciar un MENSAJE concreto, solo a la otra persona en
+    // general -- ver 0048_reports_message_reference.sql.
+    @State private var reportMessageID: UUID?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -48,6 +52,18 @@ struct ChatView: View {
                     }
                     .sheet(isPresented: $showReportSheet) {
                         ReportSheet(userID: currentUserID, reportedID: opponentID)
+                    }
+                    // Hallazgo real, comparado con Instagram/WhatsApp/
+                    // Messenger: no había forma de denunciar un MENSAJE
+                    // concreto, solo a la otra persona en general -- ver
+                    // 0048_reports_message_reference.sql. `Binding(get:set:)`
+                    // en vez de `.sheet(item:)`: mismo patrón ya usado en
+                    // el resto de la sesión para un UUID? sin Identifiable.
+                    .sheet(isPresented: Binding(
+                        get: { reportMessageID != nil },
+                        set: { if !$0 { reportMessageID = nil } }
+                    )) {
+                        ReportSheet(userID: currentUserID, reportedID: opponentID, messageID: reportMessageID)
                     }
             }
 
@@ -81,6 +97,9 @@ struct ChatView: View {
                                 },
                                 onDelete: {
                                     Task { await viewModel.deleteMessage(message.id) }
+                                },
+                                onReport: {
+                                    reportMessageID = message.id
                                 }
                             )
                             .id(message.id)
@@ -246,6 +265,10 @@ private struct MessageBubble: View {
     let reactions: [ChatViewModel.MessageReaction]
     let onToggleReaction: (String) -> Void
     var onDelete: () -> Void = {}
+    // Hallazgo real, comparado con Instagram/WhatsApp/Messenger: no había
+    // forma de denunciar un MENSAJE concreto -- ver
+    // 0048_reports_message_reference.sql.
+    var onReport: () -> Void = {}
 
     @State private var showPicker = false
     // Hallazgo real, comparado con Instagram/Twitter/WhatsApp: no había
@@ -294,7 +317,7 @@ private struct MessageBubble: View {
                 // — mantener pulsado el tuyo lo borra (ver
                 // 0022_messages_delete.sql).
                 .onLongPressGesture {
-                    if isMine { onDelete() }
+                    if isMine { onDelete() } else { onReport() }
                 }
                 if !isMine { Spacer() }
             }

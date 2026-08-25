@@ -42,7 +42,11 @@ fun ReportSheet(
     // en vez del texto libre y editable de antes ("Publicación {id}"
     // metido a mano en initialDetails).
     postId: String? = null,
-    commentId: String? = null
+    commentId: String? = null,
+    // Hallazgo real, comparado con Instagram/WhatsApp/Messenger: mismo
+    // hueco exacto que postId/commentId pero en un chat -- ver
+    // 0048_reports_message_reference.sql.
+    messageId: String? = null
 ) {
     var reason by remember { mutableStateOf(REASONS.first()) }
     var details by remember { mutableStateOf(initialDetails) }
@@ -81,7 +85,7 @@ fun ReportSheet(
 
             Button(
                 onClick = {
-                    safety.report(reporterId, reportedId, reason, details.ifBlank { null }, postId, commentId)
+                    safety.report(reporterId, reportedId, reason, details.ifBlank { null }, postId, commentId, messageId)
                     onDismiss()
                 },
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp)

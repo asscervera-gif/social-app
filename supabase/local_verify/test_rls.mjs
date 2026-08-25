@@ -315,6 +315,50 @@ async function main() {
   const contentReportAfterPostDeleted = (await db.query(`select post_id from reports where id = $1`, [contentReport.id])).rows[0];
   check('reports.post_id: borrar el post después SÍ pone la referencia a null, sin borrar la denuncia (on delete set null)', contentReportAfterPostDeleted !== undefined && contentReportAfterPostDeleted.post_id === null);
 
+  // --- reports.message_id (0048): mismo hueco exacto que post_id/
+  // comment_id, pero en un chat -- comparado con Instagram/WhatsApp/
+  // Messenger. `chat` (u1<->u2) ya tiene mensajes reales de más arriba
+  // (messages_insert); u1 sigue bloqueado por u2 en este punto del
+  // archivo (el desbloqueo real ocurre más abajo), así que el mensaje de
+  // prueba se inserta con el superusuario -- lo que se está probando es
+  // la visibilidad del ADMIN, no el envío en sí.
+  await asSuperuser();
+  const messageToReport = (await db.query(
+    `insert into messages (chat_id, sender_id, body) values ($1, $2, 'mensaje real a denunciar') returning id`, [chat.id, u2]
+  )).rows[0];
+  await asUser(u3);
+  const messageReport = (await db.query(
+    `insert into reports (reporter_id, reported_id, reason, message_id) values ($1, $2, 'acoso', $3) returning id`,
+    [u3, u2, messageToReport.id]
+  )).rows[0];
+  const messageReportAsAdmin = (await db.query(`select message_id from reports where id = $1`, [messageReport.id])).rows[0];
+  check('reports.message_id: un admin real ve la referencia al mensaje denunciado de verdad, no solo texto suelto', messageReportAsAdmin.message_id === messageToReport.id);
+
+  // messages_select_admin (0048): a diferencia de posts_select_admin/
+  // comments_select_admin (bypass GENERAL para cualquier admin), aquí es
+  // deliberadamente más estrecho -- u3 (admin) no tiene ningún social con
+  // u1/u2 ni es participante del chat, así que solo puede ver el mensaje
+  // PORQUE está referenciado por una denuncia real, nunca por ser admin
+  // en general (un chat es la superficie más privada de la app).
+  const messageAsAdmin = (await db.query(`select body from messages where id = $1`, [messageToReport.id])).rows;
+  check('messages_select_admin: un admin real SÍ ve el mensaje concreto denunciado', messageAsAdmin.length === 1 && messageAsAdmin[0].body === 'mensaje real a denunciar');
+
+  // El mensaje "hola" de u2 (messages_insert, más arriba) NUNCA se
+  // denunció -- un admin NO debe poder verlo solo por ser admin, a
+  // diferencia de un post/comentario cualquiera (bypass acotado, no general).
+  const undenouncedMessageAsAdmin = (await db.query(`select 1 from messages where chat_id = $1 and body = 'hola'`, [chat.id])).rows;
+  check('messages_select_admin: un admin real NO ve un mensaje del mismo chat que nunca se denunció', undenouncedMessageAsAdmin.length === 0);
+
+  // Si el mensaje se borra después de denunciarse, la denuncia sigue
+  // existiendo para el historial -- solo pierde la referencia (on delete
+  // set null, no cascade). Lo borra u2, el remitente real
+  // (messages_delete_own, sin relación con el bloqueo activo de u1).
+  await asUser(u2);
+  await db.query(`delete from messages where id = $1`, [messageToReport.id]);
+  await asUser(u3);
+  const messageReportAfterDeleted = (await db.query(`select message_id from reports where id = $1`, [messageReport.id])).rows[0];
+  check('reports.message_id: borrar el mensaje después SÍ pone la referencia a null, sin borrar la denuncia (on delete set null)', messageReportAfterDeleted !== undefined && messageReportAfterDeleted.message_id === null);
+
   // --- admin_ban_user (0037): solo un admin real puede banear, y el
   // baneo se refleja en my_ban_status (la vista que consulta el cliente
   // al arrancar) ---

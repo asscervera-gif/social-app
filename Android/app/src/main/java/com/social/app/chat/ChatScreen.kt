@@ -74,6 +74,12 @@ fun ChatScreen(chatId: String, currentUserId: String, onStartDuel: (opponentId: 
     // cualquier app de mensajería grande. ReportSheet ya existe y ya
     // incluye ambas acciones, solo faltaba este punto de entrada.
     var showReportSheet by remember { mutableStateOf(false) }
+    // Hallazgo real, comparado con Instagram/WhatsApp/Messenger: no había
+    // forma de denunciar un MENSAJE concreto, solo a la otra persona en
+    // general -- mantener pulsado un mensaje ajeno (el propio ya usa
+    // mantener pulsado para borrar) lo denuncia con referencia real al
+    // mensaje. Ver 0048_reports_message_reference.sql.
+    var reportMessageId by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) viewModel.sendPhoto(context, uri)
@@ -190,7 +196,7 @@ fun ChatScreen(chatId: String, currentUserId: String, onStartDuel: (opponentId: 
                         // 0022_messages_delete.sql).
                         modifier = Modifier.combinedClickable(
                             onClick = { showPicker = !showPicker },
-                            onLongClick = { if (isMine) viewModel.deleteMessage(message.id) }
+                            onLongClick = { if (isMine) viewModel.deleteMessage(message.id) else reportMessageId = message.id }
                         )
                     ) {
                         // Hallazgo real: el chat solo soportaba texto — ver
@@ -208,7 +214,7 @@ fun ChatScreen(chatId: String, currentUserId: String, onStartDuel: (opponentId: 
                                 modifier = Modifier.size(200.dp).clip(RoundedCornerShape(14.dp))
                                     .combinedClickable(
                                         onClick = { fullScreenImageUrl = message.mediaUrl },
-                                        onLongClick = { if (isMine) viewModel.deleteMessage(message.id) }
+                                        onLongClick = { if (isMine) viewModel.deleteMessage(message.id) else reportMessageId = message.id }
                                     )
                             )
                         } else if (message.audioUrl != null) {
@@ -349,6 +355,16 @@ fun ChatScreen(chatId: String, currentUserId: String, onStartDuel: (opponentId: 
                 reporterId = currentUserId,
                 reportedId = opponent,
                 onDismiss = { showReportSheet = false }
+            )
+        }
+    }
+    reportMessageId?.let { messageId ->
+        opponentId?.let { opponent ->
+            com.social.app.safety.ReportSheet(
+                reporterId = currentUserId,
+                reportedId = opponent,
+                messageId = messageId,
+                onDismiss = { reportMessageId = null }
             )
         }
     }

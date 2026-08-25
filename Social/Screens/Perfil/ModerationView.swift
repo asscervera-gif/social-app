@@ -28,6 +28,10 @@ struct ReportEntry: Decodable, Identifiable {
     let created_at: String
     let post_id: UUID?
     let comment_id: UUID?
+    // Hallazgo real, comparado con Instagram/WhatsApp/Messenger: mismo
+    // hueco exacto que post_id/comment_id pero en un chat --
+    // 0048_reports_message_reference.sql.
+    let message_id: UUID?
     var reporterName: String?
     var reportedName: String?
     // Hallazgo real, comparado con Instagram/TikTok/Facebook: antes un
@@ -37,6 +41,8 @@ struct ReportEntry: Decodable, Identifiable {
     var postCaption: String?
     var postMediaURL: String?
     var commentBody: String?
+    var messageBody: String?
+    var messageMediaURL: String?
 }
 
 // Hallazgo real, comparado con Instagram/TikTok/Facebook, segunda mitad
@@ -100,6 +106,27 @@ final class ModerationViewModel: ObservableObject {
                 .execute()
                 .value
             entry.commentBody = comment?.body
+        }
+        // messages_select_admin (0048) solo deja ver mensajes que SÍ están
+        // referenciados por una denuncia real -- a diferencia de
+        // posts_select_admin/comments_select_admin (0045), no es un
+        // bypass general para cualquier admin: un chat es la superficie
+        // más privada de la app, y aquí el criterio es más conservador a
+        // propósito.
+        if let messageID = entry.message_id {
+            struct MessageContentRow: Decodable {
+                let body: String?
+                let media_url: String?
+            }
+            let message: MessageContentRow? = try? await SupabaseManager.shared.client
+                .from("messages")
+                .select("body,media_url")
+                .eq("id", value: messageID)
+                .single()
+                .execute()
+                .value
+            entry.messageBody = message?.body
+            entry.messageMediaURL = message?.media_url
         }
         return entry
     }
@@ -310,6 +337,26 @@ struct ModerationView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Comentario denunciado:").font(.caption2).foregroundStyle(.secondary)
                             Text(report.commentBody ?? "(el comentario ya no existe)").font(.footnote)
+                        }
+                        .padding(.top, 4)
+                    }
+                    // Hallazgo real, comparado con Instagram/WhatsApp/
+                    // Messenger: mismo hueco exacto que post/comentario
+                    // pero en un chat -- 0048_reports_message_reference.sql.
+                    if report.message_id != nil {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Mensaje denunciado:").font(.caption2).foregroundStyle(.secondary)
+                            if let mediaURLString = report.messageMediaURL, let mediaURL = URL(string: mediaURLString) {
+                                AsyncImage(url: mediaURL) { image in
+                                    image.resizable().scaledToFill()
+                                } placeholder: {
+                                    RoundedRectangle(cornerRadius: 6).fill(.gray.opacity(0.15))
+                                }
+                                .frame(height: 120)
+                                .clipped()
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                            }
+                            Text(report.messageBody ?? "(el mensaje ya no existe)").font(.footnote)
                         }
                         .padding(.top, 4)
                     }

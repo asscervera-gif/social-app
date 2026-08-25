@@ -54,7 +54,7 @@ final class SafetyManager: ObservableObject {
     /// Envía una denuncia. Se revisa manualmente por moderación (fuera del alcance de la app cliente).
     func report(
         reporterID: UUID, reportedID: UUID, reason: String, details: String?,
-        postID: UUID? = nil, commentID: UUID? = nil
+        postID: UUID? = nil, commentID: UUID? = nil, messageID: UUID? = nil
     ) async {
         // Mismo límite real que reports_details_length
         // (0024_more_text_length_limits.sql) — "details" es el único
@@ -76,13 +76,19 @@ final class SafetyManager: ObservableObject {
             // (0045_reports_content_reference.sql).
             let post_id: UUID?
             let comment_id: UUID?
+            // Hallazgo real, comparado con Instagram/WhatsApp/Messenger:
+            // mismo hueco exacto que post_id/comment_id pero en un chat --
+            // denunciar desde un chat solo apuntaba al perfil de la otra
+            // persona, sin ningún rastro de QUÉ mensaje concreto motivó la
+            // denuncia (0048_reports_message_reference.sql).
+            let message_id: UUID?
         }
         do {
             try await SupabaseManager.shared.client
                 .from("reports")
                 .insert(ReportRow(
                     reporter_id: reporterID, reported_id: reportedID, reason: reason, details: details,
-                    post_id: postID, comment_id: commentID
+                    post_id: postID, comment_id: commentID, message_id: messageID
                 ))
                 .execute()
             // Hallazgo real, mismo criterio ya aplicado en la versión

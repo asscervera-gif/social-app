@@ -72,7 +72,13 @@ class SafetyManager : ViewModel() {
         // en `details`) -- un admin no tenía forma real de ver el
         // contenido denunciado. Referencia real (0045_reports_content_reference.sql).
         @SerialName("post_id") val postId: String? = null,
-        @SerialName("comment_id") val commentId: String? = null
+        @SerialName("comment_id") val commentId: String? = null,
+        // Hallazgo real, comparado con Instagram/WhatsApp/Messenger: mismo
+        // hueco exacto que post_id/comment_id (0045) pero en un chat --
+        // denunciar desde un chat solo apuntaba al perfil de la otra
+        // persona, sin ningún rastro de QUÉ mensaje concreto motivó la
+        // denuncia (0048_reports_message_reference.sql).
+        @SerialName("message_id") val messageId: String? = null
     )
 
     fun report(
@@ -81,7 +87,8 @@ class SafetyManager : ViewModel() {
         reason: String,
         details: String?,
         postId: String? = null,
-        commentId: String? = null
+        commentId: String? = null,
+        messageId: String? = null
     ) {
         // Mismo límite real que reports_details_length
         // (0024_more_text_length_limits.sql) — "details" es el único
@@ -93,7 +100,7 @@ class SafetyManager : ViewModel() {
         }
         viewModelScope.launch {
             try {
-                SupabaseManager.client.from("reports").insert(ReportRow(reporterId, reportedId, reason, details, postId, commentId))
+                SupabaseManager.client.from("reports").insert(ReportRow(reporterId, reportedId, reason, details, postId, commentId, messageId))
                 // Hallazgo real: cada acción clave de la app se registra
                 // con AnalyticsManager (duel_completed, tab_view,
                 // app_open...) salvo denunciar — el propio equipo de

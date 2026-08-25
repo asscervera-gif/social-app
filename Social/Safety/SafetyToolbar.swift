@@ -61,16 +61,21 @@ struct ReportSheet: View {
     // metido a mano en initialDetails).
     let postID: UUID?
     let commentID: UUID?
+    // Hallazgo real, comparado con Instagram/WhatsApp/Messenger: mismo
+    // hueco exacto que postID/commentID pero en un chat -- ver
+    // 0048_reports_message_reference.sql.
+    let messageID: UUID?
 
     @State private var reason = "Comportamiento inapropiado"
     @State private var details: String
     let reasons = ["Comportamiento inapropiado", "Perfil falso", "Acoso", "Contenido ofensivo", "Otro"]
 
-    init(userID: UUID, reportedID: UUID? = nil, initialDetails: String = "", postID: UUID? = nil, commentID: UUID? = nil) {
+    init(userID: UUID, reportedID: UUID? = nil, initialDetails: String = "", postID: UUID? = nil, commentID: UUID? = nil, messageID: UUID? = nil) {
         self.userID = userID
         self.reportedID = reportedID ?? userID
         self.postID = postID
         self.commentID = commentID
+        self.messageID = messageID
         _details = State(initialValue: initialDetails)
     }
 
@@ -96,7 +101,7 @@ struct ReportSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Enviar") {
                         Task {
-                            await safety.report(reporterID: userID, reportedID: reportedID, reason: reason, details: details.isEmpty ? nil : details, postID: postID, commentID: commentID)
+                            await safety.report(reporterID: userID, reportedID: reportedID, reason: reason, details: details.isEmpty ? nil : details, postID: postID, commentID: commentID, messageID: messageID)
                             dismiss()
                         }
                     }
