@@ -52,7 +52,10 @@ final class SafetyManager: ObservableObject {
     }
 
     /// Envía una denuncia. Se revisa manualmente por moderación (fuera del alcance de la app cliente).
-    func report(reporterID: UUID, reportedID: UUID, reason: String, details: String?) async {
+    func report(
+        reporterID: UUID, reportedID: UUID, reason: String, details: String?,
+        postID: UUID? = nil, commentID: UUID? = nil
+    ) async {
         // Mismo límite real que reports_details_length
         // (0024_more_text_length_limits.sql) — "details" es el único
         // campo libre de este formulario, ya construido en la versión
@@ -66,11 +69,21 @@ final class SafetyManager: ObservableObject {
             let reported_id: UUID
             let reason: String
             let details: String?
+            // Hallazgo real, comparado con Instagram/TikTok/Facebook: antes
+            // el único rastro de "esta denuncia es sobre ESTE post/
+            // comentario" era un texto libre y editable metido a mano en
+            // `details` -- referencia real ahora
+            // (0045_reports_content_reference.sql).
+            let post_id: UUID?
+            let comment_id: UUID?
         }
         do {
             try await SupabaseManager.shared.client
                 .from("reports")
-                .insert(ReportRow(reporter_id: reporterID, reported_id: reportedID, reason: reason, details: details))
+                .insert(ReportRow(
+                    reporter_id: reporterID, reported_id: reportedID, reason: reason, details: details,
+                    post_id: postID, comment_id: commentID
+                ))
                 .execute()
             // Hallazgo real, mismo criterio ya aplicado en la versión
             // Kotlin equivalente: cada acción clave de la app se registra

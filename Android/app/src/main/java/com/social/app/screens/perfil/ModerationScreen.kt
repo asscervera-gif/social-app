@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
@@ -51,8 +52,17 @@ data class ReportEntry(
     val details: String? = null,
     val status: String,
     @SerialName("created_at") val createdAt: String,
+    @SerialName("post_id") val postId: String? = null,
+    @SerialName("comment_id") val commentId: String? = null,
     val reporterName: String? = null,
-    val reportedName: String? = null
+    val reportedName: String? = null,
+    // Hallazgo real, comparado con Instagram/TikTok/Facebook: antes un
+    // admin solo veía un texto libre editable ("Publicación {id}") sin
+    // forma real de ver el contenido -- ahora se resuelve el post/
+    // comentario real referenciado (0045_reports_content_reference.sql).
+    val postCaption: String? = null,
+    val postMediaUrl: String? = null,
+    val commentBody: String? = null
 )
 
 /**
@@ -95,6 +105,41 @@ class ModerationViewModel : ViewModel() {
         null
     }
 
+    @Serializable
+    private data class PostContentRow(val caption: String? = null, @SerialName("media_url") val mediaUrl: String? = null)
+
+    @Serializable
+    private data class CommentContentRow(val body: String)
+
+    /** Resuelve el contenido real denunciado -- si el post/comentario ya
+     * se borró (0045: `on delete set null`), simplemente no hay nada que
+     * mostrar, la denuncia en sí sigue existiendo para el historial. */
+    private suspend fun resolveContent(entry: ReportEntry): ReportEntry {
+        val post = entry.postId?.let { postId ->
+            try {
+                SupabaseManager.client.from("posts")
+                    .select(columns = io.github.jan.supabase.postgrest.query.Columns.raw("caption,media_url")) {
+                        filter { eq("id", postId) }
+                    }
+                    .decodeSingleOrNull<PostContentRow>()
+            } catch (e: Exception) {
+                null
+            }
+        }
+        val comment = entry.commentId?.let { commentId ->
+            try {
+                SupabaseManager.client.from("comments")
+                    .select(columns = io.github.jan.supabase.postgrest.query.Columns.raw("body")) {
+                        filter { eq("id", commentId) }
+                    }
+                    .decodeSingleOrNull<CommentContentRow>()
+            } catch (e: Exception) {
+                null
+            }
+        }
+        return entry.copy(postCaption = post?.caption, postMediaUrl = post?.mediaUrl, commentBody = comment?.body)
+    }
+
     fun load() {
         viewModelScope.launch {
             try {
@@ -115,9 +160,11 @@ class ModerationViewModel : ViewModel() {
                     }
                     .decodeList<ReportEntry>()
                 _reports.value = rows.map { entry ->
-                    entry.copy(
-                        reporterName = nameFor(entry.reporterId),
-                        reportedName = nameFor(entry.reportedId)
+                    resolveContent(
+                        entry.copy(
+                            reporterName = nameFor(entry.reporterId),
+                            reportedName = nameFor(entry.reportedId)
+                        )
                     )
                 }
             } catch (e: Exception) {
@@ -282,6 +329,34 @@ fun ModerationScreen(viewModel: ModerationViewModel = viewModel()) {
                     )
                     Text(report.reason, style = MaterialTheme.typography.titleSmall)
                     report.details?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    // Hallazgo real, comparado con Instagram/TikTok/
+                    // Facebook: antes, si la denuncia era sobre un post o
+                    // un comentario concreto, no había forma real de
+                    // verlo -- solo un texto libre editable por el
+                    // denunciante. Ahora se muestra el contenido real
+                    // (0045_reports_content_reference.sql), o un aviso
+                    // honesto si ya se borró.
+                    if (report.postId != null) {
+                        Column(modifier = Modifier.padding(top = 6.dp)) {
+                            Text("Publicación denunciada:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            report.postMediaUrl?.let { url ->
+                                androidx.compose.foundation.Image(
+                                    painter = coil.compose.rememberAsyncImagePainter(url),
+                                    contentDescription = null,
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                    modifier = Modifier.fillMaxWidth().heightIn(max = 160.dp)
+                                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                                )
+                            }
+                            Text(report.postCaption ?: "(la publicación ya no existe)", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    if (report.commentId != null) {
+                        Column(modifier = Modifier.padding(top = 6.dp)) {
+                            Text("Comentario denunciado:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(report.commentBody ?: "(el comentario ya no existe)", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
                     Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
                         OutlinedButton(onClick = { viewModel.setStatus(report.id, "reviewed") }) {
                             Text("Marcar revisada")

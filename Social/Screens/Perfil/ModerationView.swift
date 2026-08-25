@@ -26,8 +26,17 @@ struct ReportEntry: Decodable, Identifiable {
     let details: String?
     let status: String
     let created_at: String
+    let post_id: UUID?
+    let comment_id: UUID?
     var reporterName: String?
     var reportedName: String?
+    // Hallazgo real, comparado con Instagram/TikTok/Facebook: antes un
+    // admin solo veía un texto libre editable ("Publicación {id}") sin
+    // forma real de ver el contenido -- ahora se resuelve el post/
+    // comentario real referenciado (0045_reports_content_reference.sql).
+    var postCaption: String?
+    var postMediaURL: String?
+    var commentBody: String?
 }
 
 // Hallazgo real, comparado con Instagram/TikTok/Facebook, segunda mitad
@@ -61,6 +70,40 @@ final class ModerationViewModel: ObservableObject {
         return row?.display_name
     }
 
+    /// Resuelve el contenido real denunciado -- si el post/comentario ya
+    /// se borró (0045: `on delete set null`), simplemente no hay nada que
+    /// mostrar, la denuncia en sí sigue existiendo para el historial.
+    private func resolveContent(_ entry: ReportEntry) async -> ReportEntry {
+        var entry = entry
+        if let postID = entry.post_id {
+            struct PostContentRow: Decodable {
+                let caption: String?
+                let media_url: String?
+            }
+            let post: PostContentRow? = try? await SupabaseManager.shared.client
+                .from("posts")
+                .select("caption,media_url")
+                .eq("id", value: postID)
+                .single()
+                .execute()
+                .value
+            entry.postCaption = post?.caption
+            entry.postMediaURL = post?.media_url
+        }
+        if let commentID = entry.comment_id {
+            struct CommentContentRow: Decodable { let body: String }
+            let comment: CommentContentRow? = try? await SupabaseManager.shared.client
+                .from("comments")
+                .select("body")
+                .eq("id", value: commentID)
+                .single()
+                .execute()
+                .value
+            entry.commentBody = comment?.body
+        }
+        return entry
+    }
+
     func load() async {
         do {
             // Si quien llama no es admin de verdad, `reports_select_admin`
@@ -85,6 +128,7 @@ final class ModerationViewModel: ObservableObject {
             for var row in rows {
                 row.reporterName = await name(for: row.reporter_id)
                 row.reportedName = await name(for: row.reported_id)
+                row = await resolveContent(row)
                 resolved.append(row)
             }
             reports = resolved
@@ -238,6 +282,36 @@ struct ModerationView: View {
                     Text(report.reason).font(.headline)
                     if let details = report.details {
                         Text(details).font(.subheadline)
+                    }
+                    // Hallazgo real, comparado con Instagram/TikTok/
+                    // Facebook: antes, si la denuncia era sobre un post o
+                    // un comentario concreto, no había forma real de
+                    // verlo -- solo un texto libre editable por el
+                    // denunciante. Ahora se muestra el contenido real, o
+                    // un aviso honesto si ya se borró.
+                    if report.post_id != nil {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Publicación denunciada:").font(.caption2).foregroundStyle(.secondary)
+                            if let mediaURLString = report.postMediaURL, let mediaURL = URL(string: mediaURLString) {
+                                AsyncImage(url: mediaURL) { image in
+                                    image.resizable().scaledToFill()
+                                } placeholder: {
+                                    RoundedRectangle(cornerRadius: 6).fill(.gray.opacity(0.15))
+                                }
+                                .frame(height: 120)
+                                .clipped()
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                            }
+                            Text(report.postCaption ?? "(la publicación ya no existe)").font(.footnote)
+                        }
+                        .padding(.top, 4)
+                    }
+                    if report.comment_id != nil {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Comentario denunciado:").font(.caption2).foregroundStyle(.secondary)
+                            Text(report.commentBody ?? "(el comentario ya no existe)").font(.footnote)
+                        }
+                        .padding(.top, 4)
                     }
                     HStack {
                         Button("Marcar revisada") {

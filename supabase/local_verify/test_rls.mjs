@@ -237,6 +237,38 @@ async function main() {
   const reportRow = (await db.query(`select status from reports where reporter_id = $1`, [u3])).rows[0];
   check('reports_update_admin: un admin real SÍ puede marcar una denuncia como revisada', reportRow.status === 'reviewed');
 
+  // --- reports.post_id (0045): referencia real al contenido denunciado,
+  // no solo un id suelto en un campo de texto editable -- comparado con
+  // Instagram/TikTok/Facebook. u3 sigue siendo admin desde el bloque de
+  // arriba. `socialOnlyPost` (de u2, creado más arriba) sirve de contenido
+  // real a referenciar.
+  await asUser(u3);
+  const contentReport = (await db.query(
+    `insert into reports (reporter_id, reported_id, reason, post_id) values ($1, $2, 'contenido ofensivo', $3) returning id`,
+    [u3, u2, socialOnlyPost.id]
+  )).rows[0];
+  const contentReportAsAdmin = (await db.query(`select post_id from reports where id = $1`, [contentReport.id])).rows[0];
+  check('reports.post_id: un admin real ve la referencia al post denunciado de verdad, no solo texto suelto', contentReportAsAdmin.post_id === socialOnlyPost.id);
+
+  // posts_select_admin/comments_select_admin (0045): sin esto, la
+  // referencia de arriba sería decorativa para el caso más delicado --
+  // `socialOnlyPost` es "solo socials" de u2, y u3 NO tiene ningún social
+  // con u2 en todo este archivo de pruebas (el único social real es
+  // u1<->u2, más arriba) -- si u3 pudiera verlo de todos modos, es
+  // gracias EXCLUSIVAMENTE al bypass de admin nuevo, no a una conexión
+  // social real.
+  const socialOnlyPostAsAdmin = (await db.query(`select caption from posts where id = $1`, [socialOnlyPost.id])).rows;
+  check('posts_select_admin: un admin real SÍ puede revisar un post "solo socials" ajeno sin tener social con el autor', socialOnlyPostAsAdmin.length === 1);
+
+  // Si el post se borra después de denunciarse, la denuncia sigue
+  // existiendo para el historial de moderación -- solo pierde la
+  // referencia (on delete set null, no cascade).
+  await asUser(u2);
+  await db.query(`delete from posts where id = $1`, [socialOnlyPost.id]);
+  await asUser(u3);
+  const contentReportAfterPostDeleted = (await db.query(`select post_id from reports where id = $1`, [contentReport.id])).rows[0];
+  check('reports.post_id: borrar el post después SÍ pone la referencia a null, sin borrar la denuncia (on delete set null)', contentReportAfterPostDeleted !== undefined && contentReportAfterPostDeleted.post_id === null);
+
   // --- admin_ban_user (0037): solo un admin real puede banear, y el
   // baneo se refleja en my_ban_status (la vista que consulta el cliente
   // al arrancar) ---

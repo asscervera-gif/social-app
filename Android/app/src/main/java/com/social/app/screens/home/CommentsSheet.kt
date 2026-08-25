@@ -141,7 +141,10 @@ fun CommentsSheet(
             com.social.app.safety.ReportSheet(
                 reporterId = myId,
                 reportedId = comment.authorId,
-                initialDetails = "Comentario $commentId",
+                // Hallazgo real, comparado con Instagram/TikTok/Facebook:
+                // antes esto era un texto libre editable; ahora una
+                // referencia real (0045_reports_content_reference.sql).
+                commentId = commentId,
                 onDismiss = { reportingCommentId = null }
             )
         }

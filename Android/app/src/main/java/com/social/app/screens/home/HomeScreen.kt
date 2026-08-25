@@ -357,7 +357,12 @@ private fun PostCard(
         com.social.app.safety.ReportSheet(
             reporterId = myId,
             reportedId = post.authorId,
-            initialDetails = "Publicación ${post.id}",
+            // Hallazgo real, comparado con Instagram/TikTok/Facebook:
+            // antes esto era un texto libre editable ("Publicación
+            // ${post.id}"); ahora una referencia real
+            // (0045_reports_content_reference.sql) que un admin puede
+            // ver de verdad en ModerationScreen.
+            postId = post.id,
             onDismiss = { showReport = false }
         )
     }

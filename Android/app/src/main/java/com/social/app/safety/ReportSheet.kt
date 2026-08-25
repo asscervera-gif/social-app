@@ -36,7 +36,13 @@ fun ReportSheet(
     reportedId: String,
     onDismiss: () -> Unit,
     safety: SafetyManager = viewModel(),
-    initialDetails: String = ""
+    initialDetails: String = "",
+    // Hallazgo real, comparado con Instagram/TikTok/Facebook: referencia
+    // real al post/comentario denunciado (0045_reports_content_reference.sql),
+    // en vez del texto libre y editable de antes ("Publicación {id}"
+    // metido a mano en initialDetails).
+    postId: String? = null,
+    commentId: String? = null
 ) {
     var reason by remember { mutableStateOf(REASONS.first()) }
     var details by remember { mutableStateOf(initialDetails) }
@@ -75,7 +81,7 @@ fun ReportSheet(
 
             Button(
                 onClick = {
-                    safety.report(reporterId, reportedId, reason, details.ifBlank { null })
+                    safety.report(reporterId, reportedId, reason, details.ifBlank { null }, postId, commentId)
                     onDismiss()
                 },
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp)

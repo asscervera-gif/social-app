@@ -55,14 +55,22 @@ struct ReportSheet: View {
     @Environment(\.dismiss) private var dismiss
     let userID: UUID
     let reportedID: UUID
+    // Hallazgo real, comparado con Instagram/TikTok/Facebook: referencia
+    // real al post/comentario denunciado (0045_reports_content_reference.sql),
+    // en vez del texto libre y editable de antes ("Publicación {id}"
+    // metido a mano en initialDetails).
+    let postID: UUID?
+    let commentID: UUID?
 
     @State private var reason = "Comportamiento inapropiado"
     @State private var details: String
     let reasons = ["Comportamiento inapropiado", "Perfil falso", "Acoso", "Contenido ofensivo", "Otro"]
 
-    init(userID: UUID, reportedID: UUID? = nil, initialDetails: String = "") {
+    init(userID: UUID, reportedID: UUID? = nil, initialDetails: String = "", postID: UUID? = nil, commentID: UUID? = nil) {
         self.userID = userID
         self.reportedID = reportedID ?? userID
+        self.postID = postID
+        self.commentID = commentID
         _details = State(initialValue: initialDetails)
     }
 
@@ -88,7 +96,7 @@ struct ReportSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Enviar") {
                         Task {
-                            await safety.report(reporterID: userID, reportedID: reportedID, reason: reason, details: details.isEmpty ? nil : details)
+                            await safety.report(reporterID: userID, reportedID: reportedID, reason: reason, details: details.isEmpty ? nil : details, postID: postID, commentID: commentID)
                             dismiss()
                         }
                     }

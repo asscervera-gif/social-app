@@ -360,7 +360,10 @@ private struct PostCard: View {
         }
         .sheet(isPresented: $showReport) {
             if let myID {
-                ReportSheet(userID: myID, reportedID: post.authorID, initialDetails: "Publicación \(post.id)")
+                // Hallazgo real, comparado con Instagram/TikTok/Facebook:
+                // antes esto era un texto libre editable; ahora una
+                // referencia real (0045_reports_content_reference.sql).
+                ReportSheet(userID: myID, reportedID: post.authorID, postID: post.id)
             }
         }
         // Mismo patrón Binding(get:set:) ya usado en HomeView.swift para

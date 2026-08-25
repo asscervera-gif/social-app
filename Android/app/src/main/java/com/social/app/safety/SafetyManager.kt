@@ -65,10 +65,24 @@ class SafetyManager : ViewModel() {
         @SerialName("reporter_id") val reporterId: String,
         @SerialName("reported_id") val reportedId: String,
         val reason: String,
-        val details: String?
+        val details: String?,
+        // Hallazgo real, comparado con Instagram/TikTok/Facebook: antes el
+        // único rastro de "esta denuncia es sobre ESTE post/comentario"
+        // era un texto libre y editable ("Publicación {id}" metido a mano
+        // en `details`) -- un admin no tenía forma real de ver el
+        // contenido denunciado. Referencia real (0045_reports_content_reference.sql).
+        @SerialName("post_id") val postId: String? = null,
+        @SerialName("comment_id") val commentId: String? = null
     )
 
-    fun report(reporterId: String, reportedId: String, reason: String, details: String?) {
+    fun report(
+        reporterId: String,
+        reportedId: String,
+        reason: String,
+        details: String?,
+        postId: String? = null,
+        commentId: String? = null
+    ) {
         // Mismo límite real que reports_details_length
         // (0024_more_text_length_limits.sql) — "details" es el único
         // campo libre de este formulario ("reason" es una de las
@@ -79,7 +93,7 @@ class SafetyManager : ViewModel() {
         }
         viewModelScope.launch {
             try {
-                SupabaseManager.client.from("reports").insert(ReportRow(reporterId, reportedId, reason, details))
+                SupabaseManager.client.from("reports").insert(ReportRow(reporterId, reportedId, reason, details, postId, commentId))
                 // Hallazgo real: cada acción clave de la app se registra
                 // con AnalyticsManager (duel_completed, tab_view,
                 // app_open...) salvo denunciar — el propio equipo de

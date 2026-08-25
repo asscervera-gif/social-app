@@ -91,7 +91,11 @@ struct CommentsView: View {
             }
             .sheet(item: $reportingComment) { comment in
                 if let myID {
-                    ReportSheet(userID: myID, reportedID: comment.author_id, initialDetails: "Comentario \(comment.id)")
+                    // Hallazgo real, comparado con Instagram/TikTok/
+                    // Facebook: antes esto era un texto libre editable;
+                    // ahora una referencia real
+                    // (0045_reports_content_reference.sql).
+                    ReportSheet(userID: myID, reportedID: comment.author_id, commentID: comment.id)
                 }
             }
         }
