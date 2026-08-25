@@ -109,6 +109,24 @@ final class ModerationViewModel: ObservableObject {
         }
     }
 
+    /// Hallazgo real, paridad de plataforma: `ModerationScreen.kt`
+    /// (Android) ya podía banear directamente desde una denuncia hace
+    /// varias pasadas (`admin_ban_user`, 0037_admin_ban.sql) -- un admin
+    /// en iOS podía leer y descartar denuncias, pero no tenía ninguna
+    /// acción real contra el usuario denunciado. Reutiliza el mismo
+    /// `BanParams`/`.rpc()` ya verificado en `acceptAppeal`.
+    func banReportedUser(_ reportID: UUID, reportedID: UUID, reason: String) async {
+        do {
+            try await SupabaseManager.shared.client
+                .rpc("admin_ban_user", params: BanParams(p_target_id: reportedID, p_banned: true, p_until: nil, p_reason: reason))
+                .execute()
+            AnalyticsManager.track("user_banned")
+            await setStatus(reportID, status: "reviewed")
+        } catch {
+            errorMessage = "No se pudo banear a este usuario."
+        }
+    }
+
     private func loadAppeals() async {
         do {
             // ban_appeals_select_admin (0043) devuelve cero filas si quien
@@ -228,6 +246,12 @@ struct ModerationView: View {
                         Button("Descartar") {
                             Task { await viewModel.setStatus(report.id, status: "dismissed") }
                         }
+                        // Hallazgo real, paridad de plataforma: Android ya
+                        // podía banear directamente desde una denuncia.
+                        Button("Banear") {
+                            Task { await viewModel.banReportedUser(report.id, reportedID: report.reported_id, reason: report.reason) }
+                        }
+                        .tint(.red)
                     }
                     .buttonStyle(.bordered)
                 }
