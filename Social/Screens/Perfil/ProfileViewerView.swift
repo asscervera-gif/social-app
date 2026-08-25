@@ -20,6 +20,13 @@ struct ProfileViewerView: View {
     @State private var isFollowing = false
     @State private var followBusy = false
     @StateObject private var followManager = FollowManager()
+    // Hallazgo real, comparado con Instagram/Twitter/TikTok: el visor de
+    // OTRA persona solo tenía "Seguir" -- ningún "Bloquear" ni "Denunciar"
+    // directo, pese a que ReportSheet ya incluye ambas acciones reales
+    // (ver SafetyToolbar.swift). El overlay global tiene un bug ya
+    // documentado (sin target real en contexto, denuncia por defecto al
+    // PROPIO usuario) -- aquí sí hay un target real, el sitio correcto.
+    @State private var showReportSheet = false
 
     var body: some View {
         ScrollView {
@@ -74,6 +81,9 @@ struct ProfileViewerView: View {
                             .buttonStyle(.borderedProminent)
                             .disabled(followBusy)
                     }
+                    Button("⚠") { showReportSheet = true }
+                        .buttonStyle(.bordered)
+                        .tint(.red)
                 }
 
                 // Solo se muestran las secciones marcadas como públicas —
@@ -93,6 +103,11 @@ struct ProfileViewerView: View {
             .padding()
         }
         .navigationTitle("Perfil")
+        .sheet(isPresented: $showReportSheet) {
+            if let myID {
+                ReportSheet(userID: myID, reportedID: profileID)
+            }
+        }
         .task {
             // Hallazgo real (CI real, GitHub Actions): `client` estaba
             // declarado dentro del `do { }` y se usaba también fuera de

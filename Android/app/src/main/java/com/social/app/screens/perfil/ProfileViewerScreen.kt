@@ -42,6 +42,13 @@ fun ProfileViewerScreen(profileId: String) {
     var followBusy by remember { mutableStateOf(false) }
     val followManager = remember { FollowManager() }
     val scope = rememberCoroutineScope()
+    // Hallazgo real, comparado con Instagram/Twitter/TikTok: el visor de
+    // OTRA persona solo tenía "Seguir" -- ningún "Bloquear" ni "Denunciar"
+    // directo, pese a que ReportSheet ya incluye ambas acciones reales.
+    // El overlay global (SafetyToolbar) tiene un bug ya documentado (sin
+    // target real en contexto, denuncia por defecto al PROPIO usuario) --
+    // aquí sí hay un target real, el sitio correcto para esta acción.
+    var showReportSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(profileId) {
         try {
@@ -101,6 +108,13 @@ fun ProfileViewerScreen(profileId: String) {
                     } else {
                         Button(onClick = onToggle, enabled = !followBusy) { Text("Seguir") }
                     }
+                    OutlinedButton(
+                        onClick = { showReportSheet = true },
+                        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        ),
+                        modifier = Modifier.padding(start = 8.dp)
+                    ) { Text("⚠") }
                 }
             }
         }
@@ -118,5 +132,12 @@ fun ProfileViewerScreen(profileId: String) {
                 }
             }
         }
+    }
+    if (showReportSheet && myId != null) {
+        com.social.app.safety.ReportSheet(
+            reporterId = myId!!,
+            reportedId = profileId,
+            onDismiss = { showReportSheet = false }
+        )
     }
 }
