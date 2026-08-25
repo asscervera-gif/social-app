@@ -1,5 +1,6 @@
 package com.social.app.screens.perfil
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,7 +29,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
  */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun CompatSharesScreen(viewModel: CompatSharesViewModel = viewModel()) {
+fun CompatSharesScreen(viewModel: CompatSharesViewModel = viewModel(), onOpenProfile: (String) -> Unit = {}) {
     val shares by viewModel.shares.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
 
@@ -66,7 +67,17 @@ fun CompatSharesScreen(viewModel: CompatSharesViewModel = viewModel()) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(entry.requesterName)
+                        // Hallazgo real, mismo hueco raíz ya cerrado en el
+                        // feed/comentarios/chats/duelos/avisos/socials/
+                        // evento: tampoco mostraba avatar ni dejaba tocar
+                        // para ver el perfil.
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f).clickable { onOpenProfile(entry.requesterId) }
+                        ) {
+                            com.social.app.avatar.AvatarView(config = entry.requesterAvatarConfig ?: emptyMap(), size = 40.dp)
+                            Text(entry.requesterName, modifier = Modifier.padding(start = 10.dp))
+                        }
                         TextButton(onClick = { viewModel.revoke(entry.requestId) }) {
                             Text("Revocar")
                         }

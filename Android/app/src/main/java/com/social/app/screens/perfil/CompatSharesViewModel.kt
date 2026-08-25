@@ -15,7 +15,15 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-data class CompatShareEntry(val requestId: String, val requesterName: String)
+data class CompatShareEntry(
+    val requestId: String,
+    val requesterId: String,
+    val requesterName: String,
+    // Hallazgo real, mismo hueco raíz ya cerrado en el feed/comentarios/
+    // chats/duelos/avisos/socials/evento: "Quién ve tu compatibilidad"
+    // tampoco mostraba avatar ni dejaba tocar para ver el perfil.
+    val requesterAvatarConfig: Map<String, String>? = null
+)
 
 /**
  * Quién puede ver tu % de compatibilidad — hallazgo real: una vez
@@ -43,7 +51,10 @@ class CompatSharesViewModel : ViewModel() {
     )
 
     @Serializable
-    private data class NameRow(@SerialName("display_name") val displayName: String)
+    private data class NameRow(
+        @SerialName("display_name") val displayName: String,
+        @SerialName("avatar_config") val avatarConfig: Map<String, String>? = null
+    )
 
     fun load() {
         viewModelScope.launch {
@@ -63,14 +74,14 @@ class CompatSharesViewModel : ViewModel() {
                     .decodeList<RequestRow>()
 
                 _shares.value = rows.mapNotNull { row ->
-                    val name = try {
+                    val profile = try {
                         SupabaseManager.client.from("profiles")
-                            .select(columns = Columns.raw("display_name")) { filter { eq("id", row.requesterId) } }
-                            .decodeSingleOrNull<NameRow>()?.displayName
+                            .select(columns = Columns.raw("display_name,avatar_config")) { filter { eq("id", row.requesterId) } }
+                            .decodeSingleOrNull<NameRow>()
                     } catch (e: Exception) {
                         null
                     } ?: return@mapNotNull null
-                    CompatShareEntry(row.id, name)
+                    CompatShareEntry(row.id, row.requesterId, profile.displayName, profile.avatarConfig)
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo cargar a quién le compartes tu compatibilidad."

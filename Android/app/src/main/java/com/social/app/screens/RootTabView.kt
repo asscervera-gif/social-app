@@ -258,7 +258,9 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                     com.social.app.screens.perfil.ModerationScreen()
                 }
                 composable(COMPAT_SHARES_ROUTE) {
-                    com.social.app.screens.perfil.CompatSharesScreen()
+                    com.social.app.screens.perfil.CompatSharesScreen(
+                        onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
+                    )
                 }
                 composable(PRIVACY_POLICY_ROUTE) {
                     com.social.app.screens.perfil.PrivacyPolicyScreen()

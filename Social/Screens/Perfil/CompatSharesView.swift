@@ -11,7 +11,12 @@ import SwiftUI
 
 struct CompatShareEntry: Identifiable {
     let id: UUID
+    let requesterID: UUID
     let requesterName: String
+    // Hallazgo real, mismo hueco raíz ya cerrado en el feed/comentarios/
+    // chats/duelos/avisos/socials/evento: "Quién ve tu compatibilidad"
+    // tampoco mostraba avatar ni dejaba tocar para ver el perfil.
+    let requesterAvatarConfig: [String: String]?
 }
 
 @MainActor
@@ -43,8 +48,11 @@ final class CompatSharesViewModel: ObservableObject {
 
             var entries: [CompatShareEntry] = []
             for row in rows {
-                if let name = await displayName(for: row.requester_id) {
-                    entries.append(CompatShareEntry(id: row.id, requesterName: name))
+                if let profile = await profileInfo(for: row.requester_id) {
+                    entries.append(CompatShareEntry(
+                        id: row.id, requesterID: row.requester_id,
+                        requesterName: profile.display_name, requesterAvatarConfig: profile.avatar_config
+                    ))
                 }
             }
             shares = entries
@@ -53,16 +61,19 @@ final class CompatSharesViewModel: ObservableObject {
         }
     }
 
-    private func displayName(for id: UUID) async -> String? {
-        struct NameRow: Decodable { let display_name: String }
-        let row: NameRow? = try? await SupabaseManager.shared.client
+    private struct NameRow: Decodable {
+        let display_name: String
+        let avatar_config: [String: String]?
+    }
+
+    private func profileInfo(for id: UUID) async -> NameRow? {
+        try? await SupabaseManager.shared.client
             .from("profiles")
-            .select("display_name")
+            .select("display_name,avatar_config")
             .eq("id", value: id)
             .single()
             .execute()
             .value
-        return row?.display_name
     }
 
     func revoke(_ requestID: UUID) {
@@ -85,7 +96,18 @@ struct CompatSharesView: View {
             }
             ForEach(viewModel.shares) { entry in
                 HStack {
-                    Text(entry.requesterName)
+                    // Hallazgo real, mismo hueco raíz ya cerrado en el
+                    // feed/comentarios/chats/duelos/avisos/socials/evento:
+                    // tampoco mostraba avatar ni dejaba tocar para ver el
+                    // perfil.
+                    NavigationLink {
+                        ProfileViewerView(profileID: entry.requesterID)
+                    } label: {
+                        HStack(spacing: 10) {
+                            ActiveAvatarProvider.shared.avatarView(config: entry.requesterAvatarConfig ?? [:], size: 40)
+                            Text(entry.requesterName)
+                        }
+                    }
                     Spacer()
                     Button("Revocar", role: .destructive) {
                         viewModel.revoke(entry.id)
