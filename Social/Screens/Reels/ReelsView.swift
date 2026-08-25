@@ -22,6 +22,11 @@ import PhotosUI
 struct ReelsView: View {
     @StateObject private var viewModel = ReelsViewModel()
     @State private var showUpload = false
+    // Hueco real cerrado en esta pasada: reels ya mostraba el contador de
+    // comentarios pero no había ninguna pantalla para leerlos o
+    // escribirlos. Mismo patrón que ChatListView.swift para un UUID? no
+    // Identifiable atado a un .sheet.
+    @State private var commentingReelID: UUID?
 
     var body: some View {
         ScrollView {
@@ -42,7 +47,8 @@ struct ReelsView: View {
                         reel: reel,
                         author: viewModel.authorProfiles[reel.authorID],
                         isLiked: viewModel.likedReelIDs.contains(reel.id),
-                        onLike: { Task { await viewModel.toggleLike(reel) } }
+                        onLike: { Task { await viewModel.toggleLike(reel) } },
+                        onOpenComments: { commentingReelID = reel.id }
                     )
                 }
             }
@@ -65,6 +71,18 @@ struct ReelsView: View {
                 if success { showUpload = false }
             }
         }
+        .sheet(isPresented: Binding(
+            get: { commentingReelID != nil },
+            set: { isPresented in if !isPresented { commentingReelID = nil } }
+        )) {
+            if let commentingReelID {
+                ReelCommentsView(
+                    reelID: commentingReelID,
+                    onCommentAdded: { viewModel.commentAdded(reelID: commentingReelID) },
+                    onCommentRemoved: { viewModel.commentRemoved(reelID: commentingReelID) }
+                )
+            }
+        }
     }
 }
 
@@ -73,6 +91,7 @@ private struct ReelRow: View {
     let author: Profile?
     let isLiked: Bool
     let onLike: () -> Void
+    let onOpenComments: () -> Void
     @State private var player: AVPlayer?
 
     var body: some View {
@@ -100,8 +119,11 @@ private struct ReelRow: View {
                     Text(isLiked ? "❤" : "🤍")
                 }
                 Text("\(reel.likeCount)")
-                Text("💬 \(reel.commentCount)")
-                    .foregroundStyle(.secondary)
+                Button(action: onOpenComments) {
+                    Text("💬 \(reel.commentCount)")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding()

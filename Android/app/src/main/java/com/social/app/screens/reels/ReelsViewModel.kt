@@ -152,6 +152,20 @@ class ReelsViewModel : ViewModel() {
         }
     }
 
+    /** Mismo patrón exacto que HomeViewModel.commentAdded()/commentRemoved(),
+     * para que ReelsScreen refleje el contador sin recargar todo el feed. */
+    fun commentAdded(reelId: String) {
+        _reels.update { list ->
+            list.map { if (it.id == reelId) it.copy(commentCount = it.commentCount + 1) else it }
+        }
+    }
+
+    fun commentRemoved(reelId: String) {
+        _reels.update { list ->
+            list.map { if (it.id == reelId) it.copy(commentCount = (it.commentCount - 1).coerceAtLeast(0)) else it }
+        }
+    }
+
     @Serializable
     private data class NewReel(
         @SerialName("author_id") val authorId: String,

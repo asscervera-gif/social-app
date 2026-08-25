@@ -132,6 +132,21 @@ final class ReelsViewModel: ObservableObject {
         }
     }
 
+    /// Mismo patrón exacto que HomeViewModel.commentAdded()/
+    /// commentRemoved(), para que ReelsView refleje el contador sin
+    /// recargar todo el feed.
+    func commentAdded(reelID: UUID) {
+        if let index = reels.firstIndex(where: { $0.id == reelID }) {
+            reels[index].commentCount += 1
+        }
+    }
+
+    func commentRemoved(reelID: UUID) {
+        if let index = reels.firstIndex(where: { $0.id == reelID }) {
+            reels[index].commentCount = max(0, reels[index].commentCount - 1)
+        }
+    }
+
     /// Sube el vídeo real al bucket `media` (StorageUploader.uploadVideo,
     /// mismo patrón que las fotos de publicaciones) e inserta la fila real
     /// en `reels`. Sin miniatura real todavía: `thumbnail_url` se deja sin

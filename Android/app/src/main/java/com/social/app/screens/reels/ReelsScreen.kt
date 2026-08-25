@@ -65,6 +65,7 @@ fun ReelsScreen(viewModel: ReelsViewModel = viewModel(), onOpenProfile: (String)
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     var showUpload by remember { mutableStateOf(false) }
+    var commentingReelId by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
 
     LaunchedEffect(Unit) { viewModel.load() }
@@ -112,7 +113,8 @@ fun ReelsScreen(viewModel: ReelsViewModel = viewModel(), onOpenProfile: (String)
                         isCurrent = page == pagerState.currentPage,
                         player = exoPlayer,
                         onLike = { viewModel.toggleLike(reel) },
-                        onOpenProfile = { onOpenProfile(reel.authorId) }
+                        onOpenProfile = { onOpenProfile(reel.authorId) },
+                        onOpenComments = { commentingReelId = reel.id }
                     )
                 }
             }
@@ -130,6 +132,19 @@ fun ReelsScreen(viewModel: ReelsViewModel = viewModel(), onOpenProfile: (String)
             }
         )
     }
+
+    // Hueco real cerrado en esta pasada: reels ya mostraba el contador de
+    // comentarios (reel.commentCount) pero no había ninguna pantalla para
+    // leerlos o escribirlos. Mismo patrón que CommentsSheet.kt (posts).
+    commentingReelId?.let { reelId ->
+        com.social.app.screens.reels.ReelCommentsSheet(
+            reelId = reelId,
+            onDismiss = { commentingReelId = null },
+            onCommentAdded = { viewModel.commentAdded(reelId) },
+            onCommentRemoved = { viewModel.commentRemoved(reelId) },
+            onOpenProfile = { profileId -> commentingReelId = null; onOpenProfile(profileId) }
+        )
+    }
 }
 
 @Composable
@@ -140,7 +155,8 @@ private fun ReelPage(
     isCurrent: Boolean,
     player: ExoPlayer,
     onLike: () -> Unit,
-    onOpenProfile: () -> Unit
+    onOpenProfile: () -> Unit,
+    onOpenComments: () -> Unit
 ) {
     Box(modifier = Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)) {
         if (isCurrent) {
@@ -190,6 +206,7 @@ private fun ReelPage(
                 )
                 Text(
                     " ${reel.likeCount}   💬 ${reel.commentCount}",
+                    modifier = Modifier.clickable(onClick = onOpenComments),
                     color = androidx.compose.ui.graphics.Color.White
                 )
             }
