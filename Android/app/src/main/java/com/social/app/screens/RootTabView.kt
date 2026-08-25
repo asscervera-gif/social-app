@@ -53,7 +53,6 @@ import com.social.app.screens.match.MatchScreen
 import com.social.app.screens.perfil.AjustesScreen
 import com.social.app.screens.perfil.PerfilScreen
 import com.social.app.screens.perfil.ProfileViewerScreen
-import com.social.app.safety.SafetyToolbar
 import io.github.jan.supabase.gotrue.auth
 
 private enum class Tab(val route: String, val label: String, val icon: ImageVector?) {
@@ -376,20 +375,16 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                 }
             }
 
-            // Overlay global de denuncia, visible en todas las pestañas menos
-            // Social — misma condición que RootTabView.swift
-            // ("selectedTab != .social"): la cámara ya tiene su propio
-            // control de modo invisible con efecto real sobre el motor UWB,
-            // repetirlo aquí encima solo daría una falsa sensación de
-            // control. Antes este overlay no existía en absoluto en
-            // Android, a pesar de que ReportSheet.kt ya afirmaba
-            // (incorrectamente) ser "accesible desde cualquier pantalla".
-            if (currentRoute != Tab.SOCIAL.route) {
-                val currentUserId = SupabaseManager.client.auth.currentUserOrNull()?.id
-                if (currentUserId != null) {
-                    SafetyToolbar(userId = currentUserId)
-                }
-            }
+            // Hallazgo real, reportado directamente por el usuario
+            // probando la app de verdad: "hay un icono de denunciar/
+            // bloquear que no sé en qué momento está ahí" -- el overlay
+            // global `SafetyToolbar` ya solo abría un aviso de "denúncialo
+            // desde su perfil/chat/post/comentario" (desde que se cerró
+            // el bug de autodenuncia), porque cada pantalla real ya tiene
+            // su propio botón con el target correcto. Un icono flotante
+            // que solo explica dónde ir ya no aporta nada, solo confunde
+            // -- quitado del todo, no sustituido por nada (SafetyManager/
+            // ReportSheet no dependen de este overlay para funcionar).
         }
     }
 }

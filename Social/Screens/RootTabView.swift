@@ -12,8 +12,11 @@ import SwiftUI
 struct RootTabView: View {
 
     @State private var selectedTab: Tab = .social
+    // `SafetyManager` se mantiene inyectado (ReportSheet lo lee vía
+    // @EnvironmentObject desde cualquier pantalla) -- solo se quitó el
+    // botón flotante `SafetyToolbar` de aquí, ver el hallazgo real más
+    // abajo en el body.
     @StateObject private var safety = SafetyManager()
-    @State private var currentUserID: UUID?
     // Hallazgo real, comparado con Android (que ya tenía colores reales
     // del logo metidos a mano): iOS no tenía NINGÚN color de marca, usaba
     // el azul de sistema por defecto de SwiftUI en toda la app -- ver
@@ -28,6 +31,16 @@ struct RootTabView: View {
     }
 
     var body: some View {
+        // Hallazgo real, reportado directamente por el usuario probando
+        // la app de verdad: "hay un icono de denunciar/bloquear que no sé
+        // en qué momento está ahí" -- el botón flotante `SafetyToolbar`
+        // ya solo abría un aviso de "denúncialo desde su perfil/chat/
+        // post/comentario" (desde que se cerró el bug de autodenuncia),
+        // porque cada pantalla real ya tiene su propio botón con el
+        // target correcto. Un icono flotante que solo explica dónde ir
+        // ya no aporta nada, solo confunde -- quitado del todo, no
+        // sustituido por nada (SafetyManager/ReportSheet no dependen de
+        // este overlay para funcionar).
         ZStack {
             TabView(selection: $selectedTab) {
                 HomeView()
@@ -56,20 +69,9 @@ struct RootTabView: View {
                     .tag(Tab.perfil)
             }
             .tint(accent.color)
-
-            // Denuncia accesible desde cualquier pestaña (principio de producto
-            // "seguridad primero"). No se superpone en Social: ahí la cámara ya
-            // ocupa toda la pantalla y lleva su propio control de invisibilidad.
-            if selectedTab != .social, let currentUserID {
-                VStack {
-                    SafetyToolbar(userID: currentUserID)
-                    Spacer()
-                }
-            }
         }
         .environmentObject(safety)
         .task {
-            currentUserID = try? await SupabaseManager.shared.client.auth.session.user.id
             AnalyticsManager.track("app_open")
         }
         .task {

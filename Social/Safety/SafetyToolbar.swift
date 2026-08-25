@@ -2,54 +2,26 @@
 //  SafetyToolbar.swift
 //  Social
 //
-//  Botón flotante de denuncia, accesible desde cualquier pestaña — se añade
-//  como overlay en RootTabView (principio de producto "seguridad primero").
-//  El modo invisible en un toque vive en SocialCameraView, no aquí: ahí es
-//  donde tiene efecto real sobre el motor UWB (SocialProximity.setDiscoverable),
-//  así que repetirlo en las otras 4 pestañas solo daría una falsa sensación
-//  de control sin acción real detrás.
+//  Hoja de denuncia real (`ReportSheet`, más abajo), usada desde cualquier
+//  pantalla con un target real en contexto (perfil, chat, post, comentario,
+//  mensaje).
+//
+//  Este archivo tenía antes un botón flotante global (`SafetyToolbar`),
+//  overlay en RootTabView sobre las 4 pestañas sin cámara. Hallazgo real,
+//  reportado directamente por el usuario probando la app de verdad: "hay
+//  un icono de denunciar/bloquear que no sé en qué momento está ahí" --
+//  desde que se cerró el bug de autodenuncia (ver historial de
+//  RootTabView.swift), ese botón ya solo abría un aviso de "denúncialo
+//  desde su perfil/chat/post/comentario", porque cada pantalla real ya
+//  tiene su propio botón con el target correcto. Un icono flotante que
+//  solo explica dónde ir ya no aportaba nada, solo confundía -- quitado
+//  del todo.
 //
 
 import SwiftUI
 
-struct SafetyToolbar: View {
-
-    @State private var showExplanation = false
-    let userID: UUID
-
-    var body: some View {
-        HStack {
-            Spacer()
-            Button {
-                showExplanation = true
-            } label: {
-                Image(systemName: "exclamationmark.shield.fill")
-                    .padding(10)
-                    .background(.ultraThinMaterial)
-                    .clipShape(Circle())
-            }
-            .padding()
-        }
-        // Hallazgo real, corregido esta pasada (bug de seguridad genuino,
-        // no solo cosmético): este botón abría ReportSheet con
-        // `reportedID` = el propio `userID` por defecto (sin usuario
-        // concreto en contexto) -- dos toques bastaban para denunciarse o
-        // BLOQUEARSE a uno mismo por accidente. Ahora que el resto de la
-        // app tiene entradas de denuncia/bloqueo con el target real
-        // (perfil, chat, post, comentario), este overlay deja de abrir un
-        // ReportSheet sin sentido y en su lugar explica dónde denunciar
-        // de verdad.
-        .alert("Denunciar o bloquear", isPresented: $showExplanation) {
-            Button("Entendido", role: .cancel) {}
-        } message: {
-            Text("Para denunciar o bloquear a alguien, hazlo desde su perfil, un chat, una publicación o un comentario suyo.")
-        }
-    }
-}
-
 /// Hoja de denuncia. `reportedID` se pasa desde la pantalla que abrió la
-/// hoja (perfil, chat, post, comentario) — siempre con un target real,
-/// nunca desde un overlay global sin contexto (ver SafetyToolbar más arriba).
+/// hoja (perfil, chat, post, comentario) — siempre con un target real.
 struct ReportSheet: View {
     @EnvironmentObject private var safety: SafetyManager
     @Environment(\.dismiss) private var dismiss
