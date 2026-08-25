@@ -253,7 +253,19 @@ private struct NotificationActionsSheet: View {
 
     private func sendMessage(to otherID: UUID) {
         Task {
-            guard let myID = currentUserID ?? (try? await SupabaseManager.shared.client.auth.session.user.id) else { return }
+            // Nota real de compilación: `currentUserID ?? (try? await ...)`
+            // no compila en el Xcode real de CI ("'async' property access
+            // in a function that does not support concurrency") -- el
+            // operador `??` no admite un autoclosure async+try? en esta
+            // posición. Resuelto con un if/else explícito en vez del
+            // operador, mismo resultado.
+            let resolvedID: UUID?
+            if let currentUserID {
+                resolvedID = currentUserID
+            } else {
+                resolvedID = try? await SupabaseManager.shared.client.auth.session.user.id
+            }
+            guard let myID = resolvedID else { return }
             chatID = await socialLinks.getOrCreateChat(myID, otherID)
             if chatID != nil { showChat = true }
         }
@@ -261,7 +273,13 @@ private struct NotificationActionsSheet: View {
 
     private func sendSocial(to otherID: UUID) {
         Task {
-            guard let myID = currentUserID ?? (try? await SupabaseManager.shared.client.auth.session.user.id) else { return }
+            let resolvedID: UUID?
+            if let currentUserID {
+                resolvedID = currentUserID
+            } else {
+                resolvedID = try? await SupabaseManager.shared.client.auth.session.user.id
+            }
+            guard let myID = resolvedID else { return }
             await socialLinks.sendSocial(from: myID, to: otherID)
             dismiss()
         }
