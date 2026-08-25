@@ -65,6 +65,17 @@ data class Comment(
     @SerialName("like_count") val likeCount: Int = 0
 )
 
+// Comparado con Instagram/Facebook: publicaciones con varias fotos
+// (0055_post_media.sql). `posts.media_url` sigue siendo la PRIMERA foto (o
+// la única); esta tabla guarda solo las adicionales.
+@Serializable
+data class PostMedia(
+    val id: String,
+    @SerialName("post_id") val postId: String,
+    @SerialName("media_url") val mediaUrl: String,
+    val position: Int = 0
+)
+
 @Serializable
 data class SocialLink(
     val id: String,

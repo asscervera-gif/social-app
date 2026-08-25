@@ -62,6 +62,18 @@ class HomeViewModel : ViewModel() {
     private val _authorProfiles = MutableStateFlow<Map<String, Profile>>(emptyMap())
     val authorProfiles: StateFlow<Map<String, Profile>> = _authorProfiles.asStateFlow()
 
+    // Comparado con Instagram/Facebook: publicaciones con varias fotos
+    // (0055_post_media.sql) -- `post.mediaUrl` sigue siendo la primera,
+    // aquí solo las adicionales, indexadas por post para que la tarjeta
+    // sepa si debe mostrar un carrusel o una sola imagen.
+    @Serializable
+    private data class PostMediaRow(
+        @SerialName("post_id") val postId: String,
+        @SerialName("media_url") val mediaUrl: String
+    )
+    private val _extraMediaByPost = MutableStateFlow<Map<String, List<String>>>(emptyMap())
+    val extraMediaByPost: StateFlow<Map<String, List<String>>> = _extraMediaByPost.asStateFlow()
+
     fun load() {
         viewModelScope.launch {
             _isLoading.value = true
@@ -92,6 +104,22 @@ class HomeViewModel : ViewModel() {
                     }
                     .decodeList<Post>()
                     .filter { it.authorId !in blockedIds }
+
+                val feedIds = _feed.value.map { it.id }
+                if (feedIds.isNotEmpty()) {
+                    try {
+                        _extraMediaByPost.value = SupabaseManager.client.from("post_media")
+                            .select(columns = Columns.raw("post_id,media_url")) {
+                                filter { isIn("post_id", feedIds) }
+                                order("position", Order.ASCENDING)
+                            }
+                            .decodeList<PostMediaRow>()
+                            .groupBy({ it.postId }, { it.mediaUrl })
+                    } catch (e: Exception) {
+                        // No bloquea el resto del feed si falla -- los posts
+                        // se siguen mostrando con solo su primera foto.
+                    }
+                }
 
                 val authorIds = _feed.value.map { it.authorId }.distinct()
                 if (authorIds.isNotEmpty()) {

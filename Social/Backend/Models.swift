@@ -87,6 +87,23 @@ struct Post: Codable, Identifiable {
     }
 }
 
+// Comparado con Instagram/Facebook: publicaciones con varias fotos
+// (0055_post_media.sql). `Post.mediaURL` sigue siendo la PRIMERA foto (o
+// la única); esta tabla guarda solo las adicionales.
+struct PostMedia: Codable, Identifiable {
+    let id: UUID
+    let postID: UUID
+    let mediaURL: String
+    var position: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case postID = "post_id"
+        case mediaURL = "media_url"
+        case position
+    }
+}
+
 struct SocialLink: Codable, Identifiable {
     let id: UUID
     let requesterID: UUID

@@ -16,8 +16,10 @@ struct NewPostView: View {
     @StateObject private var viewModel = NewPostViewModel()
     @State private var caption = ""
     @State private var isSocialOnly = false
-    @State private var selectedPhoto: PhotosPickerItem?
-    @State private var imageData: Data?
+    // Comparado con Instagram/Facebook: varias fotos por publicación
+    // (0055_post_media.sql) -- antes solo se podía elegir una.
+    @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var imageDataList: [Data] = []
     // Hallazgo real, comparado con SOCIAL_APP.html ("Pubs de socials",
     // etiqueta "con Marta"): no había forma de decir con quién se hizo
     // una publicación -- 0051_post_social_tags.sql. Reutiliza la misma
@@ -44,21 +46,35 @@ struct NewPostView: View {
                 .font(.caption2)
                 .foregroundStyle(caption.count > 2200 ? .red : .secondary)
 
-            if let imageData, let uiImage = UIImage(data: imageData) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(height: 180)
-                    .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            if !imageDataList.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(imageDataList.enumerated()), id: \.offset) { _, data in
+                            if let uiImage = UIImage(data: data) {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 140, height: 180)
+                                    .clipped()
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                        }
+                    }
+                }
             }
-            PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                Text(imageData == nil ? "Añadir foto" : "Cambiar foto")
+            PhotosPicker(selection: $selectedPhotos, matching: .images) {
+                Text(imageDataList.isEmpty ? "Añadir fotos" : "Cambiar fotos (\(imageDataList.count))")
             }
             .buttonStyle(.bordered)
-            .onChange(of: selectedPhoto) { newValue in
+            .onChange(of: selectedPhotos) { newValue in
                 Task {
-                    imageData = try? await newValue?.loadTransferable(type: Data.self)
+                    var loaded: [Data] = []
+                    for item in newValue {
+                        if let data = try? await item.loadTransferable(type: Data.self) {
+                            loaded.append(data)
+                        }
+                    }
+                    imageDataList = loaded
                 }
             }
 
@@ -89,7 +105,7 @@ struct NewPostView: View {
 
             Button {
                 Task {
-                    if await viewModel.post(caption: caption, isSocialOnly: isSocialOnly, imageData: imageData, taggedProfileID: taggedProfileID) {
+                    if await viewModel.post(caption: caption, isSocialOnly: isSocialOnly, imageDataList: imageDataList, taggedProfileID: taggedProfileID) {
                         onPosted()
                         onDismiss()
                     }

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -59,7 +60,9 @@ fun NewPostSheet(
 ) {
     var caption by remember { mutableStateOf("") }
     var isSocialOnly by remember { mutableStateOf(false) }
-    var imageUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    // Comparado con Instagram/Facebook: varias fotos por publicación
+    // (0055_post_media.sql) -- antes solo se podía elegir una.
+    var imageUris by remember { mutableStateOf<List<android.net.Uri>>(emptyList()) }
     // Hallazgo real, comparado con SOCIAL_APP.html ("Pubs de socials",
     // etiqueta "con Marta"): no había forma de decir con quién se hizo
     // una publicación -- 0051_post_social_tags.sql. Reutiliza la misma
@@ -80,8 +83,8 @@ fun NewPostSheet(
     // ya no es un bloqueo (ver StorageUploader.kt). Selector de imagen del
     // sistema, sin permiso de almacenamiento explícito necesario en
     // Android 13+ (Photo Picker), API estándar de Activity Result.
-    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        imageUri = uri
+    val pickImages = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        imageUris = uris
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
@@ -106,19 +109,26 @@ fun NewPostSheet(
                 modifier = Modifier.padding(top = 2.dp)
             )
 
-            if (imageUri != null) {
-                Image(
-                    painter = rememberAsyncImagePainter(imageUri),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxWidth().height(180.dp).padding(top = 12.dp).clip(RoundedCornerShape(12.dp))
-                )
+            if (imageUris.isNotEmpty()) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                ) {
+                    items(imageUris) { uri ->
+                        Image(
+                            painter = rememberAsyncImagePainter(uri),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.height(180.dp).width(140.dp).clip(RoundedCornerShape(12.dp))
+                        )
+                    }
+                }
             }
             OutlinedButton(
-                onClick = { pickImage.launch("image/*") },
+                onClick = { pickImages.launch("image/*") },
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
             ) {
-                Text(if (imageUri == null) "Añadir foto" else "Cambiar foto")
+                Text(if (imageUris.isEmpty()) "Añadir fotos" else "Cambiar fotos (${imageUris.size})")
             }
 
             Row(
@@ -157,7 +167,7 @@ fun NewPostSheet(
             Button(
                 onClick = {
                     scope.launch {
-                        if (viewModel.post(context, caption, isSocialOnly, imageUri, taggedProfileId)) {
+                        if (viewModel.post(context, caption, isSocialOnly, imageUris, taggedProfileId)) {
                             onPosted()
                             onDismiss()
                         }

@@ -35,6 +35,10 @@ final class HomeViewModel: ObservableObject {
     // authorID distintos del feed cargado (no N+1). Equivalente de
     // HomeViewModel.kt.authorProfiles.
     @Published var authorProfiles: [UUID: Profile] = [:]
+    // Comparado con Instagram/Facebook: publicaciones con varias fotos
+    // (0055_post_media.sql) -- `Post.mediaURL` sigue siendo la primera,
+    // aquí solo las adicionales, indexadas por post.
+    @Published var extraMediaByPost: [UUID: [String]] = [:]
 
     func load() async {
         isLoading = true
@@ -65,6 +69,21 @@ final class HomeViewModel: ObservableObject {
                 .execute()
                 .value
             feed = allFeed.filter { !blockedIDs.contains($0.authorID) }
+
+            let feedIDs = feed.map { $0.id }
+            if !feedIDs.isEmpty {
+                struct PostMediaRow: Decodable { let post_id: UUID; let media_url: String }
+                if let rows: [PostMediaRow] = try? await client
+                    .from("post_media")
+                    .select("post_id,media_url")
+                    .in("post_id", values: feedIDs)
+                    .order("position", ascending: true)
+                    .execute()
+                    .value {
+                    extraMediaByPost = Dictionary(grouping: rows, by: { $0.post_id })
+                        .mapValues { group in group.map { $0.media_url } }
+                }
+            }
 
             let authorIDs = Array(Set(feed.map { $0.authorID }))
             if !authorIDs.isEmpty,

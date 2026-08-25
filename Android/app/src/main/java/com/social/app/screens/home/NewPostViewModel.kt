@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import com.social.app.backend.StorageUploader
 import com.social.app.backend.SupabaseManager
+import com.social.app.backend.model.Post
 import io.github.jan.supabase.gotrue.auth
 import io.github.jan.supabase.postgrest.from
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,12 +40,23 @@ class NewPostViewModel : ViewModel() {
         @SerialName("tagged_profile_id") val taggedProfileId: String? = null
     )
 
-    /** [imageUri] es opcional a propósito: `posts.media_url` es nullable
-     * (0001_schema.sql), así que una publicación de solo texto sigue siendo
-     * válida — la foto es un extra, no un requisito. Ver StorageUploader.kt
-     * para el hallazgo de Storage. [taggedProfileId] es opcional -- "con
+    @Serializable
+    private data class NewPostMedia(
+        @SerialName("post_id") val postId: String,
+        @SerialName("media_url") val mediaUrl: String,
+        val position: Int
+    )
+
+    /** [imageUris] es opcional (lista vacía) a propósito: `posts.media_url`
+     * es nullable (0001_schema.sql), así que una publicación de solo texto
+     * sigue siendo válida — la foto es un extra, no un requisito. Ver
+     * StorageUploader.kt para el hallazgo de Storage. Comparado con
+     * Instagram/Facebook: varias fotos por publicación
+     * (0055_post_media.sql) -- la primera va en `posts.media_url` como
+     * siempre (sin cambiar nada para quien solo muestra una miniatura),
+     * el resto en `post_media`. [taggedProfileId] es opcional -- "con
      * quién" (0051_post_social_tags.sql), comparado con SOCIAL_APP.html. */
-    suspend fun post(context: Context, caption: String, isSocialOnly: Boolean, imageUri: Uri?, taggedProfileId: String? = null): Boolean {
+    suspend fun post(context: Context, caption: String, isSocialOnly: Boolean, imageUris: List<Uri>, taggedProfileId: String? = null): Boolean {
         val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return false
         // Mismo límite real que posts_caption_length
         // (0023_text_length_limits.sql) — validado aquí también para dar
@@ -57,8 +69,16 @@ class NewPostViewModel : ViewModel() {
         }
         _isPosting.value = true
         return try {
-            val mediaUrl = imageUri?.let { StorageUploader.uploadImage(context, it, userId) }
-            SupabaseManager.client.from("posts").insert(NewPost(userId, caption, isSocialOnly, mediaUrl, taggedProfileId))
+            val mediaUrls = imageUris.mapNotNull { StorageUploader.uploadImage(context, it, userId) }
+            val insertedPost = SupabaseManager.client.from("posts")
+                .insert(NewPost(userId, caption, isSocialOnly, mediaUrls.firstOrNull(), taggedProfileId)) { select() }
+                .decodeSingle<Post>()
+            if (mediaUrls.size > 1) {
+                val extraMedia = mediaUrls.drop(1).mapIndexed { index, url ->
+                    NewPostMedia(insertedPost.id, url, index + 1)
+                }
+                SupabaseManager.client.from("post_media").insert(extraMedia)
+            }
             // Hallazgo real: publicar es la acción de activación más
             // importante del feed y no se registraba — comparado con
             // otras acciones clave ya trackeadas (duel_completed,

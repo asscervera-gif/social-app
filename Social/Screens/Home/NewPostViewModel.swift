@@ -19,13 +19,15 @@ final class NewPostViewModel: ObservableObject {
     @Published var isPosting = false
     @Published var errorMessage: String?
 
-    /// [imageData] es opcional a propósito: `posts.media_url` es nullable
-    /// (0001_schema.sql), así que una publicación de solo texto sigue
-    /// siendo válida — la foto es un extra, no un requisito. Ver
-    /// StorageUploader.swift para el hallazgo de Storage. [taggedProfileID]
-    /// es opcional -- "con quién" (0051_post_social_tags.sql), comparado
-    /// con SOCIAL_APP.html.
-    func post(caption: String, isSocialOnly: Bool, imageData: Data?, taggedProfileID: UUID? = nil) async -> Bool {
+    /// [imageDataList] es opcional (lista vacía) a propósito: `posts.media_url`
+    /// es nullable (0001_schema.sql), así que una publicación de solo texto
+    /// sigue siendo válida — la foto es un extra, no un requisito. Ver
+    /// StorageUploader.swift para el hallazgo de Storage. Comparado con
+    /// Instagram/Facebook: varias fotos por publicación
+    /// (0055_post_media.sql) -- la primera va en `posts.media_url` como
+    /// siempre, el resto en `post_media`. [taggedProfileID] es opcional --
+    /// "con quién" (0051_post_social_tags.sql), comparado con SOCIAL_APP.html.
+    func post(caption: String, isSocialOnly: Bool, imageDataList: [Data], taggedProfileID: UUID? = nil) async -> Bool {
         guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return false }
         // Mismo límite real que posts_caption_length
         // (0023_text_length_limits.sql) — validado aquí también, mismo
@@ -42,19 +44,36 @@ final class NewPostViewModel: ObservableObject {
             let media_url: String?
             let tagged_profile_id: UUID?
         }
+        struct NewPostMedia: Encodable {
+            let post_id: UUID
+            let media_url: String
+            let position: Int
+        }
         isPosting = true
         defer { isPosting = false }
         do {
-            let mediaURL: String?
-            if let imageData {
-                mediaURL = try await StorageUploader.uploadImage(data: imageData, fileExtension: "jpg", userID: userID)
-            } else {
-                mediaURL = nil
+            var mediaURLs: [String] = []
+            for imageData in imageDataList {
+                if let url = try? await StorageUploader.uploadImage(data: imageData, fileExtension: "jpg", userID: userID) {
+                    mediaURLs.append(url)
+                }
             }
-            try await SupabaseManager.shared.client
+            let insertedPost: Post = try await SupabaseManager.shared.client
                 .from("posts")
-                .insert(NewPost(author_id: userID, caption: caption, is_social_only: isSocialOnly, media_url: mediaURL, tagged_profile_id: taggedProfileID))
+                .insert(NewPost(author_id: userID, caption: caption, is_social_only: isSocialOnly, media_url: mediaURLs.first, tagged_profile_id: taggedProfileID))
+                .select()
+                .single()
                 .execute()
+                .value
+            if mediaURLs.count > 1 {
+                let extraMedia = mediaURLs.dropFirst().enumerated().map { index, url in
+                    NewPostMedia(post_id: insertedPost.id, media_url: url, position: index + 1)
+                }
+                try await SupabaseManager.shared.client
+                    .from("post_media")
+                    .insert(extraMedia)
+                    .execute()
+            }
             // Hallazgo real, mismo criterio ya aplicado en la versión
             // Kotlin equivalente: publicar es la acción de activación más
             // importante del feed y no se registraba.

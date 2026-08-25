@@ -180,6 +180,7 @@ struct HomeView: View {
                 PostCard(
                     post: post,
                     author: author,
+                    extraMedia: viewModel.extraMediaByPost[post.id] ?? [],
                     compatibility: author.flatMap { viewModel.compatibilityFor($0) },
                     isSaved: viewModel.savedPostIDs.contains(post.id),
                     isLiked: viewModel.likedPostIDs.contains(post.id),
@@ -285,6 +286,7 @@ private struct CompatBadge: View {
 private struct PostCard: View {
     let post: Post
     let author: Profile?
+    var extraMedia: [String] = []
     var compatibility: Int? = nil
     let isSaved: Bool
     let isLiked: Bool
@@ -345,19 +347,44 @@ private struct PostCard: View {
             // decorativa, para TODOS los posts, sin importar si tenían
             // media_url — no había ninguna integración de Storage. Ahora
             // se renderiza la imagen real si existe (ver StorageUploader.swift).
-            if let mediaURL = post.mediaURL, let url = URL(string: mediaURL) {
-                AsyncImage(url: url) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: {
-                    RoundedRectangle(cornerRadius: 14).fill(.gray.opacity(0.15))
+            // Comparado con Instagram/Facebook: publicaciones con varias
+            // fotos (0055_post_media.sql) -- `post.mediaURL` es siempre la
+            // primera, `extraMedia` trae el resto ya en orden. Con una sola
+            // foto (el caso normal hasta ahora) se muestra igual que antes.
+            if let firstURL = post.mediaURL {
+                let allURLs = ([firstURL] + extraMedia).compactMap { URL(string: $0) }
+                if allURLs.count > 1 {
+                    ZStack(alignment: .topTrailing) {
+                        TabView {
+                            ForEach(allURLs, id: \.self) { url in
+                                AsyncImage(url: url) { image in
+                                    image.resizable().scaledToFill()
+                                } placeholder: {
+                                    RoundedRectangle(cornerRadius: 14).fill(.gray.opacity(0.15))
+                                }
+                                .frame(height: 220)
+                                .clipped()
+                                .onTapGesture { fullScreenURL = url }
+                            }
+                        }
+                        .tabViewStyle(.page(indexDisplayMode: .always))
+                        .frame(height: 220)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                } else if let url = allURLs.first {
+                    AsyncImage(url: url) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
+                        RoundedRectangle(cornerRadius: 14).fill(.gray.opacity(0.15))
+                    }
+                    .frame(height: 220)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    // Hallazgo real, comparado con Instagram/Twitter/WhatsApp:
+                    // no había forma de tocar la imagen para verla a tamaño
+                    // completo, solo el recorte fijo de 220pt.
+                    .onTapGesture { fullScreenURL = url }
                 }
-                .frame(height: 220)
-                .clipped()
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-                // Hallazgo real, comparado con Instagram/Twitter/WhatsApp:
-                // no había forma de tocar la imagen para verla a tamaño
-                // completo, solo el recorte fijo de 220pt.
-                .onTapGesture { fullScreenURL = url }
             } else {
             RoundedRectangle(cornerRadius: 14)
                 .fill(.gray.opacity(0.15))

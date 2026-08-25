@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -81,6 +82,7 @@ fun HomeScreen(
     val savedPostIds by viewModel.savedPostIds.collectAsState()
     val likedPostIds by viewModel.likedPostIds.collectAsState()
     val authorProfiles by viewModel.authorProfiles.collectAsState()
+    val extraMediaByPost by viewModel.extraMediaByPost.collectAsState()
     var commentsPostId by remember { mutableStateOf<String?>(null) }
     // Hallazgo real: no había ninguna forma de crear una publicación en
     // toda la app (ver NewPostViewModel.kt para el detalle completo).
@@ -178,6 +180,7 @@ fun HomeScreen(
                 PostCard(
                     post = post,
                     author = author,
+                    extraMedia = extraMediaByPost[post.id] ?: emptyList(),
                     compatibility = author?.let { viewModel.compatibilityFor(it) },
                     isSaved = savedPostIds.contains(post.id),
                     isLiked = likedPostIds.contains(post.id),
@@ -300,6 +303,7 @@ private fun CompatBadge(compatibility: Int?, requestSent: Boolean, onRequest: ()
 private fun PostCard(
     post: Post,
     author: com.social.app.backend.model.Profile?,
+    extraMedia: List<String> = emptyList(),
     compatibility: Int?,
     isSaved: Boolean,
     isLiked: Boolean,
@@ -359,16 +363,52 @@ private fun PostCard(
                     )
                 }
             }
-            post.mediaUrl?.let { url ->
-                androidx.compose.foundation.Image(
-                    painter = coil.compose.rememberAsyncImagePainter(url),
-                    contentDescription = null,
-                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                    modifier = Modifier.fillMaxWidth().height(220.dp)
-                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                        .padding(bottom = 8.dp)
-                        .clickable { fullScreenUrl = url }
-                )
+            post.mediaUrl?.let { firstUrl ->
+                // Comparado con Instagram/Facebook: publicaciones con varias
+                // fotos (0055_post_media.sql) -- `post.mediaUrl` es siempre
+                // la primera, `extraMedia` trae el resto ya en orden. Con
+                // una sola foto (el caso normal hasta ahora) se muestra
+                // igual que antes, sin pager ni indicador de más.
+                val allUrls = remember(firstUrl, extraMedia) { listOf(firstUrl) + extraMedia }
+                if (allUrls.size == 1) {
+                    androidx.compose.foundation.Image(
+                        painter = coil.compose.rememberAsyncImagePainter(firstUrl),
+                        contentDescription = null,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxWidth().height(220.dp)
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                            .padding(bottom = 8.dp)
+                            .clickable { fullScreenUrl = firstUrl }
+                    )
+                } else {
+                    val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { allUrls.size })
+                    Box(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                        androidx.compose.foundation.pager.HorizontalPager(
+                            state = pagerState,
+                            modifier = Modifier.fillMaxWidth().height(220.dp)
+                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                        ) { page ->
+                            val url = allUrls[page]
+                            androidx.compose.foundation.Image(
+                                painter = coil.compose.rememberAsyncImagePainter(url),
+                                contentDescription = null,
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize().clickable { fullScreenUrl = url }
+                            )
+                        }
+                        Text(
+                            "${pagerState.currentPage + 1}/${allUrls.size}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = androidx.compose.ui.graphics.Color.White,
+                            modifier = Modifier
+                                .align(androidx.compose.ui.Alignment.TopEnd)
+                                .padding(8.dp)
+                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                                .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.5f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
             }
             post.caption?.let { CaptionText(it, onOpenHashtag) }
             if (post.createdAt.isNotBlank()) {

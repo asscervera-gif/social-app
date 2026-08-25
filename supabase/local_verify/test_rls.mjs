@@ -795,6 +795,42 @@ async function main() {
     await db.query(`insert into reel_comment_likes (reel_comment_id, user_id) values ($1, $2)`, [ownReelComment.id, u1]);
   });
 
+  // --- post_media (0055_post_media.sql): publicaciones con varias fotos,
+  // comparado con Instagram/Facebook -- posts.media_url sigue siendo la
+  // PRIMERA foto (o la única, para posts de antes de esta migración),
+  // post_media guarda solo las adicionales. A diferencia de comment_likes,
+  // no hay comprobación de bloqueo: el autor añade fotos a SU PROPIA
+  // publicación, no interactúa con contenido ajeno -- solo importa la
+  // autoría real, reutilizando `post2` (post real de u2 de la sección de
+  // comment_likes de más arriba). ---
+  await asUser(u2);
+  const extraPhoto = (await db.query(
+    `insert into post_media (post_id, media_url, position) values ($1, 'https://media/u2/post2-extra.jpg', 1) returning id`, [post2.id]
+  )).rows[0];
+  await expectOk('post_media_insert_own: el AUTOR real (u2) SÍ puede añadir una foto extra a su propio post', async () => {
+    await db.query(`insert into post_media (post_id, media_url, position) values ($1, 'https://media/u2/post2-extra2.jpg', 2)`, [post2.id]);
+  });
+  await asUser(u3);
+  await expectFail('post_media_insert_own: un tercero (u3, no autor) NO puede añadir una foto al post de u2', async () => {
+    await db.query(`insert into post_media (post_id, media_url, position) values ($1, 'https://media/intruso.jpg', 3)`, [post2.id]);
+  });
+  const extraPhotoAsStranger = (await db.query(`select id from post_media where id = $1`, [extraPhoto.id])).rows;
+  check('post_media_select: un tercero sin social SÍ ve la foto extra de un post público', extraPhotoAsStranger.length === 1);
+  await asUser(u2);
+  // `socialOnlyPost` (declarado más arriba) ya no sirve para esto: se
+  // borró de verdad en la sección de reports.post_id (línea ~338, prueba
+  // de "on delete set null") -- se crea uno nuevo, todavía vivo, para
+  // probar la visibilidad real de post_media contra un post "solo socials".
+  const freshSocialOnlyPost = (await db.query(
+    `insert into posts (author_id, caption, is_social_only) values ($1, 'otro solo para socials', true) returning id`, [u2]
+  )).rows[0];
+  const socialOnlyExtraPhoto = (await db.query(
+    `insert into post_media (post_id, media_url, position) values ($1, 'https://media/u2/social-only-extra.jpg', 1) returning id`, [freshSocialOnlyPost.id]
+  )).rows[0];
+  await asUser(u3);
+  const socialOnlyExtraPhotoAsStranger = (await db.query(`select id from post_media where id = $1`, [socialOnlyExtraPhoto.id])).rows;
+  check('post_media_select: un tercero sin social NO ve la foto extra de un post "solo socials"', socialOnlyExtraPhotoAsStranger.length === 0);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado
