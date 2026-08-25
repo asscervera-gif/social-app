@@ -235,7 +235,8 @@ final class ChatListViewModel: ObservableObject {
             chats[index] = ChatListEntry(
                 id: entry.id, chat: entry.chat, otherName: entry.otherName,
                 otherAvatarConfig: entry.otherAvatarConfig, lastMessage: entry.lastMessage,
-                lastActivity: entry.lastActivity, iAmUserA: entry.iAmUserA, isMutedForMe: newValue
+                lastActivity: entry.lastActivity, iAmUserA: entry.iAmUserA, isMutedForMe: newValue,
+                hasUnread: entry.hasUnread
             )
         }
         Task {
