@@ -1,6 +1,7 @@
 package com.social.app.chat
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
@@ -95,12 +97,35 @@ fun ChatListScreen(viewModel: ChatListViewModel = viewModel(), onOpenChat: (Stri
                     // de conversaciones.
                     com.social.app.avatar.AvatarView(config = entry.otherAvatarConfig ?: emptyMap(), size = 44.dp)
                     Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
-                        Text(entry.otherName, style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            entry.otherName,
+                            style = if (entry.hasUnread) {
+                                MaterialTheme.typography.titleSmall.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                            } else {
+                                MaterialTheme.typography.titleSmall
+                            }
+                        )
                         Text(
                             entry.lastMessage?.takeIf { it.isNotBlank() } ?: "Sin mensajes todavía",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = if (entry.hasUnread) {
+                                MaterialTheme.typography.bodySmall.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                            } else {
+                                MaterialTheme.typography.bodySmall
+                            },
+                            color = if (entry.hasUnread) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1
+                        )
+                    }
+                    // Hallazgo real, comparado con WhatsApp/Instagram/
+                    // Messenger: "Tus chats" no distinguía visualmente qué
+                    // conversaciones tenían mensajes sin leer, solo el
+                    // badge total de la pestaña Avisos.
+                    if (entry.hasUnread) {
+                        androidx.compose.foundation.layout.Box(
+                            modifier = Modifier
+                                .padding(end = 4.dp)
+                                .size(10.dp)
+                                .background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape)
                         )
                     }
                     // Hallazgo real, comparado con WhatsApp/Instagram/

@@ -38,7 +38,11 @@ data class ChatListEntry(
     // Hallazgo real, comparado con WhatsApp/Instagram/Messenger: no había
     // ninguna forma de silenciar una conversación sin salir ni bloquear --
     // ver 0047_message_notify_mute.sql.
-    val isMutedForMe: Boolean
+    val isMutedForMe: Boolean,
+    // Hallazgo real, comparado con WhatsApp/Instagram/Messenger: "Tus
+    // chats" no distinguía visualmente qué conversaciones tenían mensajes
+    // sin leer.
+    val hasUnread: Boolean
 )
 
 // Hallazgo real, comparado con WhatsApp/Instagram/Messenger: la lista de
@@ -53,10 +57,18 @@ private data class NameRow(
 @Serializable
 private data class BlockRow(@SerialName("blocked_id") val blockedId: String)
 
+// Hallazgo real, comparado con WhatsApp/Instagram/Messenger: "Tus chats"
+// no distinguía visualmente qué conversaciones tenían mensajes sin leer.
+// markMessagesRead() (ChatViewModel) marca TODO el historial pendiente de
+// una vez al abrir el chat (no hay marcado incremental mensaje a
+// mensaje), así que el estado de lectura del ÚLTIMO mensaje ya equivale a
+// "¿hay algo sin leer en este chat?" -- sin necesitar una segunda consulta.
 @Serializable
 private data class LastMessageRow(
     val body: String? = null,
-    @SerialName("created_at") val createdAt: String
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("sender_id") val senderId: String,
+    @SerialName("read_at") val readAt: String? = null
 )
 
 @Serializable
@@ -196,7 +208,7 @@ class ChatListViewModel : ViewModel() {
 
                     val lastMessage = try {
                         SupabaseManager.client.from("messages")
-                            .select(columns = Columns.raw("body,created_at")) {
+                            .select(columns = Columns.raw("body,created_at,sender_id,read_at")) {
                                 filter { eq("chat_id", chat.id) }
                                 order("created_at", Order.DESCENDING)
                                 limit(1)
@@ -213,7 +225,8 @@ class ChatListViewModel : ViewModel() {
                         lastMessage = lastMessage?.body,
                         lastActivity = lastMessage?.createdAt ?: row.createdAt,
                         iAmUserA = row.userAId == userId,
-                        isMutedForMe = if (row.userAId == userId) row.mutedByA else row.mutedByB
+                        isMutedForMe = if (row.userAId == userId) row.mutedByA else row.mutedByB,
+                        hasUnread = lastMessage != null && lastMessage.senderId != userId && lastMessage.readAt == null
                     )
                 }
                 _chats.value = entries.sortedByDescending { it.lastActivity }

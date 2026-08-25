@@ -33,7 +33,8 @@ struct ChatListView: View {
                         ActiveAvatarProvider.shared.avatarView(config: entry.otherAvatarConfig ?? [:], size: 44)
                         VStack(alignment: .leading, spacing: 4) {
                             HStack(spacing: 4) {
-                                Text(entry.otherName).font(.headline)
+                                Text(entry.otherName)
+                                    .font(entry.hasUnread ? .headline.bold() : .headline)
                                 // Hallazgo real, comparado con WhatsApp/
                                 // Instagram/Messenger: no había ninguna
                                 // forma de silenciar una conversación sin
@@ -44,10 +45,19 @@ struct ChatListView: View {
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
+                                Spacer()
+                                // Hallazgo real, comparado con WhatsApp/
+                                // Instagram/Messenger: "Tus chats" no
+                                // distinguía visualmente qué conversaciones
+                                // tenían mensajes sin leer, solo el badge
+                                // total de la pestaña Avisos.
+                                if entry.hasUnread {
+                                    Circle().fill(.pink).frame(width: 10, height: 10)
+                                }
                             }
                             Text(entry.lastMessage?.isEmpty == false ? entry.lastMessage! : "Sin mensajes todavía")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                                .font(entry.hasUnread ? .subheadline.bold() : .subheadline)
+                                .foregroundStyle(entry.hasUnread ? .primary : .secondary)
                                 .lineLimit(1)
                         }
                     }

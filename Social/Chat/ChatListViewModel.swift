@@ -36,6 +36,10 @@ struct ChatListEntry: Identifiable {
     // ninguna forma de silenciar una conversación sin salir ni bloquear --
     // ver 0047_message_notify_mute.sql.
     let isMutedForMe: Bool
+    // Hallazgo real, comparado con WhatsApp/Instagram/Messenger: "Tus
+    // chats" no distinguía visualmente qué conversaciones tenían mensajes
+    // sin leer.
+    let hasUnread: Bool
 }
 
 @MainActor
@@ -137,7 +141,8 @@ final class ChatListViewModel: ObservableObject {
                     otherAvatarConfig: otherProfile?.avatar_config,
                     lastMessage: last?.body, lastActivity: last?.created_at ?? chat.createdAt,
                     iAmUserA: chat.userAID == userID,
-                    isMutedForMe: chat.userAID == userID ? chat.mutedByA : chat.mutedByB
+                    isMutedForMe: chat.userAID == userID ? chat.mutedByA : chat.mutedByB,
+                    hasUnread: last != nil && last!.sender_id != userID && last!.read_at == nil
                 ))
             }
             chats = entries.sorted { $0.lastActivity > $1.lastActivity }
@@ -164,12 +169,22 @@ final class ChatListViewModel: ObservableObject {
     private struct LastMessageRow: Decodable {
         let body: String?
         let created_at: String
+        // Hallazgo real, comparado con WhatsApp/Instagram/Messenger: "Tus
+        // chats" no distinguía visualmente qué conversaciones tenían
+        // mensajes sin leer -- solo el badge total de la pestaña Avisos,
+        // nunca por chat. markMessagesRead() (ChatViewModel) marca TODO
+        // el historial pendiente de una vez al abrir el chat (no hay
+        // marcado incremental mensaje a mensaje), así que el estado de
+        // lectura del ÚLTIMO mensaje ya equivale a "¿hay algo sin leer en
+        // este chat?" -- sin necesitar una segunda consulta.
+        let sender_id: UUID
+        let read_at: Date?
     }
 
     private func lastMessage(chatID: UUID) async -> LastMessageRow? {
         try? await SupabaseManager.shared.client
             .from("messages")
-            .select("body,created_at")
+            .select("body,created_at,sender_id,read_at")
             .eq("chat_id", value: chatID)
             .order("created_at", ascending: false)
             .limit(1)
