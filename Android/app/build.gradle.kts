@@ -6,6 +6,20 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+// Push real (FCM): el plugin google-services genera configuración a partir
+// de google-services.json y ROMPE EL BUILD ENTERO si el archivo no existe
+// -- aplicado solo condicionalmente para no romper compilaciones locales/CI
+// existentes hasta que exista un proyecto Firebase real (mismo criterio que
+// Config.plist/local.properties: credencial real, no versionada, pendiente
+// de que el usuario cree el proyecto en console.firebase.google.com).
+// Sin el plugin aplicado, FirebaseMessagingService sigue compilando (la
+// librería no necesita el plugin en tiempo de compilación), simplemente
+// FirebaseApp no se autoinicializa en tiempo de ejecución -- comportamiento
+// documentado y seguro de FirebaseInitProvider, no un crash.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 // Credenciales de Supabase leídas de local.properties (no versionado, igual
 // que Config.plist en iOS) — ver comentario en SupabaseManager.kt.
 val localProperties = Properties().apply {
@@ -112,6 +126,13 @@ dependencies {
     // (ITHappy Creative Characters, Quaternius Universal Base Characters),
     // no un servicio con el que la app tenga que hablar en tiempo real.
     implementation("io.github.sceneview:sceneview:2.3.0")
+
+    // Push real (FCM) -- equivalente Android de PushTokenManager.swift/
+    // AppDelegate.swift. La librería compila igual sin google-services.json
+    // (ver comentario junto al apply(plugin = ...) más arriba); sin él
+    // simplemente no llega ningún push hasta que exista el proyecto Firebase.
+    implementation(platform("com.google.firebase:firebase-bom:34.18.0"))
+    implementation("com.google.firebase:firebase-messaging")
 
     // Supabase (mismo backend que iOS)
     implementation(platform("io.github.jan-tennert.supabase:bom:2.5.4"))

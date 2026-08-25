@@ -5,4 +5,8 @@ plugins {
     id("org.jetbrains.kotlin.android") version "1.9.24" apply false
     id("org.jetbrains.kotlin.plugin.serialization") version "1.9.24" apply false
     id("com.google.devtools.ksp") version "1.9.24-1.0.20" apply false
+    // Push real (FCM) -- aplicado condicionalmente en app/build.gradle.kts
+    // solo si existe app/google-services.json (credencial real de un
+    // proyecto Firebase, no versionada, mismo patrón que local.properties).
+    id("com.google.gms.google-services") version "4.4.4" apply false
 }

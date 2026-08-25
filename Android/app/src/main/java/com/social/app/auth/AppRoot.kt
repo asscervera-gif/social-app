@@ -1,5 +1,9 @@
 package com.social.app.auth
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.core.app.NotificationManagerCompat
+import com.social.app.backend.PushTokenManager
 import com.social.app.backend.SupabaseManager
 import com.social.app.onboarding.AvatarOnboardingScreen
 import com.social.app.proximity.SocialProximity
@@ -68,6 +73,14 @@ fun AppRoot(proximity: SocialProximity) {
     var banStatus by remember { mutableStateOf<BanStatusRow?>(null) }
     val context = LocalContext.current
     val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+    // Equivalente Android de PushTokenManager.requestAuthorizationAndRegister()
+    // en iOS. Concedido o no, se registra igual el token FCM abajo -- el
+    // permiso solo controla si el sistema muestra la alerta visible, no si
+    // FCM entrega el mensaje al servicio (SocialFirebaseMessagingService
+    // sigue recibiendo onNewToken/onMessageReceived igual).
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { PushTokenManager.registerCurrentToken() }
 
     LaunchedEffect(sessionStatus) {
         // Hallazgo real, mismo criterio ya aplicado en
@@ -92,6 +105,11 @@ fun AppRoot(proximity: SocialProximity) {
                 // red puntual.
             }
             showHowItWorks = !hasSeenHowItWorks(context)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                PushTokenManager.registerCurrentToken()
+            }
             try {
                 banStatus = SupabaseManager.client.from("my_ban_status")
                     .select()
