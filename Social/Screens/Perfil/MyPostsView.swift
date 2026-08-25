@@ -79,6 +79,13 @@ final class MyPostsViewModel: ObservableObject {
 
 struct MyPostsView: View {
     @StateObject private var viewModel = MyPostsViewModel()
+    // Hallazgo real, comparado con SOCIAL_APP.html ("Pubs de socials",
+    // etiqueta "con Marta"): no había forma de ver solo las publicaciones
+    // hechas CON un social -- 0051_post_social_tags.sql. Reutiliza la
+    // misma lista de socials aceptados que NewPostView.swift ya usa para
+    // etiquetar, para resolver el nombre real de la persona etiquetada.
+    @StateObject private var socialsViewModel = SocialsListViewModel()
+    @State private var showOnlyTagged = false
     // Hallazgo real, mismo hueco ya cerrado en el feed y el chat: no
     // había forma de tocar la imagen para verla a tamaño completo.
     @State private var fullScreenURL: URL?
@@ -87,16 +94,31 @@ struct MyPostsView: View {
     @State private var editingPost: Post?
     @State private var editedCaption = ""
 
+    private var visiblePosts: [Post] {
+        showOnlyTagged ? viewModel.posts.filter { $0.taggedProfileID != nil } : viewModel.posts
+    }
+
+    private func taggedName(_ id: UUID) -> String {
+        socialsViewModel.socials.first { $0.id == id }?.displayName ?? "alguien"
+    }
+
     var body: some View {
         List {
+            Picker("", selection: $showOnlyTagged) {
+                Text("Todas").tag(false)
+                Text("Con tus socials").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .listRowSeparator(.hidden)
+
             if let error = viewModel.errorMessage {
                 Text(error).font(.footnote).foregroundStyle(.red)
             }
-            if viewModel.posts.isEmpty {
-                Text("Todavía no has publicado nada.")
+            if visiblePosts.isEmpty {
+                Text(showOnlyTagged ? "Ninguna publicación etiquetada con un social todavía." : "Todavía no has publicado nada.")
                     .foregroundStyle(.secondary)
             }
-            ForEach(viewModel.posts) { post in
+            ForEach(visiblePosts) { post in
                 VStack(alignment: .leading, spacing: 4) {
                     // Hallazgo real, mismo hueco ya cerrado en Guardados:
                     // esta lista tampoco mostraba la imagen de la
@@ -113,6 +135,11 @@ struct MyPostsView: View {
                         .onTapGesture { fullScreenURL = url }
                     }
                     Text(post.caption ?? "")
+                    if let taggedProfileID = post.taggedProfileID {
+                        Text("con \(taggedName(taggedProfileID))")
+                            .font(.caption.bold())
+                            .foregroundStyle(.blue)
+                    }
                     Text("❤ \(post.likeCount) · 💬 \(post.commentCount)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -131,6 +158,7 @@ struct MyPostsView: View {
         }
         .navigationTitle("Tus publicaciones")
         .task { await viewModel.load() }
+        .task { await socialsViewModel.load() }
         // Hallazgo real, mismo criterio ya aplicado en Home/Match/
         // ChatList/Guardados: comparado con Instagram/Twitter/Facebook,
         // esta pantalla no tenía pull-to-refresh. Ya construido en la

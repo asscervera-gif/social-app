@@ -69,6 +69,10 @@ struct Post: Codable, Identifiable {
     // Hallazgo real: ningún post mostraba fecha/hora en ningún sitio de la
     // app, comparado con cualquier app grande ("hace 2h", "3d"...).
     var createdAt: String
+    // Hallazgo real, comparado con SOCIAL_APP.html ("Pubs de socials",
+    // etiqueta "con Marta"): no había forma de decir con quién se hizo una
+    // publicación — 0051_post_social_tags.sql.
+    var taggedProfileID: UUID?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -79,6 +83,7 @@ struct Post: Codable, Identifiable {
         case likeCount = "like_count"
         case commentCount = "comment_count"
         case createdAt = "created_at"
+        case taggedProfileID = "tagged_profile_id"
     }
 }
 

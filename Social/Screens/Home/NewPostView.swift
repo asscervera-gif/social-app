@@ -18,6 +18,12 @@ struct NewPostView: View {
     @State private var isSocialOnly = false
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var imageData: Data?
+    // Hallazgo real, comparado con SOCIAL_APP.html ("Pubs de socials",
+    // etiqueta "con Marta"): no había forma de decir con quién se hizo
+    // una publicación -- 0051_post_social_tags.sql. Reutiliza la misma
+    // lista de socials aceptados que ya construye SocialsListViewModel.
+    @StateObject private var socialsViewModel = SocialsListViewModel()
+    @State private var taggedProfileID: UUID?
     let onDismiss: () -> Void
     let onPosted: () -> Void
 
@@ -58,13 +64,32 @@ struct NewPostView: View {
 
             Toggle("Solo visible para tus socials aceptados", isOn: $isSocialOnly)
 
+            if !socialsViewModel.socials.isEmpty {
+                Text("¿Con quién? (opcional)").font(.subheadline.bold())
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(socialsViewModel.socials) { entry in
+                            let selected = taggedProfileID == entry.id
+                            Text(entry.displayName)
+                                .font(.subheadline)
+                                .foregroundStyle(selected ? .white : .secondary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(selected ? Color.blue : Color(.systemGray5))
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                                .onTapGesture { taggedProfileID = selected ? nil : entry.id }
+                        }
+                    }
+                }
+            }
+
             if let error = viewModel.errorMessage {
                 Text(error).font(.footnote).foregroundStyle(.red)
             }
 
             Button {
                 Task {
-                    if await viewModel.post(caption: caption, isSocialOnly: isSocialOnly, imageData: imageData) {
+                    if await viewModel.post(caption: caption, isSocialOnly: isSocialOnly, imageData: imageData, taggedProfileID: taggedProfileID) {
                         onPosted()
                         onDismiss()
                     }
@@ -82,5 +107,6 @@ struct NewPostView: View {
             Spacer()
         }
         .padding()
+        .task { await socialsViewModel.load() }
     }
 }

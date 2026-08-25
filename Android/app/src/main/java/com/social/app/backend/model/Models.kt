@@ -46,7 +46,11 @@ data class Post(
     // Hallazgo real: ningún post mostraba fecha/hora en ningún sitio de la
     // app, comparado con cualquier app grande ("hace 2h", "3d"...) — ni
     // siquiera se decodificaba `created_at` en el modelo.
-    @SerialName("created_at") val createdAt: String = ""
+    @SerialName("created_at") val createdAt: String = "",
+    // Hallazgo real, comparado con SOCIAL_APP.html ("Pubs de socials",
+    // etiqueta "con Marta"): no había forma de decir con quién se hizo una
+    // publicación — 0051_post_social_tags.sql.
+    @SerialName("tagged_profile_id") val taggedProfileId: String? = null
 )
 
 @Serializable

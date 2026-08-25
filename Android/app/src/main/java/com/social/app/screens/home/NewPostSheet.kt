@@ -3,11 +3,16 @@ package com.social.app.screens.home
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -19,6 +24,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,11 +34,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.rememberAsyncImagePainter
+import com.social.app.screens.perfil.SocialsListViewModel
+import com.social.app.ui.theme.SocialColors
 import kotlinx.coroutines.launch
 
 /**
@@ -51,6 +60,15 @@ fun NewPostSheet(
     var caption by remember { mutableStateOf("") }
     var isSocialOnly by remember { mutableStateOf(false) }
     var imageUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    // Hallazgo real, comparado con SOCIAL_APP.html ("Pubs de socials",
+    // etiqueta "con Marta"): no había forma de decir con quién se hizo
+    // una publicación -- 0051_post_social_tags.sql. Reutiliza la misma
+    // lista de socials aceptados que ya construye SocialsListViewModel,
+    // sin duplicar esa consulta.
+    var taggedProfileId by remember { mutableStateOf<String?>(null) }
+    val socialsViewModel: SocialsListViewModel = viewModel()
+    val socials by socialsViewModel.socials.collectAsState()
+    LaunchedEffect(Unit) { socialsViewModel.load() }
     val isPosting by viewModel.isPosting.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     val sheetState = rememberModalBottomSheetState()
@@ -111,12 +129,35 @@ fun NewPostSheet(
                 Text("Solo visible para tus socials aceptados")
             }
 
+            if (socials.isNotEmpty()) {
+                Text(
+                    "¿Con quién? (opcional)",
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(socials) { entry ->
+                        val selected = taggedProfileId == entry.profileId
+                        Text(
+                            entry.displayName,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(if (selected) SocialColors.Turquoise else MaterialTheme.colorScheme.surfaceVariant)
+                                .clickable { taggedProfileId = if (selected) null else entry.profileId }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
+
             errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
 
             Button(
                 onClick = {
                     scope.launch {
-                        if (viewModel.post(context, caption, isSocialOnly, imageUri)) {
+                        if (viewModel.post(context, caption, isSocialOnly, imageUri, taggedProfileId)) {
                             onPosted()
                             onDismiss()
                         }

@@ -110,6 +110,17 @@ class MyPostsViewModel : ViewModel() {
 fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
     val posts by viewModel.posts.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    // Hallazgo real, comparado con SOCIAL_APP.html ("Pubs de socials",
+    // etiqueta "con Marta"): no había forma de ver solo las publicaciones
+    // hechas CON un social -- 0051_post_social_tags.sql. Reutiliza la
+    // misma lista de socials aceptados que NewPostSheet.kt ya usa para
+    // etiquetar, para resolver el nombre real de la persona etiquetada.
+    var showOnlyTagged by remember { mutableStateOf(false) }
+    val socialsViewModel: SocialsListViewModel = viewModel()
+    val socials by socialsViewModel.socials.collectAsState()
+    LaunchedEffect(Unit) { socialsViewModel.load() }
+    val socialNameById = remember(socials) { socials.associate { it.profileId to it.displayName } }
+    val visiblePosts = if (showOnlyTagged) posts.filter { it.taggedProfileId != null } else posts
     // Hallazgo real, mismo hueco ya cerrado en el feed y el chat: no
     // había forma de tocar la imagen para verla a tamaño completo.
     var fullScreenUrl by remember { mutableStateOf<String?>(null) }
@@ -135,17 +146,32 @@ fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
             .nestedScroll(pullState.nestedScrollConnection)
     ) {
         Text("Tus publicaciones", style = MaterialTheme.typography.headlineSmall)
+        androidx.compose.material3.TabRow(
+            selectedTabIndex = if (showOnlyTagged) 1 else 0,
+            modifier = Modifier.padding(top = 12.dp)
+        ) {
+            androidx.compose.material3.Tab(
+                selected = !showOnlyTagged,
+                onClick = { showOnlyTagged = false },
+                text = { Text("Todas") }
+            )
+            androidx.compose.material3.Tab(
+                selected = showOnlyTagged,
+                onClick = { showOnlyTagged = true },
+                text = { Text("Con tus socials") }
+            )
+        }
         errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 12.dp)) }
-        if (posts.isEmpty() && errorMessage == null) {
+        if (visiblePosts.isEmpty() && errorMessage == null) {
             Text(
-                "Todavía no has publicado nada.",
+                if (showOnlyTagged) "Ninguna publicación etiquetada con un social todavía." else "Todavía no has publicado nada.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 12.dp)
             )
         }
         androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxWidth()) {
             LazyColumn(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                items(posts, key = { it.id }) { post ->
+                items(visiblePosts, key = { it.id }) { post ->
                     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
                         // Hallazgo real, mismo hueco ya cerrado en
                         // Guardados: esta lista tampoco mostraba la
@@ -162,6 +188,14 @@ fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
                             )
                         }
                         post.caption?.let { Text(it) }
+                        post.taggedProfileId?.let { taggedId ->
+                            Text(
+                                "con ${socialNameById[taggedId] ?: "alguien"}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
