@@ -160,7 +160,11 @@ struct PerfilView: View {
 
     private var header: some View {
         VStack(spacing: 10) {
-            ActiveAvatarProvider.shared.avatarView(config: viewModel.profile?.avatarConfig ?? [:], size: 96)
+            RotatingProfileHeaderImage(
+                avatarConfig: viewModel.profile?.avatarConfig ?? [:],
+                photoURL: viewModel.latestPostMediaURL,
+                size: 96
+            )
             // Hallazgo real: `isVerified` existía en el modelo pero nunca
             // se renderizaba como badge en ningún sitio de la app.
             HStack(spacing: 4) {
@@ -351,6 +355,59 @@ private struct SectionEditView: View {
         .onAppear {
             text = existing?.content["texto"] ?? ""
             isPublic = existing?.isPublic ?? false
+        }
+    }
+}
+
+/// Hallazgo real, comparado con SOCIAL_APP.html: la cabecera del perfil
+/// alterna cada 3.5s entre el avatar y una foto real -- este comentario
+/// ya prometía "avatar y foto alternándose" arriba en el encabezado del
+/// archivo, pero nunca se implementó de verdad hasta esta pasada. Sin una
+/// tabla de "foto de perfil" propia, la fuente honesta más cercana es la
+/// última publicación real con foto (`PerfilViewModel.latestPostMediaURL`)
+/// -- si no hay ninguna, se queda solo con el avatar, sin fingir una
+/// rotación vacía. Equivalente de RotatingProfileHeaderImage
+/// (PerfilScreen.kt).
+private struct RotatingProfileHeaderImage: View {
+    let avatarConfig: [String: String]
+    let photoURL: URL?
+    let size: CGFloat
+    @State private var showAvatar = true
+
+    var body: some View {
+        if photoURL == nil {
+            ActiveAvatarProvider.shared.avatarView(config: avatarConfig, size: size)
+        } else {
+            ZStack(alignment: .bottomTrailing) {
+                Group {
+                    if showAvatar {
+                        ActiveAvatarProvider.shared.avatarView(config: avatarConfig, size: size)
+                    } else if let photoURL {
+                        AsyncImage(url: photoURL) { image in
+                            image.resizable().scaledToFill()
+                        } placeholder: {
+                            ActiveAvatarProvider.shared.avatarView(config: avatarConfig, size: size)
+                        }
+                        .frame(width: size, height: size)
+                        .clipShape(Circle())
+                    }
+                }
+                .id(showAvatar)
+                .transition(.opacity)
+
+                Text(showAvatar ? "avatar" : "foto")
+                    .font(.system(size: 8))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Color.black.opacity(0.5))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .padding(2)
+            }
+            .animation(.easeInOut, value: showAvatar)
+            .onReceive(Timer.publish(every: 3.5, on: .main, in: .common).autoconnect()) { _ in
+                showAvatar.toggle()
+            }
         }
     }
 }

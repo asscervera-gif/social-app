@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.background
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -37,7 +38,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.social.app.ui.theme.SocialColors
 
@@ -94,6 +97,7 @@ fun PerfilScreen(
     val followingCount by viewModel.followingCount.collectAsState()
     val postCount by viewModel.postCount.collectAsState()
     val socialCount by viewModel.socialCount.collectAsState()
+    val latestPostMediaUrl by viewModel.latestPostMediaUrl.collectAsState()
     var editingKey by remember { mutableStateOf<String?>(null) }
     var showEditProfile by remember { mutableStateOf(false) }
     var showNewPost by remember { mutableStateOf(false) }
@@ -139,7 +143,11 @@ fun PerfilScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.Top
             ) {
-                com.social.app.avatar.AvatarView(config = profile?.avatarConfig ?: emptyMap(), size = 76.dp)
+                RotatingProfileHeaderImage(
+                    avatarConfig = profile?.avatarConfig ?: emptyMap(),
+                    photoUrl = latestPostMediaUrl,
+                    size = 76.dp
+                )
                 Column(modifier = Modifier.padding(start = 14.dp).weight(1f)) {
                     Button(
                         onClick = { showNewPost = true },
@@ -281,6 +289,54 @@ fun PerfilScreen(
         com.social.app.screens.home.NewPostSheet(
             onDismiss = { showNewPost = false },
             onPosted = { viewModel.load() }
+        )
+    }
+}
+
+/**
+ * Hallazgo real, comparado con SOCIAL_APP.html: la cabecera del perfil
+ * alterna cada 3.5s entre el avatar y una foto real (`setInterval(flip,3500)`
+ * en el boceto) -- antes solo se mostraba el avatar fijo, sin rotación
+ * alguna. Sin una tabla de "foto de perfil" propia todavía, la fuente
+ * honesta más cercana es la última publicación real con foto
+ * (`PerfilViewModel.latestPostMediaUrl`) -- si no hay ninguna, se queda
+ * solo con el avatar, sin fingir una rotación vacía.
+ */
+@Composable
+private fun RotatingProfileHeaderImage(avatarConfig: Map<String, String>, photoUrl: String?, size: androidx.compose.ui.unit.Dp) {
+    if (photoUrl == null) {
+        com.social.app.avatar.AvatarView(config = avatarConfig, size = size)
+        return
+    }
+    var showAvatar by remember { mutableStateOf(true) }
+    LaunchedEffect(photoUrl) {
+        while (true) {
+            kotlinx.coroutines.delay(3500)
+            showAvatar = !showAvatar
+        }
+    }
+    Box(modifier = Modifier.size(size), contentAlignment = Alignment.BottomEnd) {
+        androidx.compose.animation.Crossfade(targetState = showAvatar, label = "avatar_photo_rotation") { isAvatar ->
+            if (isAvatar) {
+                com.social.app.avatar.AvatarView(config = avatarConfig, size = size)
+            } else {
+                androidx.compose.foundation.Image(
+                    painter = coil.compose.rememberAsyncImagePainter(photoUrl),
+                    contentDescription = null,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier.size(size).clip(androidx.compose.foundation.shape.CircleShape)
+                )
+            }
+        }
+        Text(
+            if (showAvatar) "avatar" else "foto",
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
+            color = Color.White,
+            modifier = Modifier
+                .padding(2.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color.Black.copy(alpha = 0.5f))
+                .padding(horizontal = 4.dp, vertical = 1.dp)
         )
     }
 }

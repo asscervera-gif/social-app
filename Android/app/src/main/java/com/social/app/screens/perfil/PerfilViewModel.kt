@@ -66,6 +66,15 @@ class PerfilViewModel : ViewModel() {
     private val _socialCount = MutableStateFlow(0)
     val socialCount: StateFlow<Int> = _socialCount.asStateFlow()
 
+    // Hallazgo real, comparado con SOCIAL_APP.html: la cabecera del perfil
+    // alterna cada 3.5s entre el avatar y una foto real -- sin una tabla de
+    // "foto de perfil" propia, la fuente honesta más cercana es la última
+    // publicación real con foto (no un dato inventado). Si no hay ninguna,
+    // la cabecera se queda solo con el avatar, sin fingir una rotación
+    // vacía.
+    private val _latestPostMediaUrl = MutableStateFlow<String?>(null)
+    val latestPostMediaUrl: StateFlow<String?> = _latestPostMediaUrl.asStateFlow()
+
     private var userId: String? = null
 
     @Serializable
@@ -73,6 +82,9 @@ class PerfilViewModel : ViewModel() {
         @SerialName("follower_id") val followerId: String,
         @SerialName("followee_id") val followeeId: String
     )
+
+    @Serializable
+    private data class MediaRow(@SerialName("media_url") val mediaUrl: String? = null)
 
     @Serializable
     private data class IdRow(val id: String)
@@ -108,6 +120,18 @@ class PerfilViewModel : ViewModel() {
                     }
                     .decodeList<IdRow>().size
                 _socialCount.value = requested + addressed
+                // Sin un filtro "is not null" verificado en este DSL, se
+                // piden las últimas 20 y se filtra en cliente -- mismo
+                // criterio de no adivinar una llamada de API no comprobada
+                // ya aplicado en el resto de esta sesión.
+                _latestPostMediaUrl.value = SupabaseManager.client.from("posts")
+                    .select(columns = io.github.jan.supabase.postgrest.query.Columns.raw("media_url")) {
+                        filter { eq("author_id", id) }
+                        order("created_at", io.github.jan.supabase.postgrest.query.Order.DESCENDING)
+                        limit(20)
+                    }
+                    .decodeList<MediaRow>()
+                    .firstOrNull { !it.mediaUrl.isNullOrBlank() }?.mediaUrl
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo cargar el perfil: ${e.message}"
             }

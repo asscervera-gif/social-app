@@ -1765,7 +1765,12 @@ Resultado real medido: `sys.boot_completed` en ~0s (antes ~30-40s), `adb shell e
     - **Android**: `renderAvatarBitmap()` (nuevo, `avatar/AvatarBitmap.kt`) -- misma geometría EXACTA que `CartoonAvatar.kt` pero dibujada con `android.graphics.Canvas` nativo en vez de un `DrawScope`, porque osmdroid pinta sus marcadores con `Drawable`/`Bitmap`, no con Composables.
     - **iOS**: mucho más simple -- `MapAnnotation` de MapKit ya acepta una `View` real como contenido del pin, así que basta con `ActiveAvatarProvider.shared.avatarView(...)` en vez de dibujar nada a mano.
     - `PublicLocation`/`LocationRow` (ambas plataformas) ganan `avatarConfig`, antes no se pedía en absoluto para este mapa.
-  - **Verificado real, no simulado**: Android `:app:compileDebugKotlin` OK. iOS: verificación final pendiente del CI real de este push.
+  - **Verificado real, no simulado**: Android `:app:compileDebugKotlin` OK. **iOS: CI real VERIFICADO EN VERDE** en este push (`cbca609`).
+
+- **Ronda 2026-08-25 (dentro de `/loop`), avatar/foto alternándose en la cabecera del Perfil, por primera vez de verdad**: `PerfilView.swift` prometía desde su propio comentario de cabecera de archivo "Cabecera con avatar y foto alternándose", pero nunca se implementó -- siempre mostraba el avatar fijo, en ambas plataformas. Mismo comportamiento real que `SOCIAL_APP.html` (`setInterval(flip,3500)`, cada 3.5s).
+  - Sin una tabla de "foto de perfil" propia, la fuente honesta más cercana a una foto real es la ÚLTIMA publicación real con foto (`posts.media_url`, ya real) -- si el usuario no tiene ninguna publicación con foto, la cabecera se queda solo con el avatar, sin fingir una rotación vacía. `PerfilViewModel.latestPostMediaUrl`/`.latestPostMediaURL` (nuevos, ambas plataformas): últimas 20 publicaciones propias, primera con `media_url` real -- sin un filtro "is not null" verificado en ninguno de los dos SDKs, se filtra en cliente en vez de adivinar una llamada no comprobada.
+  - `RotatingProfileHeaderImage` (nuevo, ambas plataformas): `Crossfade`/`.transition(.opacity)` entre el busto ilustrado y la foto real, con la misma etiqueta "avatar"/"foto" del boceto superpuesta.
+  - **Verificado real, no simulado**: Android `:app:compileDebugKotlin` OK (tras un fallo real de compilación propio, corregido en la misma pasada: faltaba `import androidx.compose.foundation.layout.size` -- `Modifier.size(...)` nunca se había usado antes en `PerfilScreen.kt`, solo el parámetro homónimo de `AvatarView`). iOS: verificación final pendiente del CI real de este push.
 
 ## Archivo de pasadas anteriores (resumido)
 

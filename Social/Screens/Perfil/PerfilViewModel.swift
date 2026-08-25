@@ -15,6 +15,12 @@ final class PerfilViewModel: ObservableObject {
     @Published var followerCount = 0
     @Published var socialCount = 0
     @Published var errorMessage: String?
+    // Hallazgo real, comparado con SOCIAL_APP.html: la cabecera del perfil
+    // alterna cada 3.5s entre el avatar y una foto real -- sin una tabla
+    // de "foto de perfil" propia, la fuente honesta más cercana es la
+    // última publicación real con foto. Si no hay ninguna, la cabecera se
+    // queda solo con el avatar, sin fingir una rotación vacía.
+    @Published var latestPostMediaURL: URL?
 
     private var userID: UUID?
 
@@ -32,6 +38,7 @@ final class PerfilViewModel: ObservableObject {
             profile = try await client.from("profiles").select().eq("id", value: userID).single().execute().value
             sections = try await client.from("profile_sections").select().eq("profile_id", value: userID).execute().value
             await loadCounters(userID: userID)
+            await loadLatestPostMedia(userID: userID)
         } catch {
             errorMessage = "No se pudo cargar el perfil: \(error.localizedDescription)"
         }
@@ -66,6 +73,24 @@ final class PerfilViewModel: ObservableObject {
 
     func section(for key: String) -> ProfileSection? {
         sections.first { $0.sectionKey == key }
+    }
+
+    private struct MediaRow: Decodable { let media_url: String? }
+
+    /// Sin un filtro "is not null" verificado en supabase-swift, se piden
+    /// las últimas 20 y se filtra en cliente -- mismo criterio de no
+    /// adivinar una llamada de API no comprobada ya aplicado en el resto
+    /// de esta sesión. Equivalente de PerfilViewModel.kt (latestPostMediaUrl).
+    private func loadLatestPostMedia(userID: UUID) async {
+        guard let rows: [MediaRow] = try? await SupabaseManager.shared.client
+            .from("posts")
+            .select("media_url")
+            .eq("author_id", value: userID)
+            .order("created_at", ascending: false)
+            .limit(20)
+            .execute()
+            .value else { return }
+        latestPostMediaURL = rows.compactMap { $0.media_url }.first.flatMap(URL.init)
     }
 
     /// Hallazgo real: comparado con cualquier app grande, no había forma
