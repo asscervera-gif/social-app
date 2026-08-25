@@ -79,6 +79,30 @@ class MyPostsViewModel : ViewModel() {
             }
         }
     }
+
+    /** Hallazgo real, comparado con Instagram: no había forma de editar el
+     * caption de una publicación ya hecha, solo borrarla entera --
+     * `posts_write_own` (0002_rls.sql) ya es `for all`, así que editar la
+     * propia publicación ya estaba permitido a nivel de RLS, solo faltaba
+     * el botón. Mismo límite real que `posts_caption_length`
+     * (0023_text_length_limits.sql, 2200 caracteres). */
+    fun editCaption(post: Post, newCaption: String) {
+        if (newCaption.length > 2200) {
+            _errorMessage.value = "El texto no puede tener más de 2200 caracteres."
+            return
+        }
+        val trimmed = newCaption.ifBlank { null }
+        _posts.value = _posts.value.map { if (it.id == post.id) it.copy(caption = trimmed) else it }
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("posts")
+                    .update({ set("caption", trimmed) }) { filter { eq("id", post.id) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo editar la publicación."
+                load()
+            }
+        }
+    }
 }
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -89,6 +113,10 @@ fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
     // Hallazgo real, mismo hueco ya cerrado en el feed y el chat: no
     // había forma de tocar la imagen para verla a tamaño completo.
     var fullScreenUrl by remember { mutableStateOf<String?>(null) }
+    // Hallazgo real, comparado con Instagram: no había forma de editar el
+    // caption de una publicación ya hecha, solo borrarla entera.
+    var editingPost by remember { mutableStateOf<Post?>(null) }
+    var editedCaption by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) { viewModel.load() }
 
@@ -143,7 +171,16 @@ fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            OutlinedButton(onClick = { viewModel.delete(post) }) { Text("Borrar") }
+                            Row {
+                                OutlinedButton(
+                                    onClick = {
+                                        editingPost = post
+                                        editedCaption = post.caption ?: ""
+                                    },
+                                    modifier = Modifier.padding(end = 8.dp)
+                                ) { Text("Editar") }
+                                OutlinedButton(onClick = { viewModel.delete(post) }) { Text("Borrar") }
+                            }
                         }
                     }
                     HorizontalDivider()
@@ -157,5 +194,34 @@ fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
     }
     fullScreenUrl?.let { url ->
         com.social.app.util.FullScreenImageViewer(url = url, onDismiss = { fullScreenUrl = null })
+    }
+    editingPost?.let { post ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { editingPost = null },
+            title = { Text("Editar publicación") },
+            text = {
+                Column {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = editedCaption,
+                        onValueChange = { editedCaption = it },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        "${editedCaption.length}/2200",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (editedCaption.length > 2200) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    viewModel.editCaption(post, editedCaption)
+                    editingPost = null
+                }) { Text("Guardar") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { editingPost = null }) { Text("Cancelar") }
+            }
+        )
     }
 }

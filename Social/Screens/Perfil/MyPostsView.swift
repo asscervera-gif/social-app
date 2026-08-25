@@ -47,6 +47,34 @@ final class MyPostsViewModel: ObservableObject {
             errorMessage = "No se pudo borrar la publicación."
         }
     }
+
+    /// Hallazgo real, comparado con Instagram: no había forma de editar el
+    /// caption de una publicación ya hecha, solo borrarla entera --
+    /// `posts_write_own` (0002_rls.sql) ya es `for all`, así que editar la
+    /// propia publicación ya estaba permitido a nivel de RLS, solo faltaba
+    /// el botón. Mismo límite real que `posts_caption_length`
+    /// (0023_text_length_limits.sql, 2200 caracteres). Equivalente de
+    /// MyPostsViewModel.kt.editCaption().
+    func editCaption(_ post: Post, newCaption: String) async {
+        guard newCaption.count <= 2200 else {
+            errorMessage = "El texto no puede tener más de 2200 caracteres."
+            return
+        }
+        let trimmed = newCaption.isEmpty ? nil : newCaption
+        if let index = posts.firstIndex(where: { $0.id == post.id }) {
+            posts[index].caption = trimmed
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("posts")
+                .update(["caption": trimmed])
+                .eq("id", value: post.id)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo editar la publicación."
+            await load()
+        }
+    }
 }
 
 struct MyPostsView: View {
@@ -54,6 +82,10 @@ struct MyPostsView: View {
     // Hallazgo real, mismo hueco ya cerrado en el feed y el chat: no
     // había forma de tocar la imagen para verla a tamaño completo.
     @State private var fullScreenURL: URL?
+    // Hallazgo real, comparado con Instagram: no había forma de editar el
+    // caption de una publicación ya hecha, solo borrarla entera.
+    @State private var editingPost: Post?
+    @State private var editedCaption = ""
 
     var body: some View {
         List {
@@ -89,6 +121,11 @@ struct MyPostsView: View {
                     Button("Borrar", role: .destructive) {
                         Task { await viewModel.delete(post) }
                     }
+                    Button("Editar") {
+                        editingPost = post
+                        editedCaption = post.caption ?? ""
+                    }
+                    .tint(.blue)
                 }
             }
         }
@@ -107,6 +144,30 @@ struct MyPostsView: View {
         )) {
             if let fullScreenURL {
                 FullScreenImageView(url: fullScreenURL, onDismiss: { self.fullScreenURL = nil })
+            }
+        }
+        .sheet(item: $editingPost) { post in
+            NavigationStack {
+                Form {
+                    TextField("Descripción", text: $editedCaption, axis: .vertical)
+                    Text("\(editedCaption.count)/2200")
+                        .font(.caption2)
+                        .foregroundStyle(editedCaption.count > 2200 ? .red : .secondary)
+                }
+                .navigationTitle("Editar publicación")
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Guardar") {
+                            Task {
+                                await viewModel.editCaption(post, newCaption: editedCaption)
+                                editingPost = nil
+                            }
+                        }
+                    }
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancelar") { editingPost = nil }
+                    }
+                }
             }
         }
     }

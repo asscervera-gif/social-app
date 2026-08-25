@@ -252,10 +252,35 @@ async function main() {
   check('posts_select: el social aceptado real SÍ ve el post "solo socials"', postAsSocial.length === 1);
 
   // --- likes_insert_own (0012): bloqueado no puede dar like al post de quien lo bloqueó ---
+  //
+  // Hallazgo real de robustez del propio arnés de pruebas: esta prueba
+  // referenciaba una variable `post` que NUNCA se declaraba en todo el
+  // archivo -- pasaba en verde solo porque expectFail() traga CUALQUIER
+  // excepción (línea 95-102), incluido el ReferenceError de la variable
+  // inexistente, sin haber llegado a ejecutar jamás el INSERT real que
+  // dice verificar. Arreglado creando el post real de u1 antes de la
+  // prueba, para que el fallo capturado sea de verdad el bloqueo de RLS,
+  // no un bug del propio test.
+  await asUser(u1);
+  const post = (await db.query(`insert into posts (author_id, caption) values ($1, 'post real de u1') returning id`, [u1])).rows[0];
   await asUser(u2);
   await expectFail('likes_insert_own: bloqueado (u2 fue bloqueado por u1) no puede dar like al post de u1', async () => {
     await db.query(`insert into likes (post_id, user_id) values ($1, $2)`, [post.id, u2]);
   });
+
+  // --- posts_write_own (0002_rls.sql) es "for all": editar el caption de
+  // la propia publicación ya estaba permitido a nivel de RLS, pero sin
+  // ningún test hasta ahora -- comparado con Instagram: poder editar un
+  // caption ya publicado, no solo borrarlo entero (MyPostsView.editCaption()). ---
+  await asUser(u1);
+  await expectOk('posts_write_own: el AUTOR real SÍ puede editar el caption de su propia publicación', async () => {
+    await db.query(`update posts set caption = 'caption editado de verdad' where id = $1`, [post.id]);
+  });
+  await asUser(u2);
+  await db.query(`update posts set caption = 'intento ajeno' where id = $1`, [post.id]);
+  await asSuperuser();
+  const postAfterForeignEditAttempt = (await db.query(`select caption from posts where id = $1`, [post.id])).rows[0];
+  check('posts_write_own: un tercero (u2, no autor) NO puede editar el caption ajeno (0 filas afectadas por RLS)', postAfterForeignEditAttempt.caption === 'caption editado de verdad');
 
   // --- Moderación real (0036): is_admin no autoconcedible, denuncias
   // solo visibles/gestionables por un admin real ---
