@@ -184,16 +184,21 @@ fun SocialCameraScreen(proximity: SocialProximity, onOpenProfile: (String) -> Un
             StatusOverlay(statusMessage!!)
         }
 
-        // reportedId usa currentUserId como placeholder: este punto de entrada
-        // (denuncia global desde la cámara) no tiene un perfil concreto en
-        // contexto todavía. Misma limitación reconocida en ReportSheet de
-        // SafetyToolbar.swift — se resuelve cuando exista un selector de
-        // perfil compartido entre pantallas, no antes.
-        if (showReportSheet && currentUserId != null) {
-            ReportSheet(
-                reporterId = currentUserId,
-                reportedId = currentUserId,
-                onDismiss = { showReportSheet = false }
+        // Hallazgo real, corregido esta pasada (bug de seguridad genuino):
+        // este botón usaba currentUserId como "reportedId" -- dos toques
+        // bastaban para denunciarse o BLOQUEARSE a uno mismo por
+        // accidente. El toque a un marcador de peer real (más abajo, con
+        // SendSocialSheet.onReportOrBlock) ya es el camino correcto con
+        // un target real; este botón genérico ahora solo explica eso, sin
+        // abrir un ReportSheet sin sentido.
+        if (showReportSheet) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showReportSheet = false },
+                title = { Text("Denunciar o bloquear") },
+                text = { Text("Toca a la persona que quieras denunciar o bloquear en la cámara para hacerlo con su perfil real.") },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = { showReportSheet = false }) { Text("Entendido") }
+                }
             )
         }
 

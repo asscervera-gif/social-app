@@ -14,15 +14,14 @@ import SwiftUI
 
 struct SafetyToolbar: View {
 
-    @EnvironmentObject private var safety: SafetyManager
-    @State private var showReportSheet = false
+    @State private var showExplanation = false
     let userID: UUID
 
     var body: some View {
         HStack {
             Spacer()
             Button {
-                showReportSheet = true
+                showExplanation = true
             } label: {
                 Image(systemName: "exclamationmark.shield.fill")
                     .padding(10)
@@ -31,17 +30,26 @@ struct SafetyToolbar: View {
             }
             .padding()
         }
-        .sheet(isPresented: $showReportSheet) {
-            ReportSheet(userID: userID)
+        // Hallazgo real, corregido esta pasada (bug de seguridad genuino,
+        // no solo cosmético): este botón abría ReportSheet con
+        // `reportedID` = el propio `userID` por defecto (sin usuario
+        // concreto en contexto) -- dos toques bastaban para denunciarse o
+        // BLOQUEARSE a uno mismo por accidente. Ahora que el resto de la
+        // app tiene entradas de denuncia/bloqueo con el target real
+        // (perfil, chat, post, comentario), este overlay deja de abrir un
+        // ReportSheet sin sentido y en su lugar explica dónde denunciar
+        // de verdad.
+        .alert("Denunciar o bloquear", isPresented: $showExplanation) {
+            Button("Entendido", role: .cancel) {}
+        } message: {
+            Text("Para denunciar o bloquear a alguien, hazlo desde su perfil, un chat, una publicación o un comentario suyo.")
         }
     }
 }
 
-/// Hoja de denuncia. `reportedID` se pasa desde la pantalla que abrió la hoja
-/// (perfil, chat, etc.); desde el overlay global de RootTabView no hay un
-/// usuario concreto en contexto, así que ese punto de entrada denuncia el
-/// último perfil visto — se resuelve con más detalle cuando exista un
-/// coordinador de navegación compartido entre pestañas.
+/// Hoja de denuncia. `reportedID` se pasa desde la pantalla que abrió la
+/// hoja (perfil, chat, post, comentario) — siempre con un target real,
+/// nunca desde un overlay global sin contexto (ver SafetyToolbar más arriba).
 struct ReportSheet: View {
     @EnvironmentObject private var safety: SafetyManager
     @Environment(\.dismiss) private var dismiss

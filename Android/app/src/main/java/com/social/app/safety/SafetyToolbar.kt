@@ -21,32 +21,29 @@ import androidx.compose.ui.unit.dp
  * equivalente Compose de SafetyToolbar.swift. Se añade como overlay en
  * RootTabView (principio de producto "seguridad primero").
  *
- * Antes de esta corrección, el docstring de ReportSheet.kt ya afirmaba
- * "Accesible desde cualquier pantalla" pero era falso en Android: solo se
- * podía abrir desde SocialCameraScreen (tocando a un peer detectado por
- * UWB), a diferencia de iOS que sí tenía este overlay global desde el
- * principio — mismo patrón de hallazgo que otros docstrings corregidos
- * esta sesión (afirmar código que no existía).
- *
  * El modo invisible en un toque vive en SocialCameraScreen, no aquí: ahí es
  * donde tiene efecto real sobre el motor UWB (SocialProximity), así que
  * repetirlo en las otras 4 pestañas solo daría una falsa sensación de
  * control sin acción real detrás — mismo razonamiento que en iOS.
  *
- * Aviso de honestidad: desde este overlay global no hay un usuario concreto
- * en contexto (no hay perfil/chat abierto), así que `reportedId` usa el
- * propio `userId` por defecto — mismo comportamiento y misma limitación ya
- * documentada en SafetyToolbar.swift/ReportSheet.swift, pendiente de un
- * coordinador de navegación compartido entre pestañas para pasar un target
- * real desde cualquier punto.
+ * Hallazgo real, corregido esta pasada (bug de seguridad genuino, no solo
+ * cosmético): desde este overlay global nunca hay un usuario concreto en
+ * contexto (no hay perfil/chat abierto), así que hasta ahora `reportedId`
+ * usaba el propio `userId` por defecto — dos toques bastaban para
+ * denunciarse o BLOQUEARSE a uno mismo por accidente. Ahora que el resto
+ * de la app tiene entradas de denuncia/bloqueo con el target real
+ * (perfil, chat, post, comentario — todas construidas en pasadas
+ * recientes), este botón deja de abrir un `ReportSheet` sin sentido y en
+ * su lugar explica dónde denunciar de verdad, sin ningún riesgo de
+ * autodenuncia/autobloqueo silencioso.
  */
 @Composable
 fun SafetyToolbar(userId: String) {
-    var showReportSheet by remember { mutableStateOf(false) }
+    var showExplanation by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.TopEnd) {
         FloatingActionButton(
-            onClick = { showReportSheet = true },
+            onClick = { showExplanation = true },
             shape = CircleShape,
             containerColor = MaterialTheme.colorScheme.errorContainer
         ) {
@@ -54,11 +51,14 @@ fun SafetyToolbar(userId: String) {
         }
     }
 
-    if (showReportSheet) {
-        ReportSheet(
-            reporterId = userId,
-            reportedId = userId,
-            onDismiss = { showReportSheet = false }
+    if (showExplanation) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showExplanation = false },
+            title = { Text("Denunciar o bloquear") },
+            text = { Text("Para denunciar o bloquear a alguien, hazlo desde su perfil, un chat, una publicación o un comentario suyo.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { showExplanation = false }) { Text("Entendido") }
+            }
         )
     }
 }
