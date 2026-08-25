@@ -38,6 +38,11 @@ struct PerfilView: View {
     // en `saved_posts`, pero no había ninguna pantalla para ver lo
     // guardado (ver SavedPostsView.swift).
     @State private var showSavedPosts = false
+    // Hallazgo real, comparado con Instagram/Twitter/TikTok: los
+    // contadores "Siguiendo"/"Seguidores" ya eran reales, pero tocarlos no
+    // hacía nada -- ver FollowListViewModel.swift.
+    @State private var showFollowList = false
+    @State private var followListInitialTab: FollowTab = .following
     @State private var currentUserID: UUID?
 
     var body: some View {
@@ -127,6 +132,11 @@ struct PerfilView: View {
                     SocialsListView()
                 }
             }
+            .sheet(isPresented: $showFollowList) {
+                NavigationStack {
+                    FollowListView(initialTab: followListInitialTab)
+                }
+            }
             .sheet(isPresented: $showChatList) {
                 // `.navigationDestination(isPresented:)` en vez de
                 // `(item:)`: la variante `(item:)` es exclusiva de iOS 17+,
@@ -173,7 +183,9 @@ struct PerfilView: View {
         HStack(spacing: 28) {
             CounterView(label: "Pubs", value: viewModel.postCount)
             CounterView(label: "Siguiendo", value: viewModel.followingCount)
+                .onTapGesture { followListInitialTab = .following; showFollowList = true }
             CounterView(label: "Seguidores", value: viewModel.followerCount)
+                .onTapGesture { followListInitialTab = .followers; showFollowList = true }
             CounterView(label: "Socials", value: viewModel.socialCount)
                 .onTapGesture { showSocialsList = true }
         }

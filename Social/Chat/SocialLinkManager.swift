@@ -56,17 +56,51 @@ final class SocialLinkManager: ObservableObject {
                 .single()
                 .execute()
                 .value
+            _ = await getOrCreateChat(social.requesterID, social.addresseeID)
+        } catch {
+            // No crítico: si falla, simplemente no se crea el chat todavía.
+        }
+    }
+
+    private struct ChatIDRow: Decodable { let id: UUID }
+
+    /// Devuelve el id del chat entre dos usuarios, creándolo si no existe.
+    /// Orden CANÓNICO (uuidString menor primero) -- antes esta función
+    /// insertaba siempre en el orden (requester, addressee) del social
+    /// concreto que la disparaba. `unique(user_a_id, user_b_id)`
+    /// (0001_schema.sql) es SENSIBLE al orden: dos caminos distintos hacia
+    /// el mismo par de personas en orden invertido habrían creado dos filas
+    /// de chat duplicadas en vez de reutilizar una. Hallazgo real
+    /// encontrado al construir esta misma función para "Enviar mensaje" en
+    /// el sheet de Avisos (AvisosView.swift) -- necesitaba poder crear un
+    /// chat con cualquier persona, no solo tras aceptar un social ya
+    /// orientado. Equivalente exacto de getOrCreateChat (Kotlin).
+    func getOrCreateChat(_ userIDA: UUID, _ userIDB: UUID) async -> UUID? {
+        let (a, b) = userIDA.uuidString < userIDB.uuidString ? (userIDA, userIDB) : (userIDB, userIDA)
+        do {
+            let existing: [ChatIDRow] = try await SupabaseManager.shared.client
+                .from("chats")
+                .select("id")
+                .eq("user_a_id", value: a)
+                .eq("user_b_id", value: b)
+                .execute()
+                .value
+            if let first = existing.first { return first.id }
 
             struct NewChat: Encodable {
                 let user_a_id: UUID
                 let user_b_id: UUID
             }
-            try await SupabaseManager.shared.client
+            let inserted: ChatIDRow = try await SupabaseManager.shared.client
                 .from("chats")
-                .insert(NewChat(user_a_id: social.requesterID, user_b_id: social.addresseeID))
+                .insert(NewChat(user_a_id: a, user_b_id: b))
+                .select("id")
+                .single()
                 .execute()
+                .value
+            return inserted.id
         } catch {
-            // Puede fallar si el chat ya existe (constraint unique) — no es un error de usuario.
+            return nil
         }
     }
 }

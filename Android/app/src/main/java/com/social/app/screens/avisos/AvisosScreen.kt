@@ -13,11 +13,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -37,6 +39,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.social.app.backend.SupabaseManager
 import com.social.app.backend.model.NotificationEntry
 import com.social.app.chat.SocialLinkManager
+import com.social.app.ui.theme.SocialColors
 import com.social.app.util.relativeTime
 import io.github.jan.supabase.gotrue.auth
 import kotlinx.coroutines.launch
@@ -133,6 +136,8 @@ fun AvisosScreen(
     selected?.let { entry ->
         NotificationActionsSheet(
             entry = entry,
+            actorProfile = entry.payload["actor_id"]?.let { actorProfiles[it] },
+            onOpenChat = onOpenChat,
             onOpenProfile = onOpenProfile,
             onOpenDuelResult = onOpenDuelResult,
             onDismiss = { selected = null }
@@ -140,10 +145,36 @@ fun AvisosScreen(
     }
 }
 
+/** Frase de contexto por tipo de aviso -- mismo criterio que `context` en
+ * el `openSheet()` de SOCIAL_APP.html: explica qué significa el aviso
+ * antes de mostrar las acciones, en vez de solo un título suelto. */
+private fun contextFor(kind: String): String = when (kind) {
+    "social" -> "Te ha enviado un social. Acéptalo para conectar."
+    "follow" -> "Ha solicitado seguirte."
+    "fight" -> "Te ha retado a un duelo de preguntas."
+    "compat_request" -> "Quiere ver vuestra compatibilidad. Acéptalo para desvelarla mutuamente."
+    "like", "comment", "reel_like", "reel_comment" -> "Ha interactuado con tu contenido."
+    "social_accepted" -> "Aceptó tu social."
+    "compat_accepted" -> "Compartió su compatibilidad contigo."
+    else -> "Nueva notificación."
+}
+
+/**
+ * Hoja de acciones al tocar un aviso -- reconstruida siguiendo la
+ * ESTRUCTURA exacta de `openSheet()` en SOCIAL_APP.html (el boceto pedido
+ * "exactamente igual"): cabecera con avatar+nombre real, frase de contexto,
+ * acción primaria según el tipo, y un menú universal de acciones (mensaje/
+ * social/perfil/bloquear) que antes no existía -- solo había botones
+ * sueltos condicionados a que el payload trajera una clave concreta, sin
+ * cabecera ni contexto ni forma de mandar mensaje o social directamente
+ * desde aquí.
+ */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun NotificationActionsSheet(
     entry: NotificationEntry,
+    actorProfile: com.social.app.backend.model.Profile?,
+    onOpenChat: (String) -> Unit,
     onOpenProfile: (String) -> Unit,
     onOpenDuelResult: (String) -> Unit,
     onDismiss: () -> Unit
@@ -153,14 +184,25 @@ private fun NotificationActionsSheet(
     val socialLinks = remember { SocialLinkManager() }
     val follows = remember { com.social.app.chat.FollowManager() }
     val compatRequests = remember { com.social.app.chat.CompatRequestManager() }
+    var showReport by remember { mutableStateOf(false) }
     val socialId = entry.payload["social_id"]
     val actorId = entry.payload["actor_id"]
     val compatRequestId = entry.payload["compat_request_id"]
     val duelId = entry.payload["duel_id"]
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(modifier = Modifier.padding(24.dp)) {
-            Text(entry.title(), style = MaterialTheme.typography.titleMedium)
+        Column(modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                com.social.app.avatar.AvatarView(config = actorProfile?.avatarConfig ?: emptyMap(), size = 52.dp)
+                Text(actorProfile?.displayName ?: entry.title(), style = MaterialTheme.typography.titleMedium)
+            }
+            Text(
+                contextFor(entry.kind),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 10.dp, bottom = 16.dp)
+            )
+
             if (entry.kind == "follow" && actorId != null) {
                 Button(
                     onClick = {
@@ -170,8 +212,9 @@ private fun NotificationActionsSheet(
                             onDismiss()
                         }
                     },
-                    modifier = Modifier.padding(top = 16.dp)
-                ) { Text("Seguir de vuelta") }
+                    colors = ButtonDefaults.buttonColors(containerColor = SocialColors.Green),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                ) { Text("✓ Seguir de vuelta") }
             }
             // Hallazgo real: estos botones estaban gateados solo por la
             // presencia de la clave en el payload, no por entry.kind --
@@ -192,37 +235,85 @@ private fun NotificationActionsSheet(
                             onDismiss()
                         }
                     },
-                    modifier = Modifier.padding(top = 16.dp)
-                ) { Text("Aceptar social") }
+                    colors = ButtonDefaults.buttonColors(containerColor = SocialColors.Green),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                ) { Text("✓ Aceptar social") }
                 OutlinedButton(
                     onClick = { scope.launch { socialLinks.respond(socialId, accept = false); onDismiss() } },
-                    modifier = Modifier.padding(top = 8.dp)
-                ) { Text("Rechazar") }
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                ) { Text("✕ Rechazar") }
             }
             if (entry.kind == "compat_request" && compatRequestId != null) {
                 Button(
                     onClick = { scope.launch { compatRequests.respond(compatRequestId, accept = true); onDismiss() } },
-                    modifier = Modifier.padding(top = 16.dp)
-                ) { Text("Compartir compatibilidad") }
+                    colors = ButtonDefaults.buttonColors(containerColor = SocialColors.Green),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                ) { Text("✓ Mostrar compatibilidad") }
                 OutlinedButton(
                     onClick = { scope.launch { compatRequests.respond(compatRequestId, accept = false); onDismiss() } },
-                    modifier = Modifier.padding(top = 8.dp)
-                ) { Text("Rechazar") }
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                ) { Text("✕ Denegar") }
             }
             if (entry.kind == "fight" && duelId != null) {
                 Button(
                     onClick = { onOpenDuelResult(duelId); onDismiss() },
-                    modifier = Modifier.padding(top = 16.dp)
-                ) { Text("Ver duelo") }
+                    colors = ButtonDefaults.buttonColors(containerColor = SocialColors.Purple),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                ) { Text("⚔️ Ver duelo") }
             }
-            // Antes "Ver perfil" no existía en absoluto en Android (ni
-            // siquiera como botón vacío, a diferencia de iOS).
+
+            // Menú universal -- hallazgo real comparado con Instagram/
+            // WhatsApp: antes no había forma de mandar un mensaje o un
+            // social directamente desde un aviso, solo responder al aviso
+            // concreto o navegar al perfil. `getOrCreateChat` (nuevo,
+            // SocialLinkManager.kt) crea el chat si hace falta, mismo
+            // criterio que "mensaje directo" en cualquier app grande.
             if (actorId != null) {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            val myId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                            val chatId = socialLinks.getOrCreateChat(myId, actorId)
+                            onDismiss()
+                            if (chatId != null) onOpenChat(chatId)
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = SocialColors.Turquoise),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                ) { Text("💬 Enviar mensaje") }
+                if (entry.kind != "social") {
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                val myId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                                socialLinks.sendSocial(myId, actorId)
+                                onDismiss()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                    ) { Text("🤝 Enviar social") }
+                }
                 OutlinedButton(
                     onClick = { onOpenProfile(actorId); onDismiss() },
-                    modifier = Modifier.padding(top = 8.dp)
-                ) { Text("Ver perfil") }
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                ) { Text("👤 Ver perfil") }
+                TextButton(
+                    onClick = { showReport = true },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("🚫 Bloquear o denunciar") }
             }
+        }
+    }
+
+    if (showReport && actorId != null) {
+        val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
+        if (myId != null) {
+            com.social.app.safety.ReportSheet(
+                reporterId = myId,
+                reportedId = actorId,
+                onDismiss = { showReport = false; onDismiss() }
+            )
         }
     }
 }

@@ -93,21 +93,55 @@ struct AvisosView: View {
             // (start() ya lo hizo una vez), evitando un canal duplicado.
             .refreshable { await viewModel.load() }
             .sheet(item: $viewModel.selected) { entry in
-                NotificationActionsSheet(entry: entry)
-                    .presentationDetents([.medium])
+                let actorProfile = entry.payload["actor_id"]
+                    .flatMap { UUID(uuidString: $0) }
+                    .flatMap { viewModel.actorProfiles[$0] }
+                NotificationActionsSheet(entry: entry, actorProfile: actorProfile)
+                    .presentationDetents([.medium, .large])
             }
         }
     }
 }
 
+/// Frase de contexto por tipo de aviso -- mismo criterio que `context` en
+/// el `openSheet()` de SOCIAL_APP.html: explica qué significa el aviso
+/// antes de mostrar las acciones, en vez de solo un título suelto.
+/// Equivalente exacto de contextFor() en AvisosScreen.kt.
+private func contextFor(_ kind: String) -> String {
+    switch kind {
+    case "social": return "Te ha enviado un social. Acéptalo para conectar."
+    case "follow": return "Ha solicitado seguirte."
+    case "fight": return "Te ha retado a un duelo de preguntas."
+    case "compat_request": return "Quiere ver vuestra compatibilidad. Acéptalo para desvelarla mutuamente."
+    case "like", "comment", "reel_like", "reel_comment": return "Ha interactuado con tu contenido."
+    case "social_accepted": return "Aceptó tu social."
+    case "compat_accepted": return "Compartió su compatibilidad contigo."
+    default: return "Nueva notificación."
+    }
+}
+
+/// Hoja de acciones al tocar un aviso -- reconstruida siguiendo la
+/// ESTRUCTURA exacta de `openSheet()` en SOCIAL_APP.html (el boceto pedido
+/// "exactamente igual"): cabecera con avatar+nombre real, frase de
+/// contexto, acción primaria según el tipo, y un menú universal de
+/// acciones (mensaje/social/perfil/bloquear) que antes no existía -- solo
+/// había botones sueltos condicionados a que el payload trajera una clave
+/// concreta, sin cabecera ni contexto ni forma de mandar mensaje o social
+/// directamente desde aquí. Equivalente exacto de NotificationActionsSheet
+/// (AvisosScreen.kt).
 private struct NotificationActionsSheet: View {
     let entry: AvisosViewModel.NotificationEntry
+    let actorProfile: Profile?
     @StateObject private var socialLinks = SocialLinkManager()
     @StateObject private var follows = FollowManager()
     @StateObject private var compatRequests = CompatRequestManager()
     @Environment(\.dismiss) private var dismiss
     @State private var showProfile = false
     @State private var showDuelResult = false
+    @State private var showChat = false
+    @State private var showReport = false
+    @State private var currentUserID: UUID?
+    @State private var chatID: UUID?
 
     /// El id del emisor viaja en el payload de la notificación (guardado al
     /// crearla en el backend); sin él no se puede responder al social desde aquí.
@@ -131,43 +165,70 @@ private struct NotificationActionsSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(entry.title)
-                .font(.title3.bold())
-
-            switch entry.kind {
-            case "social":
-                Button("Aceptar social") {
-                    respond(accept: true)
-                }.buttonStyle(.borderedProminent)
-                Button("Rechazar") {
-                    respond(accept: false)
-                }.buttonStyle(.bordered)
-            case "follow":
-                Button("Seguir de vuelta") {
-                    followBack()
-                }.buttonStyle(.borderedProminent)
-            case "fight":
-                if duelID != nil {
-                    Button("Ver duelo") { showDuelResult = true }.buttonStyle(.borderedProminent)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 12) {
+                    ActiveAvatarProvider.shared.avatarView(config: actorProfile?.avatarConfig ?? [:], size: 52)
+                    Text(actorProfile?.displayName ?? entry.title)
+                        .font(.title3.bold())
                 }
-            case "compat_request":
-                Button("Compartir compatibilidad") {
-                    respondCompat(accept: true)
-                }.buttonStyle(.borderedProminent)
-                Button("Rechazar") {
-                    respondCompat(accept: false)
-                }.buttonStyle(.bordered)
-            default:
-                EmptyView()
-            }
+                Text(contextFor(entry.kind))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
 
-            if actorProfileID != nil {
-                Button("Ver perfil") { showProfile = true }.buttonStyle(.plain)
+                switch entry.kind {
+                case "social":
+                    Button("✓ Aceptar social") {
+                        respond(accept: true)
+                    }.buttonStyle(.borderedProminent).tint(.green)
+                    Button("✕ Rechazar") {
+                        respond(accept: false)
+                    }.buttonStyle(.bordered)
+                case "follow":
+                    Button("✓ Seguir de vuelta") {
+                        followBack()
+                    }.buttonStyle(.borderedProminent).tint(.green)
+                case "fight":
+                    if duelID != nil {
+                        Button("⚔️ Ver duelo") { showDuelResult = true }.buttonStyle(.borderedProminent).tint(.purple)
+                    }
+                case "compat_request":
+                    Button("✓ Mostrar compatibilidad") {
+                        respondCompat(accept: true)
+                    }.buttonStyle(.borderedProminent).tint(.green)
+                    Button("✕ Denegar") {
+                        respondCompat(accept: false)
+                    }.buttonStyle(.bordered)
+                default:
+                    EmptyView()
+                }
+
+                // Menú universal -- hallazgo real comparado con Instagram/
+                // WhatsApp: antes no había forma de mandar un mensaje o un
+                // social directamente desde un aviso, solo responder al
+                // aviso concreto o navegar al perfil. `getOrCreateChat`
+                // (nuevo, SocialLinkManager.swift) crea el chat si hace
+                // falta, mismo criterio que "mensaje directo" en cualquier
+                // app grande.
+                if let actorProfileID {
+                    Button("💬 Enviar mensaje") { sendMessage(to: actorProfileID) }
+                        .buttonStyle(.borderedProminent).tint(.blue)
+                    if entry.kind != "social" {
+                        Button("🤝 Enviar social") { sendSocial(to: actorProfileID) }
+                            .buttonStyle(.bordered)
+                    }
+                    Button("👤 Ver perfil") { showProfile = true }
+                        .buttonStyle(.bordered)
+                    Button("🚫 Bloquear o denunciar") { showReport = true }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 4)
             }
-            Spacer()
+            .padding(24)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(24)
+        .task { currentUserID = try? await SupabaseManager.shared.client.auth.session.user.id }
         .sheet(isPresented: $showProfile) {
             if let actorProfileID {
                 NavigationStack { ProfileViewerView(profileID: actorProfileID) }
@@ -177,6 +238,32 @@ private struct NotificationActionsSheet: View {
             if let duelID {
                 DuelResultView(duelID: duelID)
             }
+        }
+        .sheet(isPresented: $showChat) {
+            if let chatID, let currentUserID {
+                NavigationStack { ChatView(chatID: chatID, currentUserID: currentUserID) }
+            }
+        }
+        .sheet(isPresented: $showReport) {
+            if let currentUserID, let actorProfileID {
+                ReportSheet(userID: currentUserID, reportedID: actorProfileID)
+            }
+        }
+    }
+
+    private func sendMessage(to otherID: UUID) {
+        Task {
+            guard let myID = currentUserID ?? (try? await SupabaseManager.shared.client.auth.session.user.id) else { return }
+            chatID = await socialLinks.getOrCreateChat(myID, otherID)
+            if chatID != nil { showChat = true }
+        }
+    }
+
+    private func sendSocial(to otherID: UUID) {
+        Task {
+            guard let myID = currentUserID ?? (try? await SupabaseManager.shared.client.auth.session.user.id) else { return }
+            await socialLinks.sendSocial(from: myID, to: otherID)
+            dismiss()
         }
     }
 

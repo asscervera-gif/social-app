@@ -82,6 +82,7 @@ private const val CHAT_LIST_ROUTE = "chat_list"
 private const val MY_POSTS_ROUTE = "my_posts"
 private const val SAVED_POSTS_ROUTE = "saved_posts"
 private const val SOCIALS_LIST_ROUTE = "socials_list"
+private const val FOLLOW_LIST_ROUTE = "follow_list/{tab}"
 private const val SEARCH_ROUTE = "search"
 private const val FIND_ROUTE = "find"
 
@@ -254,8 +255,28 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                         onOpenChatList = { navController.navigate(CHAT_LIST_ROUTE) },
                         onOpenMyPosts = { navController.navigate(MY_POSTS_ROUTE) },
                         onOpenSocials = { navController.navigate(SOCIALS_LIST_ROUTE) },
-                        onOpenSavedPosts = { navController.navigate(SAVED_POSTS_ROUTE) }
+                        onOpenSavedPosts = { navController.navigate(SAVED_POSTS_ROUTE) },
+                        onOpenFollowing = { navController.navigate("follow_list/following") },
+                        onOpenFollowers = { navController.navigate("follow_list/followers") }
                     )
+                }
+                // Hallazgo real, comparado con Instagram/Twitter/TikTok:
+                // los contadores "Sigo"/"Seguid." de la cabecera del perfil
+                // ya eran reales, pero tocarlos no hacía nada -- no existía
+                // ninguna pantalla para ver QUIÉN sigue a quién.
+                composable(FOLLOW_LIST_ROUTE) { routeEntry ->
+                    val tabArg = routeEntry.arguments?.getString("tab")
+                    val initialTab = if (tabArg == "followers") {
+                        com.social.app.screens.perfil.FollowTab.FOLLOWERS
+                    } else {
+                        com.social.app.screens.perfil.FollowTab.FOLLOWING
+                    }
+                    com.social.app.ui.theme.BackScaffold(title = "Siguiendo y seguidores", onBack = { navController.popBackStack() }) {
+                        com.social.app.screens.perfil.FollowListScreen(
+                            initialTab = initialTab,
+                            onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
+                        )
+                    }
                 }
                 // Hallazgo real, sistémico, encontrado por el usuario
                 // probando la app de verdad ("no se puede volver atrás"):

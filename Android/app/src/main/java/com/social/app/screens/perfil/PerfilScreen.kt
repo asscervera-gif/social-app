@@ -83,7 +83,9 @@ fun PerfilScreen(
     onOpenChatList: () -> Unit = {},
     onOpenMyPosts: () -> Unit = {},
     onOpenSocials: () -> Unit = {},
-    onOpenSavedPosts: () -> Unit = {}
+    onOpenSavedPosts: () -> Unit = {},
+    onOpenFollowing: () -> Unit = {},
+    onOpenFollowers: () -> Unit = {}
 ) {
     val profile by viewModel.profile.collectAsState()
     val sections by viewModel.sections.collectAsState()
@@ -148,10 +150,15 @@ fun PerfilScreen(
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        // Hallazgo real, comparado con Instagram/Twitter/
+                        // TikTok: estos contadores ya eran reales, pero
+                        // tocarlos no hacía nada -- ahora abren la lista de
+                        // verdad (FollowListScreen/SocialsListScreen), no
+                        // solo el número suelto.
                         ProfileCounter(postCount.toString(), "Pubs", Modifier.weight(1f))
-                        ProfileCounter(followingCount.toString(), "Sigo", Modifier.weight(1f))
-                        ProfileCounter(followersCount.toString(), "Seguid.", Modifier.weight(1f))
-                        ProfileCounter(socialCount.toString(), "Socials", Modifier.weight(1f))
+                        ProfileCounter(followingCount.toString(), "Sigo", Modifier.weight(1f).clickable(onClick = onOpenFollowing))
+                        ProfileCounter(followersCount.toString(), "Seguid.", Modifier.weight(1f).clickable(onClick = onOpenFollowers))
+                        ProfileCounter(socialCount.toString(), "Socials", Modifier.weight(1f).clickable(onClick = onOpenSocials))
                     }
                 }
             }

@@ -72,10 +72,39 @@ class SocialLinkManager {
             val social = SupabaseManager.client.from("socials")
                 .select { filter { eq("id", socialId) } }
                 .decodeSingle<SocialRow>()
-            SupabaseManager.client.from("chats")
-                .insert(NewChat(social.requesterId, social.addresseeId))
+            getOrCreateChat(social.requesterId, social.addresseeId)
         } catch (e: Exception) {
-            // Puede fallar si el chat ya existe (constraint unique) — no es un error de usuario.
+            // No crítico: si falla, simplemente no se crea el chat todavía.
+        }
+    }
+
+    @Serializable
+    private data class ChatRow(val id: String)
+
+    /**
+     * Devuelve el id del chat entre dos usuarios, creándolo si no existe.
+     * Orden CANÓNICO (menor id primero) -- antes esta función insertaba
+     * siempre en el orden (requester, addressee) del social concreto que la
+     * disparaba. `unique(user_a_id, user_b_id)` (0001_schema.sql) es
+     * SENSIBLE al orden: dos caminos distintos hacia el mismo par de
+     * personas en orden invertido habrían creado dos filas de chat
+     * duplicadas en vez de reutilizar una. Hallazgo real encontrado al
+     * construir esta misma función para "Enviar mensaje" en el sheet de
+     * Avisos (AvisosScreen.kt) -- necesitaba poder crear un chat con
+     * cualquier persona, no solo tras aceptar un social ya orientado.
+     */
+    suspend fun getOrCreateChat(userIdA: String, userIdB: String): String? {
+        val (a, b) = if (userIdA < userIdB) userIdA to userIdB else userIdB to userIdA
+        return try {
+            val existing = SupabaseManager.client.from("chats")
+                .select { filter { eq("user_a_id", a); eq("user_b_id", b) } }
+                .decodeSingleOrNull<ChatRow>()
+            existing?.id ?: SupabaseManager.client.from("chats")
+                .insert(NewChat(a, b)) { select() }
+                .decodeSingle<ChatRow>()
+                .id
+        } catch (e: Exception) {
+            null
         }
     }
 }
