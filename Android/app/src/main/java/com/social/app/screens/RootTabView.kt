@@ -7,6 +7,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
@@ -15,6 +16,7 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,7 +27,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import com.social.app.ui.theme.SocialColors
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -51,8 +58,11 @@ import io.github.jan.supabase.gotrue.auth
 
 private enum class Tab(val route: String, val label: String, val icon: ImageVector?) {
     HOME("home", "Home", Icons.Filled.Home),
-    MATCH("match", "Match", null),
-    SOCIAL("social", "Social", null), // icono "S" con degradado
+    // Hallazgo real, comparado con Instagram/Duolingo: la pestaña Match no
+    // tenía icono real, se veía un simple "•" -- ver
+    // com.social.app.ui.theme.SocialColors.
+    MATCH("match", "Match", Icons.Filled.Favorite),
+    SOCIAL("social", "Social", null), // icono "S" con degradado real del logo
     AVISOS("avisos", "Avisos", Icons.Filled.Notifications),
     PERFIL("perfil", "Perfil", Icons.Filled.Person)
 }
@@ -131,7 +141,13 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar {
+                // Hallazgo real, comparado con Instagram/Duolingo: la barra
+                // inferior era un `NavigationBar` totalmente por defecto --
+                // icono "S" como texto plano, "•" para Match, sin ningún
+                // color de marca real. El icono "S" ahora usa el degradado
+                // real de social_logo.png (mismo Brush multicolor ya usado
+                // en el icono de pestaña de iOS, SocialTabIcon).
+                NavigationBar(containerColor = SocialColors.Background) {
                     Tab.values().forEach { tab ->
                         val selected = currentRoute == tab.route
                         NavigationBarItem(
@@ -146,8 +162,24 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                             },
                             icon = {
                                 val iconContent: @Composable () -> Unit = {
-                                    if (tab.icon != null) Icon(tab.icon, contentDescription = tab.label)
-                                    else Text(if (tab == Tab.SOCIAL) "S" else "•")
+                                    when {
+                                        tab.icon != null -> Icon(tab.icon, contentDescription = tab.label)
+                                        tab == Tab.SOCIAL -> Text(
+                                            "S",
+                                            style = TextStyle(
+                                                brush = Brush.linearGradient(
+                                                    listOf(
+                                                        SocialColors.Magenta, SocialColors.Coral, SocialColors.Orange,
+                                                        SocialColors.Gold, SocialColors.Green, SocialColors.Turquoise,
+                                                        SocialColors.Purple
+                                                    )
+                                                ),
+                                                fontWeight = FontWeight.Light,
+                                                fontSize = 22.sp
+                                            )
+                                        )
+                                        else -> Text("•")
+                                    }
                                 }
                                 if (tab == Tab.AVISOS && unreadCount > 0) {
                                     BadgedBox(badge = { Badge { Text(unreadCount.coerceAtMost(99).toString()) } }) {
@@ -157,7 +189,10 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                                     iconContent()
                                 }
                             },
-                            label = { Text(tab.label) }
+                            label = { Text(tab.label) },
+                            colors = NavigationBarItemDefaults.colors(
+                                indicatorColor = SocialColors.SurfaceVariant
+                            )
                         )
                     }
                 }

@@ -6,14 +6,12 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.graphics.Color
 import com.social.app.auth.AppRoot
 import com.social.app.backend.AnalyticsManager
 import com.social.app.backend.SupabaseManager
 import com.social.app.proximity.SocialProximity
+import com.social.app.ui.theme.SocialTheme
 
 /**
  * Punto de entrada de SOCIAL para Android. Igual que en iOS, la pantalla
@@ -72,24 +70,11 @@ class MainActivity : ComponentActivity() {
             // el tema oscuro del sistema — en un emulador/teléfono con modo
             // oscuro activado (el caso normal hoy en día), toda la app se
             // veía negra pese a no haber diseñado nunca una versión oscura
-            // real. Esquema claro fijo, fondo blanco, con los colores reales
-            // del logo (social_logo.png: coral/rosa y turquesa del arcoíris
-            // del wordmark) en vez de los morados por defecto de Compose.
-            val socialColorScheme = lightColorScheme(
-                primary = Color(0xFFFF5A76),      // rosa/coral del logo
-                onPrimary = Color.White,
-                secondary = Color(0xFF29C7C2),    // turquesa del logo
-                onSecondary = Color.White,
-                tertiary = Color(0xFFFFA630),     // naranja del logo
-                background = Color.White,
-                onBackground = Color(0xFF12121A),
-                surface = Color.White,
-                onSurface = Color(0xFF12121A),
-                surfaceVariant = Color(0xFFF3F1F7),
-                onSurfaceVariant = Color(0xFF49454F),
-                error = Color(0xFFD32F2F)
-            )
-            MaterialTheme(colorScheme = socialColorScheme) {
+            // real. El esquema de color en sí vive ahora en
+            // ui/theme/SocialTheme.kt (antes metido a mano aquí, con
+            // valores parecidos pero no idénticos a los del logo real, y
+            // sin forma de personalizar el acento -- ver AjustesScreen.kt).
+            SocialTheme {
                 // Hallazgo real más grave de la sesión: antes se mostraba
                 // RootTabView siempre, sin comprobar sesión — ver
                 // AppRoot.kt/AuthScreen.kt.

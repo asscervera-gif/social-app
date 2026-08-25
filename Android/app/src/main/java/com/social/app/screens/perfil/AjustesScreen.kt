@@ -1,11 +1,17 @@
 package com.social.app.screens.perfil
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -101,6 +107,34 @@ fun AjustesScreen(
         Text("Ajustes", style = MaterialTheme.typography.headlineSmall)
 
         errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 12.dp)) }
+
+        // Hallazgo real, comparado con cualquier app grande: no había
+        // ninguna forma de personalizar el color de acento -- solo el
+        // coral por defecto, metido a mano. Los siete colores son los
+        // reales del arcoíris del wordmark del logo (ver SocialColors),
+        // no inventados. Cambia al instante, sin reiniciar la app (ver
+        // AccentPreference, StateFlow observado por SocialTheme).
+        Text("Apariencia", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+        val accentKey by com.social.app.ui.theme.AccentPreference.accentKey.collectAsState()
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            com.social.app.ui.theme.SocialColors.accents.forEach { (key, color) ->
+                val selected = key == accentKey
+                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier
+                        .size(if (selected) 40.dp else 32.dp)
+                        .clip(CircleShape)
+                        .background(color)
+                        .then(
+                            if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                            else Modifier
+                        )
+                        .clickable { com.social.app.ui.theme.AccentPreference.setAccent(context, key) }
+                )
+            }
+        }
 
         Text("Privacidad", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 20.dp))
         Row(

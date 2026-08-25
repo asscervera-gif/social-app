@@ -14,6 +14,11 @@ struct RootTabView: View {
     @State private var selectedTab: Tab = .social
     @StateObject private var safety = SafetyManager()
     @State private var currentUserID: UUID?
+    // Hallazgo real, comparado con Android (que ya tenía colores reales
+    // del logo metidos a mano): iOS no tenía NINGÚN color de marca, usaba
+    // el azul de sistema por defecto de SwiftUI en toda la app -- ver
+    // Theme.swift/AjustesView.swift.
+    @ObservedObject private var accent = AccentPreference.shared
     // Badge de no leídas en Avisos — mismo hallazgo que RootTabView.kt: no
     // había ninguna señal de "hay algo nuevo" sin entrar a mirar.
     @StateObject private var notificationsBadge = NotificationsBadgeViewModel()
@@ -30,7 +35,11 @@ struct RootTabView: View {
                     .tag(Tab.home)
 
                 MatchView()
-                    .tabItem { Label("Match", systemImage: "square.grid.2x2.fill") }
+                    // Hallazgo real, comparado con Instagram/Duolingo: el
+                    // icono era una rejilla genérica sin relación con lo
+                    // que hace la pestaña -- mismo cambio ya aplicado en
+                    // Android (Icons.Filled.Favorite).
+                    .tabItem { Label("Match", systemImage: "heart.fill") }
                     .tag(Tab.match)
 
                 SocialCameraView()
@@ -46,7 +55,7 @@ struct RootTabView: View {
                     .tabItem { Label("Perfil", systemImage: "person.crop.circle.fill") }
                     .tag(Tab.perfil)
             }
-            .tint(.primary)
+            .tint(accent.color)
 
             // Denuncia accesible desde cualquier pestaña (principio de producto
             // "seguridad primero"). No se superpone en Social: ahí la cámara ya
@@ -93,6 +102,13 @@ struct RootTabView: View {
 
 /// Icono de la pestaña Social: letra "S" fina con degradado multicolor,
 /// tal como especifica el diseño de producto.
+///
+/// Hallazgo real: el comentario ya prometía un "degradado multicolor",
+/// pero el código nunca lo aplicaba -- `Text("S")` sin ningún
+/// `.foregroundStyle`, texto plano del color de tinte por defecto. Ahora
+/// sí usa el degradado real del logo (social_logo.png, mismos colores que
+/// SocialColors/Android) -- equivalente exacto del icono "S" ya corregido
+/// en RootTabView.kt.
 private struct SocialTabIcon: View {
     var body: some View {
         Label {
@@ -100,6 +116,22 @@ private struct SocialTabIcon: View {
         } icon: {
             Text("S")
                 .font(.system(size: 20, weight: .light, design: .rounded))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [
+                            SocialColors.magenta, SocialColors.coral, SocialColors.orange,
+                            SocialColors.gold, SocialColors.green, SocialColors.turquoise, SocialColors.purple
+                        ],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    )
+                )
+                // Aviso de honestidad: UIKit renderiza el icono de
+                // `.tabItem` como plantilla monocroma en algunas versiones
+                // de iOS, lo que puede ignorar este degradado y mostrar
+                // solo el tinte de acento -- límite conocido de la
+                // plataforma, no verificable sin Simulador real en este
+                // entorno. Si no se ve el degradado, el tinte de acento
+                // (Theme.swift) sigue aplicándose igualmente.
         }
     }
 }

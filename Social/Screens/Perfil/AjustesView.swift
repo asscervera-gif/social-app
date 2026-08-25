@@ -25,11 +25,31 @@ struct AjustesView: View {
     // consulta real a `profiles` confirma `is_admin = true`.
     @State private var isAdmin = false
     let onAccountDeleted: () -> Void
+    // Hallazgo real, comparado con cualquier app grande: no había ninguna
+    // forma de personalizar el color de acento -- solo el coral por
+    // defecto, y Android ni siquiera tenía uno consistente hasta esta
+    // pasada. Los siete colores son los reales del arcoíris del wordmark
+    // del logo (ver Theme.swift), no inventados.
+    @ObservedObject private var accent = AccentPreference.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             if let error = account.errorMessage {
                 Text(error).font(.footnote).foregroundStyle(.red)
+            }
+
+            Text("Apariencia").font(.headline)
+            HStack(spacing: 12) {
+                ForEach(SocialColors.accents) { entry in
+                    let selected = entry.key == accent.accentKey
+                    Circle()
+                        .fill(entry.color)
+                        .frame(width: selected ? 36 : 28, height: selected ? 36 : 28)
+                        .overlay(
+                            Circle().stroke(.primary, lineWidth: selected ? 2 : 0)
+                        )
+                        .onTapGesture { accent.accentKey = entry.key }
+                }
             }
 
             Text("Privacidad").font(.headline)
