@@ -229,6 +229,10 @@ private struct MessageBubble: View {
     var onDelete: () -> Void = {}
 
     @State private var showPicker = false
+    // Hallazgo real, comparado con Instagram/Twitter/WhatsApp: no había
+    // forma de tocar una foto del chat para verla a tamaño completo, solo
+    // la miniatura recortada de 200pt.
+    @State private var fullScreenURL: URL?
     private let reactionEmojis = ["❤", "😂", "😮", "😢", "👍"]
 
     var body: some View {
@@ -244,6 +248,11 @@ private struct MessageBubble: View {
                         }
                         .frame(width: 200, height: 200)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
+                        // Toque propio (más específico que el de la
+                        // burbuja de abajo): abre la foto a tamaño
+                        // completo en vez de alternar el selector de
+                        // reacciones.
+                        .onTapGesture { fullScreenURL = url }
                     } else if let audioURL = message.audioURL, let url = URL(string: audioURL) {
                         // Última pieza real de "chat funcional" — nota de
                         // voz, reproducción con AVAudioPlayer nativo.
@@ -298,6 +307,16 @@ private struct MessageBubble: View {
                 Text(message.readAt != nil ? "Leído ✓✓" : "Enviado ✓")
                     .font(.caption2)
                     .foregroundStyle(message.readAt != nil ? Color.accentColor : .secondary)
+            }
+        }
+        // Mismo patrón Binding(get:set:) ya usado en HomeView.swift para
+        // un URL? no Identifiable.
+        .fullScreenCover(isPresented: Binding(
+            get: { fullScreenURL != nil },
+            set: { isPresented in if !isPresented { fullScreenURL = nil } }
+        )) {
+            if let fullScreenURL {
+                FullScreenImageView(url: fullScreenURL, onDismiss: { self.fullScreenURL = nil })
             }
         }
     }

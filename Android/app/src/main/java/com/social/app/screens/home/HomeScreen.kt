@@ -283,6 +283,10 @@ private fun PostCard(
     // en los detalles, para que moderación sepa cuál — no se inventa una
     // columna nueva para esto.
     var showReport by remember { mutableStateOf(false) }
+    // Hallazgo real, comparado con Instagram/Twitter/WhatsApp: no había
+    // forma de tocar una imagen para verla a tamaño completo, solo el
+    // recorte fijo de la miniatura.
+    var fullScreenUrl by remember { mutableStateOf<String?>(null) }
     val myId = com.social.app.backend.SupabaseManager.client.auth.currentUserOrNull()?.id
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp)) {
@@ -310,6 +314,7 @@ private fun PostCard(
                     modifier = Modifier.fillMaxWidth().height(220.dp)
                         .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
                         .padding(bottom = 8.dp)
+                        .clickable { fullScreenUrl = url }
                 )
             }
             post.caption?.let { CaptionText(it, onOpenHashtag) }
@@ -355,5 +360,8 @@ private fun PostCard(
             initialDetails = "Publicación ${post.id}",
             onDismiss = { showReport = false }
         )
+    }
+    fullScreenUrl?.let { url ->
+        com.social.app.util.FullScreenImageViewer(url = url, onDismiss = { fullScreenUrl = null })
     }
 }

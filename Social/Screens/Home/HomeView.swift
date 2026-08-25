@@ -255,6 +255,7 @@ private struct PostCard: View {
     // así que se denuncia al autor con el id del post en los detalles.
     @State private var showReport = false
     @State private var myID: UUID?
+    @State private var fullScreenURL: URL?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -288,6 +289,10 @@ private struct PostCard: View {
                 .frame(height: 220)
                 .clipped()
                 .clipShape(RoundedRectangle(cornerRadius: 14))
+                // Hallazgo real, comparado con Instagram/Twitter/WhatsApp:
+                // no había forma de tocar la imagen para verla a tamaño
+                // completo, solo el recorte fijo de 220pt.
+                .onTapGesture { fullScreenURL = url }
             } else {
             RoundedRectangle(cornerRadius: 14)
                 .fill(.gray.opacity(0.15))
@@ -356,6 +361,16 @@ private struct PostCard: View {
         .sheet(isPresented: $showReport) {
             if let myID {
                 ReportSheet(userID: myID, reportedID: post.authorID, initialDetails: "Publicación \(post.id)")
+            }
+        }
+        // Mismo patrón Binding(get:set:) ya usado en HomeView.swift para
+        // un URL? no Identifiable.
+        .fullScreenCover(isPresented: Binding(
+            get: { fullScreenURL != nil },
+            set: { isPresented in if !isPresented { fullScreenURL = nil } }
+        )) {
+            if let fullScreenURL {
+                FullScreenImageView(url: fullScreenURL, onDismiss: { self.fullScreenURL = nil })
             }
         }
         .task {

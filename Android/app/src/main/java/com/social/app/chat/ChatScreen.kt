@@ -57,6 +57,10 @@ fun ChatScreen(chatId: String, currentUserId: String, onStartDuel: (opponentId: 
     val suggestedActivity by viewModel.suggestedActivity.collectAsState()
     val icebreaker by viewModel.icebreaker.collectAsState()
     val hasMoreHistory by viewModel.hasMoreHistory.collectAsState()
+    // Hallazgo real, comparado con Instagram/Twitter/WhatsApp: no había
+    // forma de tocar una foto del chat para verla a tamaño completo,
+    // solo la miniatura recortada de 200dp.
+    var fullScreenImageUrl by remember { mutableStateOf<String?>(null) }
     val isLoadingOlder by viewModel.isLoadingOlder.collectAsState()
     var draft by remember { mutableStateOf("") }
     val context = LocalContext.current
@@ -177,7 +181,16 @@ fun ChatScreen(chatId: String, currentUserId: String, onStartDuel: (opponentId: 
                                 painter = rememberAsyncImagePainter(message.mediaUrl),
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
+                                // Toque propio (distinto del de la burbuja):
+                                // abre la foto a tamaño completo en vez de
+                                // alternar el selector de reacciones --
+                                // mantener pulsado sigue borrando el propio
+                                // mensaje, igual que el resto de la burbuja.
                                 modifier = Modifier.size(200.dp).clip(RoundedCornerShape(14.dp))
+                                    .combinedClickable(
+                                        onClick = { fullScreenImageUrl = message.mediaUrl },
+                                        onLongClick = { if (isMine) viewModel.deleteMessage(message.id) }
+                                    )
                             )
                         } else if (message.audioUrl != null) {
                             // Última pieza real de "chat funcional" — nota
@@ -307,6 +320,9 @@ fun ChatScreen(chatId: String, currentUserId: String, onStartDuel: (opponentId: 
                 Text("➤")
             }
         }
+    }
+    fullScreenImageUrl?.let { url ->
+        com.social.app.util.FullScreenImageViewer(url = url, onDismiss = { fullScreenImageUrl = null })
     }
 }
 
