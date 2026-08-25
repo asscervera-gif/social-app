@@ -169,12 +169,52 @@ private data class BanStatusRow(
     @SerialName("ban_reason") val banReason: String? = null
 )
 
+@Serializable
+private data class AppealStatusRow(val status: String)
+
+@Serializable
+private data class NewAppeal(
+    @SerialName("profile_id") val profileId: String,
+    val message: String
+)
+
 /** Pantalla de bloqueo real cuando `my_ban_status.is_currently_banned` es
  * true — hasta esta pasada, un usuario baneado por un admin en
  * ModerationScreen seguía usando la app con total normalidad, el baneo
- * solo existía como una fila en la base de datos sin ningún efecto. */
+ * solo existía como una fila en la base de datos sin ningún efecto.
+ *
+ * Hallazgo real, comparado con Instagram/TikTok/Facebook: hasta esta
+ * pasada no había NINGUNA forma de apelar la decisión, solo cerrar
+ * sesión — un baneo equivocado (denuncia falsa, error de moderación) era
+ * definitivo sin recurso. Ver 0043_ban_appeals.sql. Una sesión de
+ * Supabase Auth de un usuario baneado sigue siendo válida (el baneo no
+ * revoca el JWT), así que la apelación se envía con normalidad. */
 @Composable
 private fun BannedScreen(reason: String?, onSignOut: () -> Unit) {
+    var appealMessage by remember { mutableStateOf("") }
+    // null = todavía no se ha comprobado / no hay apelación previa
+    var appealStatus by remember { mutableStateOf<String?>(null) }
+    var isSubmitting by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@LaunchedEffect
+        try {
+            appealStatus = SupabaseManager.client.from("ban_appeals")
+                .select(columns = Columns.raw("status")) {
+                    filter { eq("profile_id", userId) }
+                    order("created_at", io.github.jan.supabase.postgrest.query.Order.DESCENDING)
+                    limit(1)
+                }
+                .decodeSingleOrNull<AppealStatusRow>()
+                ?.status
+        } catch (e: Exception) {
+            // Sin bloquear la pantalla si falla -- se puede seguir
+            // intentando enviar una apelación nueva.
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         androidx.compose.foundation.layout.Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -184,9 +224,52 @@ private fun BannedScreen(reason: String?, onSignOut: () -> Unit) {
             Text(
                 reason ?: "Tu cuenta ha sido suspendida por incumplir las normas de la comunidad.",
                 style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 12.dp, bottom = 24.dp)
+                modifier = Modifier.padding(top = 12.dp, bottom = 16.dp)
             )
-            Button(onClick = onSignOut) { Text("Cerrar sesión") }
+            when (appealStatus) {
+                null -> {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = appealMessage,
+                        onValueChange = { appealMessage = it },
+                        placeholder = { Text("Explica por qué crees que esto es un error…") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Button(
+                        onClick = {
+                            val trimmed = appealMessage.trim()
+                            if (trimmed.isEmpty()) return@Button
+                            scope.launch {
+                                isSubmitting = true
+                                try {
+                                    val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                                    SupabaseManager.client.from("ban_appeals").insert(NewAppeal(userId, trimmed))
+                                    appealStatus = "open"
+                                } catch (e: Exception) {
+                                    errorMessage = "No se pudo enviar la apelación."
+                                } finally {
+                                    isSubmitting = false
+                                }
+                            }
+                        },
+                        enabled = !isSubmitting,
+                        modifier = Modifier.padding(top = 12.dp)
+                    ) { Text(if (isSubmitting) "Enviando…" else "Apelar esta decisión") }
+                }
+                "open" -> Text(
+                    "Tu apelación fue enviada y está pendiente de revisión.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                else -> Text(
+                    "Tu apelación ya fue revisada por el equipo de moderación.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            errorMessage?.let {
+                Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
+            }
+            Button(onClick = onSignOut, modifier = Modifier.padding(top = 24.dp)) { Text("Cerrar sesión") }
         }
     }
 }

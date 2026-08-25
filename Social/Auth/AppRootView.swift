@@ -158,14 +158,36 @@ struct AppRootView: View {
     }
 }
 
+private struct AppealStatusRow: Decodable {
+    let status: String
+}
+
+private struct NewAppeal: Encodable {
+    let profile_id: UUID
+    let message: String
+}
+
 /// Pantalla de bloqueo real cuando `my_ban_status.is_currently_banned` es
 /// true — hasta esta pasada, un usuario baneado por un admin en
 /// ModerationView seguía usando la app iOS con total normalidad, el
 /// baneo solo existía como una fila en la base de datos sin ningún
 /// efecto. Equivalente de BannedScreen en AppRoot.kt.
+///
+/// Hallazgo real, comparado con Instagram/TikTok/Facebook: hasta esta
+/// pasada no había NINGUNA forma de apelar la decisión, solo cerrar
+/// sesión — un baneo equivocado (denuncia falsa, error de moderación)
+/// era definitivo sin recurso. Ver 0043_ban_appeals.sql. Una sesión de
+/// Supabase Auth de un usuario baneado sigue siendo válida (el baneo no
+/// revoca el JWT), así que la apelación se envía con normalidad.
 private struct BannedView: View {
     let reason: String?
     let onSignOut: () -> Void
+
+    @State private var appealMessage = ""
+    // nil = todavía no se ha comprobado / no hay apelación previa
+    @State private var appealStatus: String?
+    @State private var isSubmitting = false
+    @State private var errorMessage: String?
 
     var body: some View {
         VStack(spacing: 12) {
@@ -174,11 +196,65 @@ private struct BannedView: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 32)
+
+            if appealStatus == nil {
+                TextField("Explica por qué crees que esto es un error…", text: $appealMessage, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .padding(.horizontal, 32)
+                    .padding(.top, 8)
+                Button(isSubmitting ? "Enviando…" : "Apelar esta decisión") {
+                    let trimmed = appealMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else { return }
+                    Task {
+                        isSubmitting = true
+                        defer { isSubmitting = false }
+                        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+                        do {
+                            try await SupabaseManager.shared.client
+                                .from("ban_appeals")
+                                .insert(NewAppeal(profile_id: userID, message: trimmed))
+                                .execute()
+                            appealStatus = "open"
+                        } catch {
+                            errorMessage = "No se pudo enviar la apelación."
+                        }
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(isSubmitting)
+            } else if appealStatus == "open" {
+                Text("Tu apelación fue enviada y está pendiente de revisión.")
+                    .foregroundStyle(.tint)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+            } else {
+                Text("Tu apelación ya fue revisada por el equipo de moderación.")
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+            }
+            if let errorMessage {
+                Text(errorMessage).font(.footnote).foregroundStyle(.red)
+            }
+
             Button("Cerrar sesión", action: onSignOut)
                 .buttonStyle(.borderedProminent)
                 .padding(.top, 12)
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task {
+            guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+            let row: AppealStatusRow? = try? await SupabaseManager.shared.client
+                .from("ban_appeals")
+                .select("status")
+                .eq("profile_id", value: userID)
+                .order("created_at", ascending: false)
+                .limit(1)
+                .single()
+                .execute()
+                .value
+            appealStatus = row?.status
+        }
     }
 }

@@ -281,6 +281,37 @@ async function main() {
   const expiredBan = (await db.query(`select is_currently_banned from my_ban_status`)).rows[0];
   check('my_ban_status: un baneo temporal ya caducado NO cuenta como baneo activo', expiredBan.is_currently_banned === false);
 
+  // --- ban_appeals (0043): un usuario baneado puede apelar la decisión
+  // (su propia sesión de Auth sigue siendo válida -- el baneo no revoca
+  // el JWT, solo gatea la UI y revierte columnas de perfil), solo puede
+  // ver/insertar SU propia apelación, y solo un admin real puede leer y
+  // resolver todas -- mismo patrón exacto que reports (0036). u2 sigue
+  // baneado desde el bloque de arriba (baneo temporal ya caducado no
+  // cuenta como activo para my_ban_status, pero la fila is_banned=true
+  // sigue ahí, que es lo único que RLS necesita para dejar insertar).
+  await asUser(u2);
+  await expectFail('ban_appeals_insert_own: u2 no puede insertar una apelación a nombre de otro perfil', async () => {
+    await db.query(`insert into ban_appeals (profile_id, message) values ($1, 'no es mía')`, [u3]);
+  });
+  const appeal = (await db.query(
+    `insert into ban_appeals (profile_id, message) values ($1, 'Creo que fue un error, no envié spam.') returning id`,
+    [u2]
+  )).rows[0];
+  const ownAppeal = (await db.query(`select id from ban_appeals where id = $1`, [appeal.id])).rows;
+  check('ban_appeals_select_own: u2 SÍ ve su propia apelación', ownAppeal.length === 1);
+
+  await asUser(u1);
+  const appealAsStranger = (await db.query(`select id from ban_appeals where id = $1`, [appeal.id])).rows;
+  check('ban_appeals_select_own: un tercero (u1, no admin, no dueño) NO ve la apelación de u2 (RLS real, no solo filtro de cliente)', appealAsStranger.length === 0);
+
+  await asUser(u3); // u3 sigue siendo admin desde el bloque de moderación de más arriba
+  const appealAsAdmin = (await db.query(`select id from ban_appeals where id = $1`, [appeal.id])).rows;
+  check('ban_appeals_select_admin: un admin real SÍ ve la apelación de otro usuario', appealAsAdmin.length === 1);
+  await db.query(`update ban_appeals set status = 'reviewed' where id = $1`, [appeal.id]);
+  await asSuperuser();
+  const appealRow = (await db.query(`select status from ban_appeals where id = $1`, [appeal.id])).rows[0];
+  check('ban_appeals_update_admin: un admin real SÍ puede marcar una apelación como revisada', appealRow.status === 'reviewed');
+
   // --- event_attendees_insert_own (0030): no se puede unirse a un evento
   // con un social_count ya inflado, cierra el hueco de falsear el
   // ranking desde el propio INSERT ---

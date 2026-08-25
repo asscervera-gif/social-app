@@ -3,6 +3,7 @@ package com.social.app.screens.perfil
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -32,6 +33,16 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
+data class AppealEntry(
+    val id: String,
+    @SerialName("profile_id") val profileId: String,
+    val message: String,
+    val status: String,
+    @SerialName("created_at") val createdAt: String,
+    val profileName: String? = null
+)
+
+@Serializable
 data class ReportEntry(
     val id: String,
     @SerialName("reporter_id") val reporterId: String,
@@ -58,6 +69,15 @@ data class ReportEntry(
 class ModerationViewModel : ViewModel() {
     private val _reports = MutableStateFlow<List<ReportEntry>>(emptyList())
     val reports: StateFlow<List<ReportEntry>> = _reports.asStateFlow()
+
+    // Hallazgo real, comparado con Instagram/TikTok/Facebook, segunda
+    // mitad de 0043_ban_appeals.sql: hasta esta pasada un usuario baneado
+    // no tenía ninguna forma de apelar, y aunque la tuviera, ningún admin
+    // podía revisarlas -- mismo patrón que reports, cola aparte porque es
+    // un concepto distinto (una apelación siempre implica desbanear o no,
+    // una denuncia no).
+    private val _appeals = MutableStateFlow<List<AppealEntry>>(emptyList())
+    val appeals: StateFlow<List<AppealEntry>> = _appeals.asStateFlow()
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
@@ -103,6 +123,24 @@ class ModerationViewModel : ViewModel() {
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudieron cargar las denuncias."
             }
+            loadAppeals()
+        }
+    }
+
+    private suspend fun loadAppeals() {
+        try {
+            // ban_appeals_select_admin (0043) devuelve cero filas si quien
+            // llama no es admin real -- mismo criterio que reports.
+            val rows = SupabaseManager.client.from("ban_appeals")
+                .select {
+                    filter { eq("status", "open") }
+                    order("created_at", Order.DESCENDING)
+                    limit(100)
+                }
+                .decodeList<AppealEntry>()
+            _appeals.value = rows.map { it.copy(profileName = nameFor(it.profileId)) }
+        } catch (e: Exception) {
+            _errorMessage.value = "No se pudieron cargar las apelaciones."
         }
     }
 
@@ -151,11 +189,48 @@ class ModerationViewModel : ViewModel() {
             }
         }
     }
+
+    private fun setAppealStatus(appealId: String, status: String) {
+        _appeals.value = _appeals.value.filter { it.id != appealId }
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("ban_appeals")
+                    .update({ set("status", status) }) { filter { eq("id", appealId) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo actualizar la apelación."
+                loadAppeals()
+            }
+        }
+    }
+
+    /** "Aceptar apelación": desbanea de verdad (mismo `admin_ban_user` que
+     * ya usa `banReportedUser`, con `p_banned = false`) y marca la
+     * apelación como revisada -- una apelación aceptada siempre implica
+     * desbanear, no tiene sentido separarlo en dos pasos manuales. */
+    fun acceptAppeal(appealId: String, profileId: String) {
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.postgrest.rpc(
+                    "admin_ban_user",
+                    BanParams(targetId = profileId, banned = false)
+                )
+                com.social.app.backend.AnalyticsManager.track("appeal_accepted")
+                setAppealStatus(appealId, "reviewed")
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo desbanear a este usuario."
+            }
+        }
+    }
+
+    fun dismissAppeal(appealId: String) {
+        setAppealStatus(appealId, "dismissed")
+    }
 }
 
 @Composable
 fun ModerationScreen(viewModel: ModerationViewModel = viewModel()) {
     val reports by viewModel.reports.collectAsState()
+    val appeals by viewModel.appeals.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
 
     LaunchedEffect(Unit) { viewModel.load() }
@@ -163,6 +238,33 @@ fun ModerationScreen(viewModel: ModerationViewModel = viewModel()) {
     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
         Text("Moderación", style = MaterialTheme.typography.headlineSmall)
         errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 12.dp)) }
+
+        // Hallazgo real, comparado con Instagram/TikTok/Facebook: hasta
+        // esta pasada un usuario baneado no tenía ninguna forma de
+        // apelar, y aunque la tuviera, ningún admin podía revisarlas.
+        if (appeals.isNotEmpty()) {
+            Text("Apelaciones de baneo", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
+            LazyColumn(modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(max = 260.dp)) {
+                items(appeals, key = { it.id }) { appeal ->
+                    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+                        Text(appeal.profileName ?: "Perfil", style = MaterialTheme.typography.labelMedium)
+                        Text(appeal.message, style = MaterialTheme.typography.bodySmall)
+                        Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                            OutlinedButton(onClick = { viewModel.acceptAppeal(appeal.id, appeal.profileId) }) {
+                                Text("Desbanear")
+                            }
+                            OutlinedButton(
+                                onClick = { viewModel.dismissAppeal(appeal.id) },
+                                modifier = Modifier.padding(start = 8.dp)
+                            ) { Text("Descartar") }
+                        }
+                    }
+                    HorizontalDivider()
+                }
+            }
+        }
+
+        Text("Denuncias", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
         if (reports.isEmpty() && errorMessage == null) {
             Text(
                 "No hay denuncias abiertas.",

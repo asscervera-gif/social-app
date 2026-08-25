@@ -30,9 +30,23 @@ struct ReportEntry: Decodable, Identifiable {
     var reportedName: String?
 }
 
+// Hallazgo real, comparado con Instagram/TikTok/Facebook, segunda mitad
+// de 0043_ban_appeals.sql: hasta esta pasada un usuario baneado no tenía
+// ninguna forma de apelar, y aunque la tuviera, ningún admin podía
+// revisarlas -- mismo patrón que reports.
+struct AppealEntry: Decodable, Identifiable {
+    let id: UUID
+    let profile_id: UUID
+    let message: String
+    let status: String
+    let created_at: String
+    var profileName: String?
+}
+
 @MainActor
 final class ModerationViewModel: ObservableObject {
     @Published var reports: [ReportEntry] = []
+    @Published var appeals: [AppealEntry] = []
     @Published var errorMessage: String?
 
     private func name(for userID: UUID) async -> String? {
@@ -77,6 +91,7 @@ final class ModerationViewModel: ObservableObject {
         } catch {
             errorMessage = "No se pudieron cargar las denuncias."
         }
+        await loadAppeals()
     }
 
     func setStatus(_ reportID: UUID, status: String) async {
@@ -93,6 +108,73 @@ final class ModerationViewModel: ObservableObject {
             await load()
         }
     }
+
+    private func loadAppeals() async {
+        do {
+            // ban_appeals_select_admin (0043) devuelve cero filas si quien
+            // llama no es admin real -- mismo criterio que reports.
+            let rows: [AppealEntry] = try await SupabaseManager.shared.client
+                .from("ban_appeals")
+                .select()
+                .eq("status", value: "open")
+                .order("created_at", ascending: false)
+                .limit(100)
+                .execute()
+                .value
+            var resolved: [AppealEntry] = []
+            for var row in rows {
+                row.profileName = await name(for: row.profile_id)
+                resolved.append(row)
+            }
+            appeals = resolved
+        } catch {
+            errorMessage = "No se pudieron cargar las apelaciones."
+        }
+    }
+
+    private func setAppealStatus(_ appealID: UUID, status: String) async {
+        appeals.removeAll { $0.id == appealID }
+        do {
+            try await SupabaseManager.shared.client
+                .from("ban_appeals")
+                .update(["status": status])
+                .eq("id", value: appealID)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo actualizar la apelación."
+            await loadAppeals()
+        }
+    }
+
+    private struct BanParams: Encodable {
+        let p_target_id: UUID
+        let p_banned: Bool
+        let p_until: String?
+        let p_reason: String?
+    }
+
+    /// "Aceptar apelación": desbanea de verdad (mismo `admin_ban_user` que
+    /// usaría un "Banear" desde denuncias, con `p_banned = false`) y marca
+    /// la apelación como revisada -- una apelación aceptada siempre
+    /// implica desbanear, no tiene sentido separarlo en dos pasos
+    /// manuales. Primer uso de `.rpc()` en iOS, firma confirmada leyendo
+    /// `SupabaseClient.swift`/`PostgrestClient.swift` reales en GitHub
+    /// antes de escribirlo (no adivinada).
+    func acceptAppeal(_ appealID: UUID, profileID: UUID) async {
+        do {
+            try await SupabaseManager.shared.client
+                .rpc("admin_ban_user", params: BanParams(p_target_id: profileID, p_banned: false, p_until: nil, p_reason: nil))
+                .execute()
+            AnalyticsManager.track("appeal_accepted")
+            await setAppealStatus(appealID, status: "reviewed")
+        } catch {
+            errorMessage = "No se pudo desbanear a este usuario."
+        }
+    }
+
+    func dismissAppeal(_ appealID: UUID) async {
+        await setAppealStatus(appealID, status: "dismissed")
+    }
 }
 
 struct ModerationView: View {
@@ -103,6 +185,30 @@ struct ModerationView: View {
             if let error = viewModel.errorMessage {
                 Text(error).font(.footnote).foregroundStyle(.red)
             }
+            // Hallazgo real, comparado con Instagram/TikTok/Facebook:
+            // hasta esta pasada un usuario baneado no tenía ninguna forma
+            // de apelar, y aunque la tuviera, ningún admin podía
+            // revisarlas.
+            if !viewModel.appeals.isEmpty {
+                Section("Apelaciones de baneo") {
+                    ForEach(viewModel.appeals) { appeal in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(appeal.profileName ?? "Perfil").font(.caption).foregroundStyle(.secondary)
+                            Text(appeal.message).font(.subheadline)
+                            HStack {
+                                Button("Desbanear") {
+                                    Task { await viewModel.acceptAppeal(appeal.id, profileID: appeal.profile_id) }
+                                }
+                                Button("Descartar") {
+                                    Task { await viewModel.dismissAppeal(appeal.id) }
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                }
+            }
+            Section("Denuncias") {
             if viewModel.reports.isEmpty {
                 Text("No hay denuncias abiertas.").foregroundStyle(.secondary)
             }
@@ -125,6 +231,7 @@ struct ModerationView: View {
                     }
                     .buttonStyle(.bordered)
                 }
+            }
             }
         }
         .navigationTitle("Moderación")
