@@ -104,6 +104,11 @@ struct Chat: Codable, Identifiable {
     // Usado para ordenar "Tus chats" por actividad reciente cuando un chat
     // todavía no tiene mensajes (ver ChatListViewModel.load()).
     var createdAt: String
+    // Hallazgo real, comparado con WhatsApp/Instagram/Messenger: no había
+    // ninguna forma de quitar una conversación de "Tus chats" -- ver
+    // 0044_chats_hide.sql/ChatListViewModel.hideChat().
+    var hiddenByA: Bool
+    var hiddenByB: Bool
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -111,6 +116,8 @@ struct Chat: Codable, Identifiable {
         case userBID = "user_b_id"
         case compatibilityScore = "compatibility_score"
         case createdAt = "created_at"
+        case hiddenByA = "hidden_by_a"
+        case hiddenByB = "hidden_by_b"
     }
 }
 

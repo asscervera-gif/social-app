@@ -41,6 +41,14 @@ struct ChatListView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                // Hallazgo real, comparado con WhatsApp/Instagram/
+                // Messenger: no había ninguna forma de quitar una
+                // conversación de la lista.
+                .swipeActions {
+                    Button("Ocultar", role: .destructive) {
+                        viewModel.hideChat(entry)
+                    }
+                }
             }
         }
         .navigationTitle("Tus chats")

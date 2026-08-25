@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -28,7 +29,12 @@ data class ChatListEntry(
     val otherName: String,
     val otherAvatarConfig: Map<String, String>?,
     val lastMessage: String?,
-    val lastActivity: String
+    val lastActivity: String,
+    // Hallazgo real, comparado con WhatsApp/Instagram/Messenger: no había
+    // ninguna forma de quitar una conversación de "Tus chats" -- ver
+    // 0044_chats_hide.sql. Necesario para saber qué columna
+    // (hidden_by_a/hidden_by_b) me corresponde a MÍ en este chat.
+    val iAmUserA: Boolean
 )
 
 // Hallazgo real, comparado con WhatsApp/Instagram/Messenger: la lista de
@@ -55,7 +61,9 @@ private data class ChatRow(
     @SerialName("user_a_id") val userAId: String,
     @SerialName("user_b_id") val userBId: String,
     @SerialName("compatibility_score") val compatibilityScore: Int = 50,
-    @SerialName("created_at") val createdAt: String
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("hidden_by_a") val hiddenByA: Boolean = false,
+    @SerialName("hidden_by_b") val hiddenByB: Boolean = false
 )
 
 /**
@@ -147,7 +155,7 @@ class ChatListViewModel : ViewModel() {
                 // convención del resto del proyecto (mismo patrón
                 // corregido en ChatViewModel.loadHistory() esta pasada).
                 val myChats = SupabaseManager.client.from("chats")
-                    .select(columns = Columns.raw("id,user_a_id,user_b_id,compatibility_score,created_at")) {
+                    .select(columns = Columns.raw("id,user_a_id,user_b_id,compatibility_score,created_at,hidden_by_a,hidden_by_b")) {
                         filter {
                             or {
                                 eq("user_a_id", userId)
@@ -159,7 +167,8 @@ class ChatListViewModel : ViewModel() {
                     .decodeList<ChatRow>()
                     .filter {
                         val otherId = if (it.userAId == userId) it.userBId else it.userAId
-                        otherId !in blockedIds
+                        val hiddenForMe = if (it.userAId == userId) it.hiddenByA else it.hiddenByB
+                        otherId !in blockedIds && !hiddenForMe
                     }
 
                 // Hallazgo real: la lista no ordenaba por actividad
@@ -196,7 +205,8 @@ class ChatListViewModel : ViewModel() {
                         otherName = otherProfile?.displayName ?: "Perfil",
                         otherAvatarConfig = otherProfile?.avatarConfig,
                         lastMessage = lastMessage?.body,
-                        lastActivity = lastMessage?.createdAt ?: row.createdAt
+                        lastActivity = lastMessage?.createdAt ?: row.createdAt,
+                        iAmUserA = row.userAId == userId
                     )
                 }
                 _chats.value = entries.sortedByDescending { it.lastActivity }
@@ -204,6 +214,25 @@ class ChatListViewModel : ViewModel() {
                 _errorMessage.value = "No se pudieron cargar tus chats."
             } finally {
                 _isLoading.value = false
+            }
+        }
+    }
+
+    /** "Ocultar conversación" -- solo afecta a MI copia (columna
+     * hidden_by_a/hidden_by_b según corresponda), nunca a la de la otra
+     * persona (protect_chat_hidden_flags, 0044_chats_hide.sql, lo
+     * garantiza también del lado del servidor). Un mensaje nuevo real la
+     * restaura sola. */
+    fun hideChat(entry: ChatListEntry) {
+        _chats.update { it.filter { e -> e.chat.id != entry.chat.id } }
+        viewModelScope.launch {
+            try {
+                val column = if (entry.iAmUserA) "hidden_by_a" else "hidden_by_b"
+                SupabaseManager.client.from("chats")
+                    .update({ set(column, true) }) { filter { eq("id", entry.chat.id) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo ocultar la conversación."
+                load()
             }
         }
     }

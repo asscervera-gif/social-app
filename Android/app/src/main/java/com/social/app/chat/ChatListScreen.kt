@@ -1,6 +1,7 @@
 package com.social.app.chat
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,7 +33,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
  * Lista de chats — no existía en ninguna plataforma (ver ChatListViewModel
  * para el hallazgo completo). Punto de entrada nuevo desde Perfil.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ChatListScreen(viewModel: ChatListViewModel = viewModel(), onOpenChat: (String) -> Unit) {
     val chats by viewModel.chats.collectAsState()
@@ -73,9 +74,18 @@ fun ChatListScreen(viewModel: ChatListViewModel = viewModel(), onOpenChat: (Stri
             items(chats, key = { it.chat.id }) { entry ->
                 androidx.compose.foundation.layout.Row(
                     verticalAlignment = Alignment.CenterVertically,
+                    // Hallazgo real, comparado con WhatsApp/Instagram/
+                    // Messenger: no había ninguna forma de quitar una
+                    // conversación de la lista (ver
+                    // ChatListViewModel.hideChat(), 0044_chats_hide.sql).
+                    // Mantener pulsado para ocultar, mismo patrón ya
+                    // usado para borrar un mensaje propio en ChatScreen.kt.
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onOpenChat(entry.chat.id) }
+                        .combinedClickable(
+                            onClick = { onOpenChat(entry.chat.id) },
+                            onLongClick = { viewModel.hideChat(entry) }
+                        )
                         .padding(vertical = 12.dp)
                 ) {
                     // Hallazgo real, comparado con WhatsApp/Instagram/

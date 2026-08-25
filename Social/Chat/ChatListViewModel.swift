@@ -27,6 +27,11 @@ struct ChatListEntry: Identifiable {
     let otherAvatarConfig: [String: String]?
     let lastMessage: String?
     let lastActivity: String
+    // Hallazgo real, comparado con WhatsApp/Instagram/Messenger: no había
+    // ninguna forma de quitar una conversación de "Tus chats" -- ver
+    // 0044_chats_hide.sql. Necesario para saber qué columna
+    // (hidden_by_a/hidden_by_b) me corresponde a MÍ en este chat.
+    let iAmUserA: Bool
 }
 
 @MainActor
@@ -109,7 +114,8 @@ final class ChatListViewModel: ObservableObject {
                 .value
             let myChats = allChats.filter {
                 let otherID = $0.userAID == userID ? $0.userBID : $0.userAID
-                return !blockedIDs.contains(otherID)
+                let hiddenForMe = $0.userAID == userID ? $0.hiddenByA : $0.hiddenByB
+                return !blockedIDs.contains(otherID) && !hiddenForMe
             }
 
             // Hallazgo real: la lista no ordenaba por actividad reciente,
@@ -125,7 +131,8 @@ final class ChatListViewModel: ObservableObject {
                     id: chat.id, chat: chat,
                     otherName: otherProfile?.display_name ?? "Perfil",
                     otherAvatarConfig: otherProfile?.avatar_config,
-                    lastMessage: last?.body, lastActivity: last?.created_at ?? chat.createdAt
+                    lastMessage: last?.body, lastActivity: last?.created_at ?? chat.createdAt,
+                    iAmUserA: chat.userAID == userID
                 ))
             }
             chats = entries.sorted { $0.lastActivity > $1.lastActivity }
@@ -164,5 +171,34 @@ final class ChatListViewModel: ObservableObject {
             .single()
             .execute()
             .value
+    }
+
+    /// "Ocultar conversación" -- solo afecta a MI copia (columna
+    /// hidden_by_a/hidden_by_b según corresponda), nunca a la de la otra
+    /// persona (protect_chat_hidden_flags, 0044_chats_hide.sql, lo
+    /// garantiza también del lado del servidor). Un mensaje nuevo real la
+    /// restaura sola.
+    func hideChat(_ entry: ChatListEntry) {
+        chats.removeAll { $0.id == entry.id }
+        Task {
+            do {
+                if entry.iAmUserA {
+                    try await SupabaseManager.shared.client
+                        .from("chats")
+                        .update(["hidden_by_a": true])
+                        .eq("id", value: entry.chat.id)
+                        .execute()
+                } else {
+                    try await SupabaseManager.shared.client
+                        .from("chats")
+                        .update(["hidden_by_b": true])
+                        .eq("id", value: entry.chat.id)
+                        .execute()
+                }
+            } catch {
+                errorMessage = "No se pudo ocultar la conversación."
+                await load()
+            }
+        }
     }
 }

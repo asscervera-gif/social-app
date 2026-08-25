@@ -365,6 +365,52 @@ async function main() {
   const u3TokenGone = (await db.query(`select 1 from device_tokens where profile_id = $1`, [u3])).rows;
   check('device_tokens_delete_own: borrar el propio token SÍ borra la fila de verdad', u3TokenGone.length === 0);
 
+  // --- chats_hide (0044): ocultar una conversación de "Tus chats" solo
+  // afecta a la copia de quien la oculta, nunca a la de la otra persona
+  // (RLS por fila no lo impediría por sí sola -- hace falta el trigger),
+  // y un mensaje nuevo real la restaura sola, sin quedar oculta para
+  // siempre. `chat` es user_a_id=u1, user_b_id=u2 (creado más arriba).
+  // service_role (representado aquí por el superusuario de la sesión de
+  // prueba, ver comentario de asSuperuser()) puede tocar cualquier
+  // columna directamente -- un soporte/admin interno real, no solo un
+  // caso límite. De paso dispara la primera evaluación real de
+  // `auth.uid()` dentro del trigger en esta sesión (ver nota de robustez
+  // de pruebas en 0044_chats_hide.sql sobre el orden del AND) para que
+  // las comprobaciones de más abajo, bajo el rol `authenticated` real de
+  // u2, no dependan de qué prueba se ejecutó primero.
+  await asSuperuser();
+  await db.query(`update chats set hidden_by_a = true, hidden_by_b = true where id = $1`, [chat.id]);
+  const hiddenByService = (await db.query(`select hidden_by_a, hidden_by_b from chats where id = $1`, [chat.id])).rows[0];
+  check('protect_chat_hidden_flags: service_role SÍ puede tocar cualquiera de las dos copias directamente', hiddenByService.hidden_by_a === true && hiddenByService.hidden_by_b === true);
+  await db.query(`update chats set hidden_by_a = false, hidden_by_b = false where id = $1`, [chat.id]);
+
+  await asUser(u2); // u2 es user_b_id del chat
+  await db.query(`update chats set hidden_by_b = true where id = $1`, [chat.id]);
+  await asSuperuser();
+  const hiddenByB = (await db.query(`select hidden_by_a, hidden_by_b from chats where id = $1`, [chat.id])).rows[0];
+  check('protect_chat_hidden_flags: u2 (user_b) SÍ puede ocultar su propia copia', hiddenByB.hidden_by_b === true && hiddenByB.hidden_by_a === false);
+
+  // Igual que protect_ban_columns/protect_is_verified: el UPDATE en sí
+  // "tiene éxito" (chats_update ya deja tocar la fila), el trigger
+  // revierte en silencio la columna ajena, no lanza excepción.
+  await asUser(u2);
+  await db.query(`update chats set hidden_by_a = true where id = $1`, [chat.id]);
+  await asSuperuser();
+  const stillNotHiddenByA = (await db.query(`select hidden_by_a from chats where id = $1`, [chat.id])).rows[0];
+  check('protect_chat_hidden_flags: u2 NO puede ocultar la copia de u1 (revertido en silencio, no lanza)', stillNotHiddenByA.hidden_by_a === false);
+
+  // u1 bloqueó a u2 en el bloque de messages_insert de más arriba -- un
+  // bloqueo activo impide mensajes en AMBAS direcciones (private.is_blocked
+  // es bidireccional), así que hay que desbloquear primero para poder
+  // probar el mensaje nuevo real. blocks_delete_own (0003_safety.sql) es
+  // el "desbloquear" real, mismo mecanismo que usaría el cliente.
+  await asUser(u1);
+  await db.query(`delete from blocks where blocker_id = $1 and blocked_id = $2`, [u1, u2]);
+  await db.query(`insert into messages (chat_id, sender_id, body) values ($1, $2, 'un mensaje nuevo de verdad')`, [chat.id, u1]);
+  await asSuperuser();
+  const unhiddenAfterMessage = (await db.query(`select hidden_by_b from chats where id = $1`, [chat.id])).rows[0];
+  check('unhide_chat_on_new_message: un mensaje nuevo real deshace el ocultado de u2, no se pierde de la vista', unhiddenAfterMessage.hidden_by_b === false);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado
