@@ -83,6 +83,14 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     implementation("io.coil-kt:coil-compose:2.6.0")
 
+    // Reels (0050_reels.sql) -- primer reproductor de vídeo real de toda la
+    // app. Media3/ExoPlayer (AndroidX, Apache 2.0, gratuito) en vez de
+    // VideoView (API antigua, peor soporte de formatos/controles) -- mismo
+    // criterio de "herramienta gratuita/abierta antes que de pago" ya
+    // aplicado al resto de este proyecto (osmdroid en vez de Google Maps).
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-ui:1.4.1")
+
     // Jetpack Compose
     implementation(platform("androidx.compose:compose-bom:2024.06.00"))
     implementation("androidx.compose.ui:ui")

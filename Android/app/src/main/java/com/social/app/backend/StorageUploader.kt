@@ -40,4 +40,11 @@ object StorageUploader {
         SupabaseManager.client.storage.from("media").upload(path, bytes)
         SupabaseManager.client.storage.from("media").publicUrl(path)
     }
+
+    /** Reels (0050_reels.sql) -- `uploadImage` ya era genérico de verdad
+     * (lee el tipo MIME real de la `Uri`, no asume que sea una foto), pero
+     * llamarlo "uploadImage" para subir un vídeo confundiría a quien lea
+     * el sitio donde se usa. Mismo criterio que `uploadAudio` en
+     * StorageUploader.swift: reutiliza la lógica tal cual. */
+    suspend fun uploadVideo(context: Context, uri: Uri, userId: String): String = uploadImage(context, uri, userId)
 }

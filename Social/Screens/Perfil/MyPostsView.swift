@@ -85,7 +85,14 @@ struct MyPostsView: View {
     // misma lista de socials aceptados que NewPostView.swift ya usa para
     // etiquetar, para resolver el nombre real de la persona etiquetada.
     @StateObject private var socialsViewModel = SocialsListViewModel()
-    @State private var showOnlyTagged = false
+    // "Pubs. de socials" (PerfilView.swift) abre esta misma pantalla ya
+    // filtrada en vez de duplicarla -- por defecto "Tus publicaciones"
+    // sigue mostrando todas.
+    @State private var showOnlyTagged: Bool
+
+    init(initialTaggedOnly: Bool = false) {
+        _showOnlyTagged = State(initialValue: initialTaggedOnly)
+    }
     // Hallazgo real, mismo hueco ya cerrado en el feed y el chat: no
     // había forma de tocar la imagen para verla a tamaño completo.
     @State private var fullScreenURL: URL?

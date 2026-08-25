@@ -88,7 +88,8 @@ fun PerfilScreen(
     onOpenSocials: () -> Unit = {},
     onOpenSavedPosts: () -> Unit = {},
     onOpenFollowing: () -> Unit = {},
-    onOpenFollowers: () -> Unit = {}
+    onOpenFollowers: () -> Unit = {},
+    onOpenReels: () -> Unit = {}
 ) {
     val profile by viewModel.profile.collectAsState()
     val sections by viewModel.sections.collectAsState()
@@ -105,6 +106,12 @@ fun PerfilScreen(
 
     val navItems = listOf(
         ProfileNavItem("🦊", "Avatar") { showEditProfile = true },
+        // Reels (0050_reels.sql) -- primera vez que hay un acceso real,
+        // antes ni siquiera existía la UI de cliente. 7º hueco de la
+        // rejilla 3x2 original: se añade, no se quita ninguno de los 6 ya
+        // reales (Guardados/Tus chats siguen sin otro punto de entrada en
+        // la app, quitarlos habría sido una regresión real).
+        ProfileNavItem("🎬", "Reels", onOpenReels),
         ProfileNavItem("⚔️", "Duelos", onOpenDuelHistory),
         ProfileNavItem("🖼", "Tus publicaciones", onOpenMyPosts),
         ProfileNavItem("👥", "Tus socials", onOpenSocials),

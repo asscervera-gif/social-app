@@ -33,4 +33,12 @@ enum StorageUploader {
     static func uploadAudio(data: Data, userID: UUID) async throws -> String {
         try await uploadImage(data: data, fileExtension: "m4a", userID: userID)
     }
+
+    /// Reels (0050_reels.sql) -- mismo criterio que `uploadAudio`:
+    /// `uploadImage` ya es genérico de verdad (Data + extensión), llamarlo
+    /// así para subir un vídeo confundiría a quien lea el sitio donde se
+    /// usa. Equivalente de `uploadVideo` (Kotlin).
+    static func uploadVideo(data: Data, fileExtension: String, userID: UUID) async throws -> String {
+        try await uploadImage(data: data, fileExtension: fileExtension, userID: userID)
+    }
 }

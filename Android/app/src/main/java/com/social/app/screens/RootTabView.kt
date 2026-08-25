@@ -83,6 +83,7 @@ private const val MY_POSTS_ROUTE = "my_posts"
 private const val SAVED_POSTS_ROUTE = "saved_posts"
 private const val SOCIALS_LIST_ROUTE = "socials_list"
 private const val FOLLOW_LIST_ROUTE = "follow_list/{tab}"
+private const val REELS_ROUTE = "reels"
 private const val SEARCH_ROUTE = "search"
 private const val FIND_ROUTE = "find"
 
@@ -257,8 +258,22 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                         onOpenSocials = { navController.navigate(SOCIALS_LIST_ROUTE) },
                         onOpenSavedPosts = { navController.navigate(SAVED_POSTS_ROUTE) },
                         onOpenFollowing = { navController.navigate("follow_list/following") },
-                        onOpenFollowers = { navController.navigate("follow_list/followers") }
+                        onOpenFollowers = { navController.navigate("follow_list/followers") },
+                        onOpenReels = { navController.navigate(REELS_ROUTE) }
                     )
+                }
+                // Reels (0050_reels.sql) -- primera UI de cliente real
+                // sobre el backend construido en una ronda anterior. Ruta
+                // propia como el resto de la rejilla de accesos de Perfil,
+                // no una pestaña principal (comparado con TikTok, donde sí
+                // lo es, pero eso implicaría un rediseño mayor del nav
+                // inferior de 5 pestañas ya establecido en este proyecto).
+                composable(REELS_ROUTE) {
+                    com.social.app.ui.theme.BackScaffold(title = "Reels", onBack = { navController.popBackStack() }) {
+                        com.social.app.screens.reels.ReelsScreen(
+                            onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
+                        )
+                    }
                 }
                 // Hallazgo real, comparado con Instagram/Twitter/TikTok:
                 // los contadores "Sigo"/"Seguid." de la cabecera del perfil

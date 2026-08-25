@@ -43,6 +43,13 @@ struct PerfilView: View {
     // hacía nada -- ver FollowListViewModel.swift.
     @State private var showFollowList = false
     @State private var followListInitialTab: FollowTab = .following
+    // Reels (0050_reels.sql) -- primera vez que hay un acceso real, antes
+    // ni siquiera existía la UI de cliente.
+    @State private var showReels = false
+    // "Pubs. de socials" (0051_post_social_tags.sql) -- reutiliza
+    // MyPostsView con el filtro ya real "Con tus socials" en vez de
+    // duplicar esa pantalla.
+    @State private var showTaggedPosts = false
     @State private var currentUserID: UUID?
 
     var body: some View {
@@ -137,6 +144,16 @@ struct PerfilView: View {
                     FollowListView(initialTab: followListInitialTab)
                 }
             }
+            .sheet(isPresented: $showReels) {
+                NavigationStack {
+                    ReelsView()
+                }
+            }
+            .sheet(isPresented: $showTaggedPosts) {
+                NavigationStack {
+                    MyPostsView(initialTaggedOnly: true)
+                }
+            }
             .sheet(isPresented: $showChatList) {
                 // `.navigationDestination(isPresented:)` en vez de
                 // `(item:)`: la variante `(item:)` es exclusiva de iOS 17+,
@@ -195,20 +212,17 @@ struct PerfilView: View {
         }
     }
 
-    /// Cada subsección lleva una acción; las que aún no tienen pantalla propia
-    /// (Reels, Fights, Pubs. de socials, En directo, Tus publicaciones) quedan
-    /// pendientes de las fases correspondientes y no fingen tener contenido.
-    // "Fights" y "Tus publicaciones" ya son reales (usan `duels`/`posts`,
-    // sin infraestructura nueva). Reels/Pubs. de socials/En directo siguen
-    // vacíos a propósito: necesitarían Supabase Storage real para
-    // fotos/vídeo, mismo bloqueo que Historias y el chat multimedia — no
-    // fingido aquí.
+    /// Cada subsección lleva una acción real. "En directo" es el único que
+    /// queda pendiente a propósito -- necesita decidir un motor de
+    /// streaming real (LiveKit u otro, ver LOOP_STATE.md), no fingido
+    /// aquí. Reels y "Pubs. de socials" ya son reales desde esta pasada
+    /// (backend + UI construidos en rondas anteriores/esta misma).
     private var subsections: [(String, String, () -> Void)] {
         [
             ("Avatar", "person.crop.circle", { showClothingStore = true }),
-            ("Reels", "play.rectangle", {}),
+            ("Reels", "play.rectangle", { showReels = true }),
             ("Fights", "bolt.fill", { showDuelHistory = true }),
-            ("Pubs. de socials", "person.2.square.stack", {}),
+            ("Pubs. de socials", "person.2.square.stack", { showTaggedPosts = true }),
             ("En directo", "dot.radiowaves.left.and.right", {}),
             ("Tus publicaciones", "square.grid.3x3", { showMyPosts = true }),
             ("Guardados", "bookmark.fill", { showSavedPosts = true })
