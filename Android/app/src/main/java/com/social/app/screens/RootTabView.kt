@@ -196,7 +196,12 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                 composable(Tab.MATCH.route) {
                     MatchScreen(onOpenProfile = { profileId -> navController.navigate("profile/$profileId") })
                 }
-                composable(Tab.SOCIAL.route) { SocialCameraScreen(proximity) }
+                composable(Tab.SOCIAL.route) {
+                    SocialCameraScreen(
+                        proximity,
+                        onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
+                    )
+                }
                 composable(Tab.AVISOS.route) {
                     AvisosScreen(
                         onOpenChat = { chatId -> navController.navigate("chat/$chatId") },

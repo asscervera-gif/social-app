@@ -10,6 +10,12 @@ import SwiftUI
 struct EventModeView: View {
 
     @ObservedObject var viewModel: EventModeViewModel
+    // Hallazgo real, mismo hueco raíz ya cerrado en el feed/comentarios/
+    // chats/duelos/avisos/socials: el ranking del evento tampoco mostraba
+    // avatar ni dejaba tocar para ver el perfil. Sin NavigationStack
+    // ambiente en esta pantalla (todo se presenta con .sheet, ver
+    // SendSocialSheet más abajo), mismo patrón ya usado en FindMapView.swift.
+    @State private var openedProfileID: UUID?
 
     var body: some View {
         if let event = viewModel.activeEvent {
@@ -50,12 +56,18 @@ struct EventModeView: View {
                         .foregroundStyle(.secondary)
 
                     ForEach(Array(viewModel.ranking.enumerated()), id: \.element.id) { index, attendee in
-                        HStack {
-                            Text("\(index + 1)").font(.caption.bold()).frame(width: 24)
-                            Text(attendee.displayName)
-                            Spacer()
-                            Text("\(attendee.socialCount) socials").font(.caption).foregroundStyle(.secondary)
+                        Button {
+                            openedProfileID = attendee.id
+                        } label: {
+                            HStack {
+                                Text("\(index + 1)").font(.caption.bold()).frame(width: 24)
+                                ActiveAvatarProvider.shared.avatarView(config: attendee.avatarConfig ?? [:], size: 28)
+                                Text(attendee.displayName).foregroundStyle(.primary)
+                                Spacer()
+                                Text("\(attendee.socialCount) socials").font(.caption).foregroundStyle(.secondary)
+                            }
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -63,6 +75,16 @@ struct EventModeView: View {
             .background(.thinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .padding()
+            .sheet(isPresented: Binding(
+                get: { openedProfileID != nil },
+                set: { isPresented in if !isPresented { openedProfileID = nil } }
+            )) {
+                if let openedProfileID {
+                    NavigationStack {
+                        ProfileViewerView(profileID: openedProfileID)
+                    }
+                }
+            }
         }
     }
 }

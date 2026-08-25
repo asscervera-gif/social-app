@@ -55,7 +55,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
  * invisible real en un toque.
  */
 @Composable
-fun SocialCameraScreen(proximity: SocialProximity) {
+fun SocialCameraScreen(proximity: SocialProximity, onOpenProfile: (String) -> Unit = {}) {
     val peers by proximity.peers.collectAsState()
     val discoveredCount by proximity.discoveredCount.collectAsState()
     val statusMessage by proximity.statusMessage.collectAsState()
@@ -176,7 +176,7 @@ fun SocialCameraScreen(proximity: SocialProximity) {
                     }
                 }
             }
-            EventModeBanner(viewModel = eventMode)
+            EventModeBanner(viewModel = eventMode, onOpenProfile = onOpenProfile)
             Spacer(modifier = Modifier)
         }
 

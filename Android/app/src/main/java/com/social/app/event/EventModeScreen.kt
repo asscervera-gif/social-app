@@ -1,5 +1,6 @@
 package com.social.app.event
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,7 +25,7 @@ import io.github.jan.supabase.gotrue.auth
  * Incluye el botón "Unirse" que faltaba: joinEvent() ya existía en el
  * ViewModel pero no había ningún punto de entrada en la UI para llamarlo. */
 @Composable
-fun EventModeBanner(viewModel: EventModeViewModel = viewModel()) {
+fun EventModeBanner(viewModel: EventModeViewModel = viewModel(), onOpenProfile: (String) -> Unit = {}) {
     val event by viewModel.activeEvent.collectAsState()
     val ranking by viewModel.ranking.collectAsState()
     val hasJoined by viewModel.hasJoined.collectAsState()
@@ -77,8 +78,21 @@ fun EventModeBanner(viewModel: EventModeViewModel = viewModel()) {
             } else {
                 Text("Ranking de socials del evento", style = MaterialTheme.typography.labelMedium)
                 ranking.forEachIndexed { index, attendee ->
-                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("${index + 1}. ${attendee.displayName}")
+                    // Hallazgo real, mismo hueco raíz ya cerrado en el
+                    // feed/comentarios/chats/duelos/avisos/socials: el
+                    // ranking tampoco mostraba avatar ni dejaba tocar
+                    // para ver el perfil.
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .clickable { onOpenProfile(attendee.profileId) }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            com.social.app.avatar.AvatarView(config = attendee.avatarConfig ?: emptyMap(), size = 28.dp)
+                            Text("${index + 1}. ${attendee.displayName}", modifier = Modifier.padding(start = 8.dp))
+                        }
                         Text("${attendee.socialCount} socials", style = MaterialTheme.typography.labelSmall)
                     }
                 }

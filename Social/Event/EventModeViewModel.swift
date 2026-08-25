@@ -31,6 +31,10 @@ final class EventModeViewModel: ObservableObject {
         let id: UUID
         let displayName: String
         let socialCount: Int
+        // Hallazgo real, mismo hueco raíz ya cerrado en el feed/comentarios/
+        // chats/duelos/avisos/socials: el ranking del evento tampoco
+        // mostraba avatar ni dejaba tocar para ver el perfil.
+        let avatarConfig: [String: String]?
     }
 
     @Published var activeEvent: EventInfo?
@@ -111,7 +115,12 @@ final class EventModeViewModel: ObservableObject {
                 .limit(50)
                 .execute()
                 .value
-            ranking = rows.map { RankedAttendee(id: $0.profile.id, displayName: $0.profile.displayName, socialCount: $0.socialCount) }
+            ranking = rows.map {
+                RankedAttendee(
+                    id: $0.profile.id, displayName: $0.profile.displayName,
+                    socialCount: $0.socialCount, avatarConfig: $0.profile.avatarConfig
+                )
+            }
             if let myID = try? await SupabaseManager.shared.client.auth.session.user.id {
                 hasJoined = ranking.contains { $0.id == myID }
             }

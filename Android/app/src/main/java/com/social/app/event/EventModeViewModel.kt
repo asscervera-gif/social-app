@@ -31,7 +31,15 @@ class EventModeViewModel : ViewModel() {
         @SerialName("radius_meters") val radiusMeters: Int
     )
 
-    data class RankedAttendee(val profileId: String, val displayName: String, val socialCount: Int)
+    data class RankedAttendee(
+        val profileId: String,
+        val displayName: String,
+        val socialCount: Int,
+        // Hallazgo real, mismo hueco raíz ya cerrado en el feed/comentarios/
+        // chats/duelos/avisos/socials: el ranking del evento tampoco
+        // mostraba avatar ni dejaba tocar para ver el perfil.
+        val avatarConfig: Map<String, String>? = null
+    )
 
     private val _activeEvent = MutableStateFlow<EventInfo?>(null)
     val activeEvent: StateFlow<EventInfo?> = _activeEvent.asStateFlow()
@@ -135,7 +143,10 @@ class EventModeViewModel : ViewModel() {
     }
 
     @Serializable
-    private data class EmbeddedProfile(@SerialName("display_name") val displayName: String)
+    private data class EmbeddedProfile(
+        @SerialName("display_name") val displayName: String,
+        @SerialName("avatar_config") val avatarConfig: Map<String, String>? = null
+    )
 
     @Serializable
     private data class AttendeeRow(
@@ -152,7 +163,7 @@ class EventModeViewModel : ViewModel() {
             // el bytecode real de postgrest-kt 2.5.4 (antes no confirmado por
             // falta de compilador en este entorno).
             val rows = SupabaseManager.client.from("event_attendees")
-                .select(columns = Columns.raw("social_count, profile_id, profiles(display_name)")) {
+                .select(columns = Columns.raw("social_count, profile_id, profiles(display_name,avatar_config)")) {
                     filter { eq("event_id", eventId) }
                     order("social_count", io.github.jan.supabase.postgrest.query.Order.DESCENDING)
                     // Faltaba respecto a EventModeViewModel.swift (.limit(50))
@@ -161,7 +172,7 @@ class EventModeViewModel : ViewModel() {
                 }
                 .decodeList<AttendeeRow>()
             _ranking.value = rows.map {
-                RankedAttendee(it.profileId, it.profiles?.displayName ?: it.profileId, it.socialCount)
+                RankedAttendee(it.profileId, it.profiles?.displayName ?: it.profileId, it.socialCount, it.profiles?.avatarConfig)
             }
             val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
             _hasJoined.value = myId != null && rows.any { it.profileId == myId }
