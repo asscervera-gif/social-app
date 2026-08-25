@@ -27,6 +27,13 @@ final class HomeViewModel: ObservableObject {
     // para siempre, mientras `likes` (constraint unique) se quedaba en una
     // sola fila real. El corazón nunca reflejaba si YA le habías dado like.
     @Published var likedPostIDs: Set<UUID> = []
+    // Hallazgo real, comparado con cualquier app grande: la tarjeta del
+    // feed nunca mostraba QUIÉN publicó cada post -- ni nombre, ni avatar,
+    // ni forma de tocar para ver su perfil. `posts` no lleva el perfil
+    // embebido, así que se resuelve aparte con un solo select por los
+    // authorID distintos del feed cargado (no N+1). Equivalente de
+    // HomeViewModel.kt.authorProfiles.
+    @Published var authorProfiles: [UUID: Profile] = [:]
 
     func load() async {
         isLoading = true
@@ -57,6 +64,17 @@ final class HomeViewModel: ObservableObject {
                 .execute()
                 .value
             feed = allFeed.filter { !blockedIDs.contains($0.authorID) }
+
+            let authorIDs = Array(Set(feed.map { $0.authorID }))
+            if !authorIDs.isEmpty,
+               let authors: [Profile] = try? await client
+                   .from("profiles")
+                   .select()
+                   .in("id", values: authorIDs)
+                   .execute()
+                   .value {
+                authorProfiles = Dictionary(uniqueKeysWithValues: authors.map { ($0.id, $0) })
+            }
 
             let userID = try? await client.auth.session.user.id
 

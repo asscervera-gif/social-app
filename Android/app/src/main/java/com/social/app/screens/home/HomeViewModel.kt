@@ -50,6 +50,16 @@ class HomeViewModel : ViewModel() {
     private val _likedPostIds = MutableStateFlow<Set<String>>(emptySet())
     val likedPostIds: StateFlow<Set<String>> = _likedPostIds.asStateFlow()
 
+    // Hallazgo real, comparado con cualquier app grande: la tarjeta del
+    // feed nunca mostraba QUIÉN publicó cada post -- ni nombre, ni avatar,
+    // ni forma de tocar para ver su perfil. A diferencia de Search/Match/
+    // Avisos (los tres sí llevan onOpenProfile), Home era la única
+    // pantalla con listado sin esa navegación. `posts` no lleva el perfil
+    // embebido, así que se resuelve aparte con un solo select por los
+    // author_id distintos del feed cargado (no N+1).
+    private val _authorProfiles = MutableStateFlow<Map<String, Profile>>(emptyMap())
+    val authorProfiles: StateFlow<Map<String, Profile>> = _authorProfiles.asStateFlow()
+
     fun load() {
         viewModelScope.launch {
             _isLoading.value = true
@@ -80,6 +90,22 @@ class HomeViewModel : ViewModel() {
                     }
                     .decodeList<Post>()
                     .filter { it.authorId !in blockedIds }
+
+                val authorIds = _feed.value.map { it.authorId }.distinct()
+                if (authorIds.isNotEmpty()) {
+                    try {
+                        _authorProfiles.value = SupabaseManager.client.from("profiles")
+                            .select(columns = Columns.raw("id,display_name,avatar_url,avatar_config")) {
+                                filter { isIn("id", authorIds) }
+                            }
+                            .decodeList<Profile>()
+                            .associateBy { it.id }
+                    } catch (e: Exception) {
+                        // No bloquea el resto del feed si falla -- las
+                        // publicaciones se siguen mostrando aunque no se
+                        // pueda mostrar quién las escribió.
+                    }
+                }
 
                 val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
                 if (myId != null) {

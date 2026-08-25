@@ -172,7 +172,8 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                         onOpenFind = { navController.navigate(FIND_ROUTE) },
                         onOpenHashtag = { tag ->
                             navController.navigate("search_hashtag/${java.net.URLEncoder.encode(tag, "UTF-8")}")
-                        }
+                        },
+                        onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
                     )
                 }
                 composable(SEARCH_ROUTE) {

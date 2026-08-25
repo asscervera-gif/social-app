@@ -164,6 +164,7 @@ struct HomeView: View {
             ForEach(viewModel.feed) { post in
                 PostCard(
                     post: post,
+                    author: viewModel.authorProfiles[post.authorID],
                     isSaved: viewModel.savedPostIDs.contains(post.id),
                     isLiked: viewModel.likedPostIDs.contains(post.id),
                     onLike: {
@@ -230,6 +231,7 @@ private struct RecommendedCard: View {
 
 private struct PostCard: View {
     let post: Post
+    let author: Profile?
     let isSaved: Bool
     let isLiked: Bool
     let onLike: () -> Void
@@ -247,6 +249,23 @@ private struct PostCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // Hallazgo real, comparado con cualquier app grande
+            // (Instagram/TikTok/Twitter): la tarjeta no mostraba QUIÉN
+            // publicó cada post, ni dejaba tocar para ver su perfil (ver
+            // HomeViewModel.authorProfiles). Mismo patrón de navegación ya
+            // usado en MatchView.swift.
+            NavigationLink {
+                ProfileViewerView(profileID: post.authorID)
+            } label: {
+                HStack(spacing: 8) {
+                    ActiveAvatarProvider.shared.avatarView(config: author?.avatarConfig ?? [:], size: 32)
+                    Text(author?.displayName ?? "…")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.primary)
+                }
+            }
+            .buttonStyle(.plain)
+
             // Hallazgo real: esta caja gris con icono de foto era siempre
             // decorativa, para TODOS los posts, sin importar si tenían
             // media_url — no había ninguna integración de Storage. Ahora

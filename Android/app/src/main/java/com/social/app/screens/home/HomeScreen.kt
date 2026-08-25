@@ -70,7 +70,8 @@ fun HomeScreen(
     viewModel: HomeViewModel = viewModel(),
     onOpenSearch: () -> Unit = {},
     onOpenFind: () -> Unit = {},
-    onOpenHashtag: (String) -> Unit = {}
+    onOpenHashtag: (String) -> Unit = {},
+    onOpenProfile: (String) -> Unit = {}
 ) {
     val feed by viewModel.feed.collectAsState()
     val recommended by viewModel.recommended.collectAsState()
@@ -78,6 +79,7 @@ fun HomeScreen(
     val errorMessage by viewModel.errorMessage.collectAsState()
     val savedPostIds by viewModel.savedPostIds.collectAsState()
     val likedPostIds by viewModel.likedPostIds.collectAsState()
+    val authorProfiles by viewModel.authorProfiles.collectAsState()
     var commentsPostId by remember { mutableStateOf<String?>(null) }
     // Hallazgo real: no había ninguna forma de crear una publicación en
     // toda la app (ver NewPostViewModel.kt para el detalle completo).
@@ -167,12 +169,14 @@ fun HomeScreen(
             items(feed) { post ->
                 PostCard(
                     post = post,
+                    author = authorProfiles[post.authorId],
                     isSaved = savedPostIds.contains(post.id),
                     isLiked = likedPostIds.contains(post.id),
                     onLike = { viewModel.toggleLike(post) },
                     onOpenComments = { commentsPostId = post.id },
                     onToggleSave = { viewModel.toggleSave(post) },
-                    onOpenHashtag = onOpenHashtag
+                    onOpenHashtag = onOpenHashtag,
+                    onOpenProfile = { onOpenProfile(post.authorId) }
                 )
             }
         }
@@ -255,12 +259,14 @@ private fun RecommendedCard(entry: HomeViewModel.Recommended) {
 @Composable
 private fun PostCard(
     post: Post,
+    author: com.social.app.backend.model.Profile?,
     isSaved: Boolean,
     isLiked: Boolean,
     onLike: () -> Unit,
     onOpenComments: () -> Unit,
     onToggleSave: () -> Unit,
-    onOpenHashtag: (String) -> Unit = {}
+    onOpenHashtag: (String) -> Unit = {},
+    onOpenProfile: () -> Unit = {}
 ) {
     val context = LocalContext.current
     // Hallazgo real: comparado con cualquier app grande, no había forma de
@@ -273,6 +279,22 @@ private fun PostCard(
     val myId = com.social.app.backend.SupabaseManager.client.auth.currentUserOrNull()?.id
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp)) {
+            // Hallazgo real, comparado con cualquier app grande
+            // (Instagram/TikTok/Twitter): la tarjeta no mostraba QUIÉN
+            // publicó cada post, ni dejaba tocar para ver su perfil — la
+            // única pantalla con listado sin esa navegación (ver
+            // HomeViewModel.authorProfiles).
+            Row(
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenProfile).padding(bottom = 8.dp)
+            ) {
+                com.social.app.avatar.AvatarView(config = author?.avatarConfig ?: emptyMap(), size = 32.dp)
+                Text(
+                    author?.displayName ?: "…",
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+            }
             post.mediaUrl?.let { url ->
                 androidx.compose.foundation.Image(
                     painter = coil.compose.rememberAsyncImagePainter(url),
