@@ -59,6 +59,23 @@ targets:
         NSBonjourServices:
           - _social-uwb._tcp
           - _social-uwb._udp
+        # Necesario para que PushTokenManager reciba avisos con la app en
+        # segundo plano, no solo en primer plano (App/AppDelegate.swift).
+        UIBackgroundModes:
+          - remote-notification
+    entitlements:
+      path: Social/Social.entitlements
+      properties:
+        # "development" hasta que exista una cuenta Apple Developer de pago
+        # real y un build de producción firmado -- ver aviso de honestidad
+        # en supabase/functions/send-push/index.ts (APNS_HOST también
+        # apunta a producción, api.push.apple.com, para cuando llegue ese
+        # paso). Sin DEVELOPMENT_TEAM real (CI usa firma automática sin
+        # equipo, "solo compilador + Simulador"), este entitlement no tiene
+        # efecto en Simulator más allá de permitir compilar y probar la
+        # petición de permiso -- APNs real en Simulator (iOS 16+) requiere
+        # una sesión de Apple ID iniciada ahí, fuera del alcance de CI.
+        aps-environment: development
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.social.app

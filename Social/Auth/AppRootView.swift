@@ -95,6 +95,7 @@ struct AppRootView: View {
                 await checkBanStatus()
                 await checkNeedsAvatarOnboarding()
                 showHowItWorks = !HowItWorksSeen.value
+                PushTokenManager.requestAuthorizationAndRegister()
             }
 
             for await state in SupabaseManager.shared.client.auth.authStateChanges {
@@ -104,6 +105,7 @@ struct AppRootView: View {
                     await checkBanStatus()
                     await checkNeedsAvatarOnboarding()
                     showHowItWorks = !HowItWorksSeen.value
+                    PushTokenManager.requestAuthorizationAndRegister()
                 }
                 // Hallazgo real: al cerrar sesión, el número rojo del
                 // icono de la app (y cualquier notificación local
