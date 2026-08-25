@@ -11,6 +11,20 @@
 import SwiftUI
 
 struct AjustesView: View {
+    /// Categorías visibles en Ajustes -> valores reales de `notifications.kind`
+    /// que agrupa cada una -- mismos valores exactos que
+    /// AvisosViewModel.swift.icon()/title() y send-push/index.ts.
+    /// Equivalente de NOTIFICATION_CATEGORIES (AjustesScreen.kt).
+    static let notificationCategories: [(String, [String])] = [
+        ("Mensajes", ["message"]),
+        ("Me gusta", ["like", "reel_like"]),
+        ("Comentarios", ["comment", "reel_comment"]),
+        ("Socials", ["social", "social_accepted"]),
+        ("Seguidores", ["follow"]),
+        ("Duelos", ["fight"]),
+        ("Compatibilidad", ["compat_request", "compat_accepted"])
+    ]
+
     @StateObject private var account = AccountManager()
     // Hallazgo real: `compat_public`/`location_public` se consultaban en
     // Match/Home/"Find" pero no había ningún interruptor para activarlos
@@ -63,6 +77,21 @@ struct AjustesView: View {
                 Text("Oscuro").tag("dark")
             }
             .pickerStyle(.segmented)
+
+            // Hallazgo real, comparado con Instagram/Twitter/Facebook/
+            // WhatsApp: todas dejan silenciar "me gusta" sin silenciar
+            // "mensajes" -- esta app solo tenía silenciar un CHAT
+            // completo, nunca una CATEGORÍA de aviso. Se aplica de verdad
+            // en el servidor (send-push/index.ts), no solo en el cliente.
+            Text("Notificaciones").font(.headline)
+            ForEach(Self.notificationCategories, id: \.0) { label, kinds in
+                Toggle(isOn: Binding(
+                    get: { !kinds.contains(where: { privacy.mutedKinds.contains($0) }) },
+                    set: { enabled in privacy.setCategoryMuted(kinds, muted: !enabled) }
+                )) {
+                    Text(label)
+                }
+            }
 
             Text("Privacidad").font(.headline)
             Toggle(isOn: Binding(

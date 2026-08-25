@@ -29,7 +29,8 @@ class PrivacySettingsViewModel : ViewModel() {
     @Serializable
     private data class PrivacyRow(
         @SerialName("compat_public") val compatPublic: Boolean,
-        @SerialName("location_public") val locationPublic: Boolean
+        @SerialName("location_public") val locationPublic: Boolean,
+        @SerialName("muted_push_kinds") val mutedPushKinds: List<String> = emptyList()
     )
 
     private val _compatPublic = MutableStateFlow(false)
@@ -37,6 +38,15 @@ class PrivacySettingsViewModel : ViewModel() {
 
     private val _locationPublic = MutableStateFlow(false)
     val locationPublic: StateFlow<Boolean> = _locationPublic.asStateFlow()
+
+    // Hallazgo real, comparado con Instagram/Twitter/Facebook/WhatsApp:
+    // todas dejan silenciar "me gusta" sin silenciar "mensajes" -- esta
+    // app solo tenía silenciar un CHAT completo (0047_message_notify_mute.sql),
+    // nunca una CATEGORÍA de aviso en toda la app. Aplicado de verdad en
+    // el servidor (send-push/index.ts), no solo en el cliente -- un push
+    // real llega o no llega según esto, no es decorativo.
+    private val _mutedKinds = MutableStateFlow<Set<String>>(emptySet())
+    val mutedKinds: StateFlow<Set<String>> = _mutedKinds.asStateFlow()
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
@@ -46,12 +56,31 @@ class PrivacySettingsViewModel : ViewModel() {
             try {
                 val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
                 val row = SupabaseManager.client.from("profiles")
-                    .select(columns = Columns.raw("compat_public,location_public")) { filter { eq("id", userId) } }
+                    .select(columns = Columns.raw("compat_public,location_public,muted_push_kinds")) { filter { eq("id", userId) } }
                     .decodeSingle<PrivacyRow>()
                 _compatPublic.value = row.compatPublic
                 _locationPublic.value = row.locationPublic
+                _mutedKinds.value = row.mutedPushKinds.toSet()
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo cargar la privacidad."
+            }
+        }
+    }
+
+    /** [kinds] son los valores reales de `notifications.kind` que agrupa
+     * una categoría visible en Ajustes (p. ej. "Me gusta" -> like +
+     * reel_like) -- ver AjustesScreen.kt para el mapeo completo. */
+    fun setCategoryMuted(kinds: List<String>, muted: Boolean) {
+        val previous = _mutedKinds.value
+        _mutedKinds.value = if (muted) previous + kinds else previous - kinds.toSet()
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                SupabaseManager.client.from("profiles")
+                    .update({ set("muted_push_kinds", _mutedKinds.value.toList()) }) { filter { eq("id", userId) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo guardar el cambio."
+                _mutedKinds.value = previous
             }
         }
     }

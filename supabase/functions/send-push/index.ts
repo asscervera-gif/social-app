@@ -53,6 +53,10 @@ interface NotificationRow {
   payload: Record<string, string>;
 }
 
+interface ProfileMuteRow {
+  muted_push_kinds: string[];
+}
+
 interface DeviceTokenRow {
   platform: "ios" | "android";
   token: string;
@@ -125,6 +129,21 @@ serve(async (req) => {
     .single<NotificationRow>();
   if (notificationError || !notification) {
     return new Response(JSON.stringify({ error: "Aviso no encontrado" }), { status: 404 });
+  }
+
+  // Preferencias de notificaciones por categoría (0052_notification_prefs.sql),
+  // comparado con Instagram/Twitter/Facebook/WhatsApp: antes se enviaba
+  // SIEMPRE, para cualquier `kind`, sin ninguna forma de que el usuario
+  // apagara una categoría concreta. `select().maybeSingle()` en vez de
+  // `.single()`: si el perfil ya no existe (borrado de cuenta en curso),
+  // no debe romper el envío, simplemente no hay preferencia que aplicar.
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("muted_push_kinds")
+    .eq("id", notification.recipient_id)
+    .maybeSingle<ProfileMuteRow>();
+  if (profile?.muted_push_kinds?.includes(notification.kind)) {
+    return new Response(JSON.stringify({ sent: 0, muted: true }), { headers: { "content-type": "application/json" } });
   }
 
   const { data: tokens, error: tokensError } = await admin

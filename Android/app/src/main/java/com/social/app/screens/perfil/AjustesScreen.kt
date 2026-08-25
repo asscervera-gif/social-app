@@ -44,6 +44,19 @@ import kotlinx.serialization.Serializable
 @Serializable
 private data class IsAdminRow(@SerialName("is_admin") val isAdmin: Boolean)
 
+/** Categorías visibles en Ajustes -> valores reales de `notifications.kind`
+ * que agrupa cada una -- mismos valores exactos que
+ * AvisosViewModel.kt.icon()/title() y send-push/index.ts. */
+private val NOTIFICATION_CATEGORIES: List<Pair<String, List<String>>> = listOf(
+    "Mensajes" to listOf("message"),
+    "Me gusta" to listOf("like", "reel_like"),
+    "Comentarios" to listOf("comment", "reel_comment"),
+    "Socials" to listOf("social", "social_accepted"),
+    "Seguidores" to listOf("follow"),
+    "Duelos" to listOf("fight"),
+    "Compatibilidad" to listOf("compat_request", "compat_accepted")
+)
+
 /**
  * Pantalla de Ajustes — antes no existía ninguna en absoluto, en ninguna
  * plataforma, a pesar de que `privacy_policy_es.md` ya prometía "borrado
@@ -159,6 +172,25 @@ fun AjustesScreen(
                         .clickable { com.social.app.ui.theme.ThemeModePreference.setMode(context, key) }
                         .padding(horizontal = 14.dp, vertical = 8.dp)
                 )
+            }
+        }
+
+        // Hallazgo real, comparado con Instagram/Twitter/Facebook/WhatsApp:
+        // todas dejan silenciar "me gusta" sin silenciar "mensajes" -- esta
+        // app solo tenía silenciar un CHAT completo, nunca una CATEGORÍA de
+        // aviso. Se aplica de verdad en el servidor (send-push/index.ts,
+        // 0052_notification_prefs.sql), no solo en el cliente.
+        Text("Notificaciones", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 20.dp))
+        val mutedKinds by privacy.mutedKinds.collectAsState()
+        NOTIFICATION_CATEGORIES.forEach { (label, kinds) ->
+            val muted = kinds.any { it in mutedKinds }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(label)
+                Switch(checked = !muted, onCheckedChange = { enabled -> privacy.setCategoryMuted(kinds, !enabled) })
             }
         }
 

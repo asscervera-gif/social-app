@@ -50,11 +50,19 @@ private final class OneShotLocationFetcher: NSObject, CLLocationManagerDelegate 
 final class PrivacySettingsViewModel: ObservableObject {
     @Published var compatPublic = false
     @Published var locationPublic = false
+    // Hallazgo real, comparado con Instagram/Twitter/Facebook/WhatsApp:
+    // todas dejan silenciar "me gusta" sin silenciar "mensajes" -- esta
+    // app solo tenía silenciar un CHAT completo (0047_message_notify_mute.sql),
+    // nunca una CATEGORÍA de aviso en toda la app. Aplicado de verdad en
+    // el servidor (send-push/index.ts, 0052_notification_prefs.sql), no
+    // solo en el cliente.
+    @Published var mutedKinds: Set<String> = []
     @Published var errorMessage: String?
 
     private struct PrivacyRow: Decodable {
         let compat_public: Bool
         let location_public: Bool
+        let muted_push_kinds: [String]
     }
 
     func load() async {
@@ -62,15 +70,42 @@ final class PrivacySettingsViewModel: ObservableObject {
         do {
             let row: PrivacyRow = try await SupabaseManager.shared.client
                 .from("profiles")
-                .select("compat_public,location_public")
+                .select("compat_public,location_public,muted_push_kinds")
                 .eq("id", value: userID)
                 .single()
                 .execute()
                 .value
             compatPublic = row.compat_public
             locationPublic = row.location_public
+            mutedKinds = Set(row.muted_push_kinds)
         } catch {
             errorMessage = "No se pudo cargar la privacidad."
+        }
+    }
+
+    /// [kinds] son los valores reales de `notifications.kind` que agrupa
+    /// una categoría visible en Ajustes -- ver AjustesView.swift para el
+    /// mapeo completo. Equivalente de PrivacySettingsViewModel.kt.setCategoryMuted().
+    func setCategoryMuted(_ kinds: [String], muted: Bool) {
+        let previous = mutedKinds
+        if muted {
+            mutedKinds.formUnion(kinds)
+        } else {
+            mutedKinds.subtract(kinds)
+        }
+        Task {
+            guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+            struct MutedUpdate: Encodable { let muted_push_kinds: [String] }
+            do {
+                try await SupabaseManager.shared.client
+                    .from("profiles")
+                    .update(MutedUpdate(muted_push_kinds: Array(mutedKinds)))
+                    .eq("id", value: userID)
+                    .execute()
+            } catch {
+                errorMessage = "No se pudo guardar el cambio."
+                mutedKinds = previous
+            }
         }
     }
 

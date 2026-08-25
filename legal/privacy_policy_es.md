@@ -35,10 +35,15 @@ _Borrador para revisión legal antes de publicar. No es un documento legal defin
   disponible desde la pantalla de cámara (Social) — es donde tiene efecto
   real sobre la detección física, así que es el único sitio donde se activa,
   para no dar una falsa sensación de control sin acción real detrás.
-- **Bloqueo y denuncia**: disponibles desde un botón flotante visible en
-  todas las pestañas salvo Social (que tiene su propio punto de entrada al
-  tocar a una persona detectada), no en cada perfil o conversación
-  individualmente.
+- **Bloqueo y denuncia**: disponibles desde cada contexto real donde tiene
+  sentido — el perfil de una persona, un chat, una publicación, un
+  comentario, un mensaje concreto o al detectar a alguien en la cámara de
+  Social — cada denuncia guarda una referencia real a qué se está
+  denunciando, no solo un texto libre. (Corregido: este párrafo describía
+  antes un único botón flotante global visible en casi toda la app; se
+  quitó al confirmarse, probando la app de verdad, que confundía más de lo
+  que ayudaba — cada pantalla ya tiene su propio punto de entrada con el
+  contexto correcto, sin perder la función.)
 - **Borrado de cuenta**: puedes solicitar el borrado completo de tu perfil,
   avatar, publicaciones, mensajes, socials y todos los datos asociados
   desde Ajustes (icono de engranaje en la pestaña Perfil). Implementado con
