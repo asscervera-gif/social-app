@@ -36,17 +36,37 @@ struct CommentsView: View {
                 // Hallazgo real: no había forma de borrar el propio
                 // comentario, comparado con cualquier app grande.
                 List(viewModel.comments) { comment in
-                    HStack {
-                        Text(comment.body)
-                        Spacer()
-                        if comment.author_id == myID {
-                            Button("Borrar", role: .destructive) {
-                                Task { await viewModel.deleteComment(comment, onCommentRemoved: onCommentRemoved) }
+                    VStack(alignment: .leading, spacing: 4) {
+                        // Hallazgo real, mismo hueco raíz que el feed
+                        // (HomeViewModel.authorProfiles) -- nunca se
+                        // mostraba QUIÉN escribió cada comentario,
+                        // comparado con cualquier app grande.
+                        NavigationLink {
+                            ProfileViewerView(profileID: comment.author_id)
+                        } label: {
+                            HStack(spacing: 6) {
+                                ActiveAvatarProvider.shared.avatarView(
+                                    config: viewModel.authorProfiles[comment.author_id]?.avatarConfig ?? [:],
+                                    size: 20
+                                )
+                                Text(viewModel.authorProfiles[comment.author_id]?.displayName ?? "…")
+                                    .font(.caption.bold())
                             }
-                            .font(.caption)
-                        } else {
-                            Button("⋯") { reportingComment = comment }
+                        }
+                        .buttonStyle(.plain)
+
+                        HStack {
+                            Text(comment.body)
+                            Spacer()
+                            if comment.author_id == myID {
+                                Button("Borrar", role: .destructive) {
+                                    Task { await viewModel.deleteComment(comment, onCommentRemoved: onCommentRemoved) }
+                                }
                                 .font(.caption)
+                            } else {
+                                Button("⋯") { reportingComment = comment }
+                                    .font(.caption)
+                            }
                         }
                     }
                 }

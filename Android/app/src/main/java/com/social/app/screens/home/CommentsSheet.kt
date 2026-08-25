@@ -1,5 +1,6 @@
 package com.social.app.screens.home
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -41,12 +42,14 @@ fun CommentsSheet(
     postId: String,
     onDismiss: () -> Unit,
     onCommentAdded: () -> Unit,
-    onCommentRemoved: () -> Unit = {}
+    onCommentRemoved: () -> Unit = {},
+    onOpenProfile: (String) -> Unit = {}
 ) {
     val viewModel = remember(postId) { CommentsViewModel(postId) }
     val comments by viewModel.comments.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    val authorProfiles by viewModel.authorProfiles.collectAsState()
     var draft by remember { mutableStateOf("") }
     val sheetState = rememberModalBottomSheetState()
     val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
@@ -72,22 +75,40 @@ fun CommentsSheet(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(comments, key = { it.id }) { comment ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(comment.body, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                        // Hallazgo real: no había forma de borrar el propio
-                        // comentario, comparado con cualquier app grande —
-                        // `comments_delete_own` ya lo permitía en RLS.
-                        if (comment.authorId == myId) {
-                            TextButton(onClick = { viewModel.deleteComment(comment) { onCommentRemoved() } }) {
-                                Text("Borrar")
-                            }
-                        } else {
-                            TextButton(onClick = { reportingCommentId = comment.id }) {
-                                Text("⋯")
+                    val author = authorProfiles[comment.authorId]
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        // Hallazgo real, mismo hueco raíz que el feed
+                        // (HomeViewModel.authorProfiles, pasada anterior):
+                        // nunca se mostraba QUIÉN escribió cada comentario,
+                        // comparado con cualquier app grande.
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable { onOpenProfile(comment.authorId) }
+                        ) {
+                            com.social.app.avatar.AvatarView(config = author?.avatarConfig ?: emptyMap(), size = 20.dp)
+                            Text(
+                                author?.displayName ?: "…",
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.padding(start = 6.dp)
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(comment.body, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                            // Hallazgo real: no había forma de borrar el propio
+                            // comentario, comparado con cualquier app grande —
+                            // `comments_delete_own` ya lo permitía en RLS.
+                            if (comment.authorId == myId) {
+                                TextButton(onClick = { viewModel.deleteComment(comment) { onCommentRemoved() } }) {
+                                    Text("Borrar")
+                                }
+                            } else {
+                                TextButton(onClick = { reportingCommentId = comment.id }) {
+                                    Text("⋯")
+                                }
                             }
                         }
                     }

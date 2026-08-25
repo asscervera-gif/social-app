@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.social.app.backend.SupabaseManager
 import com.social.app.backend.model.Comment
+import com.social.app.backend.model.Profile
 import io.github.jan.supabase.gotrue.auth
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Columns
@@ -35,16 +36,41 @@ class CommentsViewModel(private val postId: String) : ViewModel() {
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
+    // Hallazgo real, mismo hueco raíz que HomeViewModel.authorProfiles
+    // (pasada anterior): la hoja de comentarios nunca mostraba QUIÉN
+    // escribió cada uno -- ni nombre, ni avatar, comparado con cualquier
+    // app grande. `comments` no lleva el perfil embebido, se resuelve
+    // aparte con un solo select por los author_id distintos.
+    private val _authorProfiles = MutableStateFlow<Map<String, Profile>>(emptyMap())
+    val authorProfiles: StateFlow<Map<String, Profile>> = _authorProfiles.asStateFlow()
+
     fun load() {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                _comments.value = SupabaseManager.client.from("comments")
+                val loaded = SupabaseManager.client.from("comments")
                     .select(columns = Columns.raw("id,post_id,author_id,body,created_at")) {
                         filter { eq("post_id", postId) }
                         order("created_at", Order.ASCENDING)
                     }
                     .decodeList<Comment>()
+                _comments.value = loaded
+
+                val authorIds = loaded.map { it.authorId }.distinct()
+                if (authorIds.isNotEmpty()) {
+                    try {
+                        _authorProfiles.value = SupabaseManager.client.from("profiles")
+                            .select(columns = Columns.raw("id,display_name,avatar_url,avatar_config")) {
+                                filter { isIn("id", authorIds) }
+                            }
+                            .decodeList<Profile>()
+                            .associateBy { it.id }
+                    } catch (e: Exception) {
+                        // No bloquea el resto de la hoja si falla -- los
+                        // comentarios se siguen mostrando aunque no se
+                        // pueda mostrar quién los escribió.
+                    }
+                }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudieron cargar los comentarios: ${e.message}"
             } finally {
@@ -82,6 +108,23 @@ class CommentsViewModel(private val postId: String) : ViewModel() {
                     .insert(NewComment(postId, userId, trimmed)) { select() }
                     .decodeSingle<Comment>()
                 _comments.update { it + inserted }
+                // Si es el primer comentario propio en este post, mi
+                // perfil todavía no está en authorProfiles (solo se cargó
+                // el de quienes ya habían comentado) -- sin esto, mi
+                // propio comentario recién publicado se vería con nombre
+                // "…" hasta la próxima recarga.
+                if (!_authorProfiles.value.containsKey(userId)) {
+                    try {
+                        val me = SupabaseManager.client.from("profiles")
+                            .select(columns = Columns.raw("id,display_name,avatar_url,avatar_config")) {
+                                filter { eq("id", userId) }
+                            }
+                            .decodeSingle<Profile>()
+                        _authorProfiles.update { it + (userId to me) }
+                    } catch (e: Exception) {
+                        // No crítico: el comentario ya se publicó de verdad.
+                    }
+                }
                 // Hallazgo real, misma auditoría de AnalyticsManager de
                 // la pasada anterior: comentar tampoco se registraba.
                 com.social.app.backend.AnalyticsManager.track("comment_added")

@@ -192,7 +192,8 @@ fun HomeScreen(
             postId = postId,
             onDismiss = { commentsPostId = null },
             onCommentAdded = { viewModel.commentAdded(postId) },
-            onCommentRemoved = { viewModel.commentRemoved(postId) }
+            onCommentRemoved = { viewModel.commentRemoved(postId) },
+            onOpenProfile = { authorId -> commentsPostId = null; onOpenProfile(authorId) }
         )
     }
 

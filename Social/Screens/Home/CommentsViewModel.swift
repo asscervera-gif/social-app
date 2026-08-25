@@ -28,6 +28,12 @@ final class CommentsViewModel: ObservableObject {
     @Published var comments: [Comment] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    // Hallazgo real, mismo hueco raíz que HomeViewModel.authorProfiles
+    // (pasada anterior): la hoja de comentarios nunca mostraba QUIÉN
+    // escribió cada uno -- ni nombre, ni avatar, comparado con cualquier
+    // app grande. `comments` no lleva el perfil embebido, se resuelve
+    // aparte con un solo select por los author_id distintos.
+    @Published var authorProfiles: [UUID: Profile] = [:]
 
     init(postID: UUID) {
         self.postID = postID
@@ -37,13 +43,25 @@ final class CommentsViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         do {
-            comments = try await SupabaseManager.shared.client
+            let loaded: [Comment] = try await SupabaseManager.shared.client
                 .from("comments")
                 .select()
                 .eq("post_id", value: postID)
                 .order("created_at", ascending: true)
                 .execute()
                 .value
+            comments = loaded
+
+            let authorIDs = Array(Set(loaded.map { $0.author_id }))
+            if !authorIDs.isEmpty,
+               let authors: [Profile] = try? await SupabaseManager.shared.client
+                   .from("profiles")
+                   .select()
+                   .in("id", values: authorIDs)
+                   .execute()
+                   .value {
+                authorProfiles = Dictionary(uniqueKeysWithValues: authors.map { ($0.id, $0) })
+            }
         } catch {
             errorMessage = "No se pudieron cargar los comentarios: \(error.localizedDescription)"
         }
@@ -85,6 +103,22 @@ final class CommentsViewModel: ObservableObject {
                 .execute()
                 .value
             comments.append(inserted)
+            // Si es el primer comentario propio en este post, mi perfil
+            // todavía no está en authorProfiles (solo se cargó el de
+            // quienes ya habían comentado) -- sin esto, mi propio
+            // comentario recién publicado se vería con nombre "…" hasta
+            // la próxima recarga.
+            if authorProfiles[userID] == nil {
+                if let me: Profile = try? await SupabaseManager.shared.client
+                    .from("profiles")
+                    .select()
+                    .eq("id", value: userID)
+                    .single()
+                    .execute()
+                    .value {
+                    authorProfiles[userID] = me
+                }
+            }
             // Hallazgo real, mismo criterio ya aplicado en la versión
             // Kotlin equivalente: comentar tampoco se registraba.
             AnalyticsManager.track("comment_added")
