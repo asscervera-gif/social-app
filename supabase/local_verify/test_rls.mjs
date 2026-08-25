@@ -192,6 +192,22 @@ async function main() {
   check('trg_notify_social_accepted: actor_id es quien aceptó (u2), no quien pidió', socialAcceptedNotif[0]?.actor_id === u2);
   check('trg_notify_social_accepted: payload trae el social_id real', socialAcceptedNotif[0]?.payload?.social_id === social.id);
 
+  // --- socials_delete (0020), aplicado a cancelar una solicitud pendiente
+  // ENVIADA (feature nueva, SocialsListView "Solicitudes enviadas"): la
+  // política no distingue por status, así que quien la pidió debe poder
+  // borrar su propia solicitud todavía pendiente -- sin test hasta ahora. ---
+  await asSuperuser();
+  const pendingToCancel = (await db.query(
+    `insert into socials (requester_id, addressee_id, status) values ($1, $2, 'pending') returning id`, [u2, u1]
+  )).rows[0];
+  await asUser(u2);
+  await expectOk('socials_delete: quien PIDIÓ un social todavía pendiente SÍ puede cancelarlo', async () => {
+    await db.query(`delete from socials where id = $1`, [pendingToCancel.id]);
+  });
+  await asSuperuser();
+  const cancelledGone = (await db.query(`select 1 from socials where id = $1`, [pendingToCancel.id])).rows;
+  check('socials_delete: la solicitud cancelada ya no existe de verdad', cancelledGone.length === 0);
+
   // --- posts_select / profile_sections_select (0002): un tercero sin
   // relación NO ve un post/sección "solo socials", pero SÍ los ve quien
   // tiene un social aceptado real (u2, ya aceptado más arriba) ---

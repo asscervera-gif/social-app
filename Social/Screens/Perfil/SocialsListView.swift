@@ -17,6 +17,26 @@ struct SocialsListView: View {
             if let error = viewModel.errorMessage {
                 Text(error).font(.footnote).foregroundStyle(.red)
             }
+            // Hallazgo real, comparado con Instagram (solicitudes de
+            // seguimiento enviadas, con opción de cancelar): quien envía
+            // un social no tenía ninguna forma de verlo pendiente ni de
+            // cancelarlo si capturó a la persona equivocada por la cámara.
+            if !viewModel.pendingSent.isEmpty {
+                Section("Solicitudes enviadas") {
+                    ForEach(viewModel.pendingSent) { entry in
+                        HStack {
+                            ActiveAvatarProvider.shared.avatarView(config: entry.avatarConfig ?? [:], size: 40)
+                            Text(entry.displayName)
+                            Spacer()
+                            Text("Pendiente").font(.caption).foregroundStyle(.secondary)
+                            Button("Cancelar", role: .destructive) {
+                                viewModel.removeSocial(entry.socialID)
+                            }
+                            .font(.caption)
+                        }
+                    }
+                }
+            }
             if viewModel.socials.isEmpty {
                 Text("Todavía no tienes ningún social.")
                     .foregroundStyle(.secondary)

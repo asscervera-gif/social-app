@@ -31,6 +31,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 @Composable
 fun SocialsListScreen(viewModel: SocialsListViewModel = viewModel(), onOpenProfile: (String) -> Unit) {
     val socials by viewModel.socials.collectAsState()
+    val pendingSent by viewModel.pendingSent.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
 
     LaunchedEffect(Unit) { viewModel.load() }
@@ -60,6 +61,44 @@ fun SocialsListScreen(viewModel: SocialsListViewModel = viewModel(), onOpenProfi
         }
         androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxWidth()) {
             LazyColumn(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                // Hallazgo real, comparado con Instagram (solicitudes de
+                // seguimiento enviadas, con opción de cancelar): quien
+                // envía un social no tenía ninguna forma de verlo
+                // pendiente ni de cancelarlo si capturó a la persona
+                // equivocada por la cámara.
+                if (pendingSent.isNotEmpty()) {
+                    item {
+                        Text(
+                            "Solicitudes enviadas",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+                    }
+                    items(pendingSent, key = { "pending-" + it.socialId }) { entry ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                com.social.app.avatar.AvatarView(config = entry.avatarConfig ?: emptyMap(), size = 40.dp)
+                                Column(modifier = Modifier.padding(start = 10.dp)) {
+                                    Text(entry.displayName)
+                                    Text(
+                                        "Pendiente",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            TextButton(onClick = { viewModel.removeSocial(entry.socialId) }) {
+                                Text("Cancelar")
+                            }
+                        }
+                        HorizontalDivider()
+                    }
+                }
                 items(socials, key = { it.socialId }) { entry ->
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),

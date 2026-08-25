@@ -39,6 +39,16 @@ class SocialsListViewModel : ViewModel() {
     private val _socials = MutableStateFlow<List<SocialEntry>>(emptyList())
     val socials: StateFlow<List<SocialEntry>> = _socials.asStateFlow()
 
+    // Hallazgo real, comparado con Instagram (solicitudes de seguimiento
+    // enviadas, con opción de cancelar): tras enviar un social por la
+    // cámara (único punto de envío -- SocialCameraScreen.kt), quien lo
+    // envía no tenía NINGUNA forma de ver que sigue pendiente ni de
+    // cancelarlo si capturó a la persona equivocada -- 0020_socials_delete.sql
+    // ya permite borrar la fila a cualquiera de las dos partes sin
+    // importar el status, el hueco era puramente de UI/visibilidad.
+    private val _pendingSent = MutableStateFlow<List<SocialEntry>>(emptyList())
+    val pendingSent: StateFlow<List<SocialEntry>> = _pendingSent.asStateFlow()
+
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
@@ -105,6 +115,28 @@ class SocialsListViewModel : ViewModel() {
                     } ?: return@mapNotNull null
                     SocialEntry(row.id, otherId, profile.displayName, profile.avatarConfig)
                 }
+
+                val pendingRows = SupabaseManager.client.from("socials")
+                    .select(columns = Columns.raw("id,requester_id,addressee_id")) {
+                        filter {
+                            eq("status", "pending")
+                            eq("requester_id", userId)
+                        }
+                        limit(100)
+                    }
+                    .decodeList<SocialRow>()
+
+                _pendingSent.value = pendingRows.mapNotNull { row ->
+                    if (row.addresseeId in blockedIds) return@mapNotNull null
+                    val profile = try {
+                        SupabaseManager.client.from("profiles")
+                            .select(columns = Columns.raw("display_name,avatar_config")) { filter { eq("id", row.addresseeId) } }
+                            .decodeSingleOrNull<NameRow>()
+                    } catch (e: Exception) {
+                        null
+                    } ?: return@mapNotNull null
+                    SocialEntry(row.id, row.addresseeId, profile.displayName, profile.avatarConfig)
+                }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudieron cargar tus socials."
             }
@@ -114,9 +146,12 @@ class SocialsListViewModel : ViewModel() {
     /** Hallazgo real: no había forma de quitar un social aceptado —
      * `socials` no tenía ninguna política de delete hasta esta pasada
      * (ver 0020_socials_delete.sql). Cualquiera de las dos partes puede
-     * deshacer el vínculo. */
+     * deshacer el vínculo. También usado para cancelar una solicitud
+     * pendiente enviada (misma política de delete, sin distinción de
+     * status). */
     fun removeSocial(socialId: String) {
         _socials.update { it.filter { entry -> entry.socialId != socialId } }
+        _pendingSent.update { it.filter { entry -> entry.socialId != socialId } }
         viewModelScope.launch {
             try {
                 SupabaseManager.client.from("socials").delete { filter { eq("id", socialId) } }

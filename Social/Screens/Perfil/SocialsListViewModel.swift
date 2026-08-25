@@ -26,6 +26,14 @@ struct SocialEntry: Identifiable {
 @MainActor
 final class SocialsListViewModel: ObservableObject {
     @Published var socials: [SocialEntry] = []
+    // Hallazgo real, comparado con Instagram (solicitudes de seguimiento
+    // enviadas, con opción de cancelar): tras enviar un social por la
+    // cámara (único punto de envío -- SocialCameraView.swift), quien lo
+    // envía no tenía NINGUNA forma de ver que sigue pendiente ni de
+    // cancelarlo si capturó a la persona equivocada -- 0020_socials_delete.sql
+    // ya permite borrar la fila a cualquiera de las dos partes sin
+    // importar el status, el hueco era puramente de UI/visibilidad.
+    @Published var pendingSent: [SocialEntry] = []
     @Published var errorMessage: String?
 
     private struct SocialRow: Decodable {
@@ -78,6 +86,27 @@ final class SocialsListViewModel: ObservableObject {
                 }
             }
             socials = entries
+
+            let pendingRows: [SocialRow] = try await SupabaseManager.shared.client
+                .from("socials")
+                .select()
+                .eq("status", value: "pending")
+                .eq("requester_id", value: userID)
+                .limit(100)
+                .execute()
+                .value
+
+            var pendingEntries: [SocialEntry] = []
+            for row in pendingRows {
+                if blockedIDs.contains(row.addressee_id) { continue }
+                if let profile = await profileInfo(for: row.addressee_id) {
+                    pendingEntries.append(SocialEntry(
+                        id: row.addressee_id, socialID: row.id,
+                        displayName: profile.display_name, avatarConfig: profile.avatar_config
+                    ))
+                }
+            }
+            pendingSent = pendingEntries
         } catch {
             errorMessage = "No se pudieron cargar tus socials."
         }
@@ -85,10 +114,13 @@ final class SocialsListViewModel: ObservableObject {
 
     /// Hallazgo real: no había forma de quitar un social aceptado —
     /// `socials` no tenía ninguna política de delete hasta esta pasada
-    /// (ver 0020_socials_delete.sql). Equivalente de
+    /// (ver 0020_socials_delete.sql). También usado para cancelar una
+    /// solicitud pendiente enviada (misma política de delete, sin
+    /// distinción de status). Equivalente de
     /// SocialsListViewModel.kt.removeSocial().
     func removeSocial(_ socialID: UUID) {
         socials.removeAll { $0.socialID == socialID }
+        pendingSent.removeAll { $0.socialID == socialID }
         Task {
             do {
                 try await SupabaseManager.shared.client
