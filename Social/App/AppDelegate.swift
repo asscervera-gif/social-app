@@ -8,8 +8,20 @@
 //
 
 import UIKit
+import UserNotifications
 
 final class AppDelegate: NSObject, UIApplicationDelegate {
+
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        // Sin esto, un aviso local con la app en primer plano no se
+        // presenta nunca y tocarlo no lleva a ningún sitio -- ver
+        // NotificationDelegate.swift.
+        UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
+        return true
+    }
 
     func application(
         _ application: UIApplication,

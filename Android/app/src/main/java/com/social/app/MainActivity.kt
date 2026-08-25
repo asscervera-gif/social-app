@@ -1,12 +1,14 @@
 package com.social.app
 
 import android.Manifest
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Color
 import com.social.app.auth.AppRoot
 import com.social.app.backend.AnalyticsManager
@@ -23,6 +25,16 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var proximity: SocialProximity
 
+    // Hueco real, encontrado comparando con Instagram/TikTok/Snapchat: tocar
+    // una notificación local (LocalNotifier.kt) no llevaba a ningún sitio --
+    // sin PendingIntent, solo abría (o traía a primer plano) la app en la
+    // pestaña por defecto, pese a que el texto decía "Toca para verlo".
+    // mutableStateOf (no remember: es un campo de la Activity, no de un
+    // composable) para que setContent recomponga si onNewIntent llega con
+    // la Activity ya en memoria (mismo caso que abrir una notificación con
+    // la app ya abierta en segundo plano).
+    private val startTab = mutableStateOf<String?>(null)
+
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
@@ -36,6 +48,7 @@ class MainActivity : ComponentActivity() {
         SupabaseManager.initialize(BuildConfig.SUPABASE_URL, BuildConfig.SUPABASE_ANON_KEY)
         AnalyticsManager.track("app_open")
         proximity = SocialProximity(applicationContext)
+        startTab.value = intent.getStringExtra(EXTRA_OPEN_TAB)
 
         val permissions = mutableListOf(
             Manifest.permission.CAMERA,
@@ -80,13 +93,26 @@ class MainActivity : ComponentActivity() {
                 // Hallazgo real más grave de la sesión: antes se mostraba
                 // RootTabView siempre, sin comprobar sesión — ver
                 // AppRoot.kt/AuthScreen.kt.
-                AppRoot(proximity)
+                AppRoot(proximity, startTab = startTab.value)
             }
         }
+    }
+
+    // La Activity ya está en memoria (app en segundo plano) cuando se toca
+    // una notificación -- FLAG_ACTIVITY_SINGLE_TOP hace que llegue aquí en
+    // vez de crear una instancia nueva y volver a pasar por onCreate.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        startTab.value = intent.getStringExtra(EXTRA_OPEN_TAB)
     }
 
     override fun onDestroy() {
         proximity.stop()
         super.onDestroy()
+    }
+
+    companion object {
+        const val EXTRA_OPEN_TAB = "open_tab"
     }
 }

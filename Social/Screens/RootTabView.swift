@@ -82,6 +82,12 @@ struct RootTabView: View {
         .onChange(of: selectedTab) { _ in
             AnalyticsManager.track("tab_view")
         }
+        // Hueco real, encontrado comparando con Instagram/TikTok/Snapchat:
+        // tocar un aviso local no llevaba a ningún sitio -- ver
+        // NotificationDelegate.swift/NotificationsBadgeViewModel.swift.
+        .onReceive(NotificationCenter.default.publisher(for: .openAvisosTab)) { _ in
+            selectedTab = .avisos
+        }
     }
 }
 

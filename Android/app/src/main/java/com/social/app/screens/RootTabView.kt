@@ -19,6 +19,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -82,11 +83,27 @@ private const val FIND_ROUTE = "find"
  * aquí; ahora sí forman parte del grafo de navegación de la app.
  */
 @Composable
-fun RootTabView(proximity: SocialProximity) {
+fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val showBottomBar = Tab.values().any { it.route == currentRoute }
+
+    // Hueco real, encontrado comparando con Instagram/TikTok/Snapchat:
+    // tocar una notificación local (LocalNotifier.kt, "Toca para verlo")
+    // no llevaba a ningún sitio -- sin PendingIntent, solo abría (o
+    // traía a primer plano) la app en la pestaña por defecto. MainActivity
+    // pasa aquí la pestaña pedida por el extra del Intent de la
+    // notificación; se navega una sola vez por cada valor nuevo.
+    LaunchedEffect(startTab) {
+        if (startTab != null && Tab.values().any { it.route == startTab }) {
+            navController.navigate(startTab) {
+                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+    }
 
     // Badge de no leídas en la pestaña Avisos — antes no existía ninguna
     // señal de "hay algo nuevo" sin entrar a mirar (ver

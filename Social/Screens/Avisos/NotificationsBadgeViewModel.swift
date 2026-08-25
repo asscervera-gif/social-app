@@ -99,7 +99,16 @@ final class NotificationsBadgeViewModel: ObservableObject {
                 if let entry = try? change.decodeRecord(as: AvisosViewModel.NotificationEntry.self, decoder: JSONDecoder()) {
                     let content = UNMutableNotificationContent()
                     content.title = entry.title
+                    // Hallazgo real, mismo tipo de bug ya corregido en
+                    // LocalNotifier.kt (Android): el cuerpo del aviso nunca
+                    // se rellenaba, así que el banner solo mostraba el
+                    // título, sin ninguna llamada a la acción.
+                    content.body = "Toca para verlo"
                     content.sound = .default
+                    // Al tocar el aviso, NotificationDelegate.swift abre la
+                    // pestaña Avisos -- mismo criterio que EXTRA_OPEN_TAB en
+                    // Android.
+                    content.userInfo = ["open_tab": "avisos"]
                     // El icono ya se sincroniza centralizadamente en el
                     // `didSet` de `unreadCount` (ver más arriba) — no
                     // hace falta duplicarlo aquí en `content.badge`.

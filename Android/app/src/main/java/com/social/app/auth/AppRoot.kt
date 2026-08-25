@@ -47,7 +47,7 @@ import kotlinx.serialization.Serializable
  * expira o se cierra, vuelve a AuthScreen sin tener que matar el proceso.
  */
 @Composable
-fun AppRoot(proximity: SocialProximity) {
+fun AppRoot(proximity: SocialProximity, startTab: String? = null) {
     val sessionStatus by SupabaseManager.client.auth.sessionStatus.collectAsState()
     // Hallazgo real, hueco grande documentado toda la sesión: el
     // onboarding de avatar (SelfieConsentScreen/generateAvatar) nunca
@@ -131,7 +131,7 @@ fun AppRoot(proximity: SocialProximity) {
             } else if (showHowItWorks) {
                 HowItWorksScreen(onFinished = { showHowItWorks = false })
             } else {
-                RootTabView(proximity)
+                RootTabView(proximity, startTab = startTab)
                 if (showAvatarOnboarding) {
                     Dialog(onDismissRequest = { showAvatarOnboarding = false }) {
                         AvatarOnboardingScreen(onFinished = { showAvatarOnboarding = false })
