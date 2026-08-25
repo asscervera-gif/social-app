@@ -58,10 +58,17 @@ object LocalNotifier {
         // Sin icono monocromo propio para la barra de estado en `res/` — se
         // usa el icono del sistema en vez de inventar un asset nuevo, mismo
         // criterio de honestidad que el resto de la sesión.
+        //
+        // Hallazgo real: el texto del cuerpo de la notificación era
+        // literalmente el emoji (entry.icon(), "👥"/"➕"/"⚡"/...) en vez de
+        // algo legible — probablemente un cruce de argumentos con
+        // entry.title(). El emoji ahora va delante del título (mismo
+        // sitio donde AvisosScreen.kt ya lo usa como icono visual, línea
+        // 202), y el cuerpo dice algo real en vez de un símbolo suelto.
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle(entry.title())
-            .setContentText(entry.icon())
+            .setContentTitle("${entry.icon()} ${entry.title()}")
+            .setContentText("Toca para verlo")
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
