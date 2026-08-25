@@ -85,6 +85,7 @@ private const val SAVED_POSTS_ROUTE = "saved_posts"
 private const val SOCIALS_LIST_ROUTE = "socials_list"
 private const val FOLLOW_LIST_ROUTE = "follow_list/{tab}"
 private const val REELS_ROUTE = "reels"
+private const val LIVE_STREAMS_ROUTE = "live_streams"
 private const val SEARCH_ROUTE = "search"
 private const val FIND_ROUTE = "find"
 
@@ -265,7 +266,8 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                         onOpenSavedPosts = { navController.navigate(SAVED_POSTS_ROUTE) },
                         onOpenFollowing = { navController.navigate("follow_list/following") },
                         onOpenFollowers = { navController.navigate("follow_list/followers") },
-                        onOpenReels = { navController.navigate(REELS_ROUTE) }
+                        onOpenReels = { navController.navigate(REELS_ROUTE) },
+                        onOpenLive = { navController.navigate(LIVE_STREAMS_ROUTE) }
                     )
                 }
                 // Reels (0050_reels.sql) -- primera UI de cliente real
@@ -279,6 +281,15 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                         com.social.app.screens.reels.ReelsScreen(
                             onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
                         )
+                    }
+                }
+                // "Directo" (0056_live_streams.sql) -- último hueco grande
+                // de SOCIAL_APP.html, comparado con Instagram/TikTok Live.
+                // Mismo criterio que Reels: ruta propia, no una pestaña
+                // principal nueva.
+                composable(LIVE_STREAMS_ROUTE) {
+                    com.social.app.ui.theme.BackScaffold(title = "Directos", onBack = { navController.popBackStack() }) {
+                        com.social.app.screens.live.LiveStreamsScreen()
                     }
                 }
                 // Hallazgo real, comparado con Instagram/Twitter/TikTok:

@@ -50,6 +50,10 @@ struct PerfilView: View {
     // MyPostsView con el filtro ya real "Con tus socials" en vez de
     // duplicar esa pantalla.
     @State private var showTaggedPosts = false
+    // "En directo" (0056_live_streams.sql) -- último hueco grande de
+    // SOCIAL_APP.html, ya no pendiente: motor real decidido por el
+    // usuario (LiveKit Cloud).
+    @State private var showLive = false
     @State private var currentUserID: UUID?
 
     var body: some View {
@@ -154,6 +158,11 @@ struct PerfilView: View {
                     MyPostsView(initialTaggedOnly: true)
                 }
             }
+            .sheet(isPresented: $showLive) {
+                NavigationStack {
+                    LiveStreamsView()
+                }
+            }
             .sheet(isPresented: $showChatList) {
                 // `.navigationDestination(isPresented:)` en vez de
                 // `(item:)`: la variante `(item:)` es exclusiva de iOS 17+,
@@ -212,18 +221,17 @@ struct PerfilView: View {
         }
     }
 
-    /// Cada subsección lleva una acción real. "En directo" es el único que
-    /// queda pendiente a propósito -- necesita decidir un motor de
-    /// streaming real (LiveKit u otro, ver LOOP_STATE.md), no fingido
-    /// aquí. Reels y "Pubs. de socials" ya son reales desde esta pasada
-    /// (backend + UI construidos en rondas anteriores/esta misma).
+    /// Cada subsección lleva una acción real. "En directo" ya no queda
+    /// pendiente -- motor real decidido por el usuario (LiveKit Cloud,
+    /// 0056_live_streams.sql + LiveStreamsView.swift). Reels y "Pubs. de
+    /// socials" ya eran reales desde rondas anteriores.
     private var subsections: [(String, String, () -> Void)] {
         [
             ("Avatar", "person.crop.circle", { showClothingStore = true }),
             ("Reels", "play.rectangle", { showReels = true }),
             ("Fights", "bolt.fill", { showDuelHistory = true }),
             ("Pubs. de socials", "person.2.square.stack", { showTaggedPosts = true }),
-            ("En directo", "dot.radiowaves.left.and.right", {}),
+            ("En directo", "dot.radiowaves.left.and.right", { showLive = true }),
             ("Tus publicaciones", "square.grid.3x3", { showMyPosts = true }),
             ("Guardados", "bookmark.fill", { showSavedPosts = true })
         ]

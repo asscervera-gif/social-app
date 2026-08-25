@@ -9,7 +9,8 @@ control, evitando lenguaje genérico tipo "esta app necesita tu ubicación".
 | `NSNearbyInteractionUsageDescription` | SOCIAL usa la interacción cercana para medir la distancia y dirección de las personas a tu alrededor y mostrarte su avatar en la cámara. |
 | `NSBluetoothAlwaysUsageDescription` | SOCIAL usa Bluetooth para descubrir e intercambiar de forma segura la información inicial con otros dispositivos cercanos antes de medir la distancia. |
 | `NSLocationWhenInUseUsageDescription` | SOCIAL usa tu ubicación para detectar si estás dentro de un evento activo (Modo Evento) y, si lo activas, para mostrarte en el mapa de "Find". |
-| `NSCameraUsageDescription` | SOCIAL usa la cámara para mostrarte, en tiempo real, el avatar de las personas que tienes cerca cuando enfocas hacia ellas. |
+| `NSCameraUsageDescription` | SOCIAL usa la cámara para mostrarte, en tiempo real, el avatar de las personas que tienes cerca cuando enfocas hacia ellas, y para publicar vídeo cuando empiezas un directo. |
+| `NSMicrophoneUsageDescription` | SOCIAL usa el micrófono para grabar notas de voz en el chat y para publicar audio cuando empiezas un directo. |
 | `NSLocalNetworkUsageDescription` | SOCIAL usa la red local para descubrir a otras personas cercanas con la app abierta, antes de medir la distancia real por UWB. |
 
 Añadidas en una auditoría posterior de este `/loop` (esta tabla se había

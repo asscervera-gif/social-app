@@ -89,7 +89,8 @@ fun PerfilScreen(
     onOpenSavedPosts: () -> Unit = {},
     onOpenFollowing: () -> Unit = {},
     onOpenFollowers: () -> Unit = {},
-    onOpenReels: () -> Unit = {}
+    onOpenReels: () -> Unit = {},
+    onOpenLive: () -> Unit = {}
 ) {
     val profile by viewModel.profile.collectAsState()
     val sections by viewModel.sections.collectAsState()
@@ -112,6 +113,11 @@ fun PerfilScreen(
         // reales (Guardados/Tus chats siguen sin otro punto de entrada en
         // la app, quitarlos habría sido una regresión real).
         ProfileNavItem("🎬", "Reels", onOpenReels),
+        // "Directo" (0056_live_streams.sql) -- último hueco grande de
+        // SOCIAL_APP.html, comparado con Instagram/TikTok Live. 8º hueco
+        // de la rejilla, mismo criterio que Reels: se añade sin quitar
+        // ninguno de los 7 ya reales.
+        ProfileNavItem("🔴", "Directos", onOpenLive),
         ProfileNavItem("⚔️", "Duelos", onOpenDuelHistory),
         ProfileNavItem("🖼", "Tus publicaciones", onOpenMyPosts),
         ProfileNavItem("👥", "Tus socials", onOpenSocials),

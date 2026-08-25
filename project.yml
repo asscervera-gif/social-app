@@ -8,6 +8,14 @@ packages:
   Supabase:
     url: https://github.com/supabase/supabase-swift
     from: "2.0.0"
+  # "Directo" (0056_live_streams.sql) -- LiveKit (WebRTC, Apache 2.0,
+  # SDKs open-source), motor elegido explícitamente por el usuario
+  # (LiveKit Cloud, frente a self-hosted) para no montar infraestructura
+  # propia de streaming en vivo. Requiere iOS 13+ (Package.swift real del
+  # SDK), muy por debajo del deployment target real de este proyecto (16.0).
+  LiveKit:
+    url: https://github.com/livekit/client-sdk-swift
+    from: "2.16.0"
 
 targets:
   Social:
@@ -30,6 +38,8 @@ targets:
     dependencies:
       - package: Supabase
         product: Supabase
+      - package: LiveKit
+        product: LiveKit
     info:
       path: Social/Info.plist
       properties:
@@ -53,8 +63,13 @@ targets:
         NSNearbyInteractionUsageDescription: "SOCIAL usa la interacción cercana para medir la distancia y dirección de las personas a tu alrededor y mostrarte su avatar en la cámara."
         NSBluetoothAlwaysUsageDescription: "SOCIAL usa Bluetooth para descubrir e intercambiar de forma segura la información inicial con otros dispositivos cercanos antes de medir la distancia."
         NSLocationWhenInUseUsageDescription: "SOCIAL usa tu ubicación para detectar si estás dentro de un evento activo (Modo Evento) y, si lo activas, para mostrarte en el mapa de \"Find\"."
-        NSCameraUsageDescription: "SOCIAL usa la cámara para mostrarte, en tiempo real, el avatar de las personas que tienes cerca cuando enfocas hacia ellas."
-        NSMicrophoneUsageDescription: "SOCIAL usa el micrófono para grabar notas de voz en el chat."
+        # Ampliado esta pasada (0056_live_streams.sql): antes solo
+        # mencionaba el uso real de UWB/notas de voz -- ahora un directo
+        # real también pide cámara/micrófono para publicar, mismo criterio
+        # de honestidad ya aplicado a NSLocationWhenInUseUsageDescription
+        # cuando se quitó la brújula.
+        NSCameraUsageDescription: "SOCIAL usa la cámara para mostrarte, en tiempo real, el avatar de las personas que tienes cerca cuando enfocas hacia ellas, y para publicar vídeo cuando empiezas un directo."
+        NSMicrophoneUsageDescription: "SOCIAL usa el micrófono para grabar notas de voz en el chat y para publicar audio cuando empiezas un directo."
         NSLocalNetworkUsageDescription: "SOCIAL usa la red local para descubrir a otras personas cercanas con la app abierta, antes de medir la distancia real por UWB."
         NSBonjourServices:
           - _social-uwb._tcp

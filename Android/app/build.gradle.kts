@@ -91,6 +91,12 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.media3:media3-ui:1.4.1")
 
+    // "Directo" (0056_live_streams.sql) -- LiveKit (WebRTC, Apache 2.0,
+    // SDKs open-source), motor elegido explícitamente por el usuario
+    // (LiveKit Cloud, frente a self-hosted) para no montar infraestructura
+    // propia de streaming en vivo sobre un proyecto ya grande.
+    implementation("io.livekit:livekit-android:2.28.0")
+
     // Jetpack Compose
     implementation(platform("androidx.compose:compose-bom:2024.06.00"))
     implementation("androidx.compose.ui:ui")
