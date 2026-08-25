@@ -53,15 +53,22 @@ fun DuelHistoryScreen(viewModel: DuelHistoryViewModel = viewModel(), onOpenDuel:
                         .fillMaxWidth()
                         .clickable { onOpenDuel(duel.id) }
                         .padding(vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
                 ) {
-                    Column {
-                        Text(duel.opponentName ?: "Duelo")
-                        Text(
-                            duel.createdAt.take(10),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        // Hallazgo real, mismo hueco raíz ya cerrado en la
+                        // lista de chats: el historial de duelos tampoco
+                        // mostraba el avatar del rival, solo el nombre.
+                        com.social.app.avatar.AvatarView(config = duel.opponentAvatarConfig ?: emptyMap(), size = 40.dp)
+                        Column(modifier = Modifier.padding(start = 10.dp)) {
+                            Text(duel.opponentName ?: "Duelo")
+                            Text(
+                                duel.createdAt.take(10),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                     val delta = duel.compatibilityDelta
                     Text(

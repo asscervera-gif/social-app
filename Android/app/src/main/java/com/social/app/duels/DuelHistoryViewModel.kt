@@ -21,12 +21,17 @@ data class DuelHistoryEntry(
     @SerialName("opponent_id") val opponentId: String,
     @SerialName("compatibility_delta") val compatibilityDelta: Int? = null,
     @SerialName("created_at") val createdAt: String,
-    val opponentName: String? = null
+    val opponentName: String? = null,
+    // Hallazgo real, mismo hueco raíz ya cerrado en la lista de chats
+    // (ChatListEntry.otherAvatarConfig): el historial de duelos tampoco
+    // mostraba el avatar del rival, solo el nombre.
+    val opponentAvatarConfig: Map<String, String>? = null
 )
 
 @Serializable
 private data class DuelOpponentProfile(
-    @SerialName("display_name") val displayName: String
+    @SerialName("display_name") val displayName: String,
+    @SerialName("avatar_config") val avatarConfig: Map<String, String>? = null
 )
 
 /**
@@ -77,15 +82,14 @@ class DuelHistoryViewModel : ViewModel() {
 
                 _duels.value = entries.map { entry ->
                     val opponentId = if (entry.initiatorId == userId) entry.opponentId else entry.initiatorId
-                    val name = try {
+                    val opponent = try {
                         SupabaseManager.client.from("profiles")
-                            .select(columns = Columns.raw("display_name")) { filter { eq("id", opponentId) } }
+                            .select(columns = Columns.raw("display_name,avatar_config")) { filter { eq("id", opponentId) } }
                             .decodeSingleOrNull<DuelOpponentProfile>()
-                            ?.displayName
                     } catch (e: Exception) {
                         null
                     }
-                    entry.copy(opponentName = name)
+                    entry.copy(opponentName = opponent?.displayName, opponentAvatarConfig = opponent?.avatarConfig)
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo cargar el historial de duelos: ${e.message}"

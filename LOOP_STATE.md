@@ -1572,6 +1572,10 @@ sesiones; comprobar con `adb devices` antes de crear uno nuevo.
   - **Android: COMPILADO OK** (`:app:compileDebugKotlin`).
   - **iOS**: mismo patrón, `NameRow` ampliado con `avatar_config`. Verificación final pendiente del CI real de GitHub Actions en este push.
 
+- **Ronda 2026-08-25 (dentro de `/loop`, cron 1 min), mismo hueco de "listado sin avatar" también en el historial de duelos**: `DuelHistoryEntry` resolvía el nombre del rival con una consulta aparte (`display_name` por id, mismo patrón que la lista de chats) pero nunca su avatar. Añadido `opponentAvatarConfig` a la misma consulta ya existente (sin query nueva), avatar de 40dp/pt junto al nombre en ambas plataformas.
+  - **Android: COMPILADO OK** (`:app:compileDebugKotlin`).
+  - **iOS**: mismo patrón. Verificación final pendiente del CI real de GitHub Actions en este push.
+
 ## Archivo de pasadas anteriores (resumido)
 
 Las pasadas más antiguas de esta sesión (desde el arranque del toolchain Android hasta la auditoria de paridad de código que cerro justo antes de las entradas de arriba) se comprimieron aqui el 2026-08-19 para mantener este documento manejable — el registro completo, palabra por palabra, sigue disponible en el historial de la conversacion si hace falta reconstruirlo. Nada de sustancia se perdio: cada bug real encontrado y corregido esta ya en la lista numerada de "Bugs reales encontrados y corregidos esta sesion" y en "Anadido esta sesion" al principio de este archivo; cada hueco grande documentado sigue en "Pendiente real". Este resumen cubre: bootstrap completo del toolchain Android sin admin (JDK/SDK/Gradle/emulador), decenas de ciclos render+optimizar verificando la app en el emulador real sin crashes, y la larga auditoria de paridad codigo-por-codigo y documentacion-por-documentacion entre iOS y Android que encontro los bugs ya listados arriba (notifications sin productor, likes falso, EventMode sin limit, actividad sugerida hardcodeada, SafetyToolbar global faltante en Android, event_density roto, contadores de Perfil en 0 permanente en iOS, y las 4 afirmaciones falsas en la politica de privacidad/ficha de App Store).

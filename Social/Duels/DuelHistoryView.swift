@@ -28,6 +28,11 @@ struct DuelHistoryView: View {
                         DuelResultView(duelID: duel.id)
                     } label: {
                         HStack {
+                            // Hallazgo real, mismo hueco raíz ya cerrado en
+                            // la lista de chats: el historial de duelos
+                            // tampoco mostraba el avatar del rival, solo
+                            // el nombre.
+                            ActiveAvatarProvider.shared.avatarView(config: duel.opponentAvatarConfig ?? [:], size: 40)
                             VStack(alignment: .leading) {
                                 Text(duel.opponentName ?? "Duelo")
                                 Text(String(duel.created_at.prefix(10)))

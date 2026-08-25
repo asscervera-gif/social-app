@@ -25,6 +25,10 @@ struct DuelHistoryEntry: Decodable, Identifiable {
     let compatibility_delta: Int?
     let created_at: String
     var opponentName: String?
+    // Hallazgo real, mismo hueco raíz ya cerrado en la lista de chats
+    // (ChatListEntry.otherAvatarConfig): el historial de duelos tampoco
+    // mostraba el avatar del rival, solo el nombre.
+    var opponentAvatarConfig: [String: String]?
 }
 
 @MainActor
@@ -56,7 +60,9 @@ final class DuelHistoryViewModel: ObservableObject {
 
             for index in entries.indices {
                 let opponentID = entries[index].initiator_id == userID ? entries[index].opponent_id : entries[index].initiator_id
-                entries[index].opponentName = await opponentDisplayName(id: opponentID)
+                let opponent = await opponentProfileInfo(id: opponentID)
+                entries[index].opponentName = opponent?.display_name
+                entries[index].opponentAvatarConfig = opponent?.avatar_config
             }
             duels = entries
         } catch {
@@ -64,15 +70,18 @@ final class DuelHistoryViewModel: ObservableObject {
         }
     }
 
-    private func opponentDisplayName(id: UUID) async -> String? {
-        struct NameRow: Decodable { let display_name: String }
-        let row: NameRow? = try? await SupabaseManager.shared.client
+    private struct NameRow: Decodable {
+        let display_name: String
+        let avatar_config: [String: String]?
+    }
+
+    private func opponentProfileInfo(id: UUID) async -> NameRow? {
+        try? await SupabaseManager.shared.client
             .from("profiles")
-            .select("display_name")
+            .select("display_name,avatar_config")
             .eq("id", value: id)
             .single()
             .execute()
             .value
-        return row?.display_name
     }
 }
