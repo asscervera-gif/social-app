@@ -22,6 +22,10 @@ struct RootTabView: View {
     // el azul de sistema por defecto de SwiftUI en toda la app -- ver
     // Theme.swift/AjustesView.swift.
     @ObservedObject private var accent = AccentPreference.shared
+    // Hallazgo real, comparado con Instagram/Twitter/WhatsApp/TikTok/
+    // Facebook: no había ninguna forma explícita de elegir modo oscuro --
+    // ver Theme.swift/AjustesView.swift.
+    @ObservedObject private var themeMode = ThemeModePreference.shared
     // Badge de no leídas en Avisos — mismo hallazgo que RootTabView.kt: no
     // había ninguna señal de "hay algo nuevo" sin entrar a mirar.
     @StateObject private var notificationsBadge = NotificationsBadgeViewModel()
@@ -70,6 +74,10 @@ struct RootTabView: View {
             }
             .tint(accent.color)
         }
+        // nil = seguir el sistema (comportamiento de siempre); .light/.dark
+        // fuerzan el modo elegido en Ajustes, mismo criterio que Instagram/
+        // Twitter/WhatsApp/TikTok/Facebook.
+        .preferredColorScheme(themeMode.colorScheme)
         .environmentObject(safety)
         .task {
             AnalyticsManager.track("app_open")

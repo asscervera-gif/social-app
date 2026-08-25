@@ -215,9 +215,9 @@ final class ChatViewModel: ObservableObject {
             // largo traía el historial ENTERO cada vez — mismo patrón de
             // `.limit()` ya usado en el resto del proyecto. Se piden los
             // últimos 100 en orden descendente y se invierten para
-            // mostrar cronológicamente. Paginar hacia atrás (cargar más
-            // historial antiguo) no se construye aquí — hueco real
-            // documentado, no inventado. Equivalente de
+            // mostrar cronológicamente. Paginar hacia atrás sí está
+            // construido -- ver loadOlderMessages() más abajo, cableado
+            // desde ChatView.swift. Equivalente de
             // ChatViewModel.kt.loadHistory().
             let recent: [ChatMessage] = try await client
                 .from("messages")

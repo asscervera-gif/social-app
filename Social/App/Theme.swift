@@ -85,3 +85,27 @@ final class AccentPreference: ObservableObject {
 
     var color: Color { SocialColors.color(for: accentKey) }
 }
+
+/// Hallazgo real, comparado con Instagram/Twitter/WhatsApp/TikTok/
+/// Facebook: no había ninguna forma explícita de elegir modo oscuro en
+/// Ajustes -- la app ya lo seguía en silencio (la mayoría de las vistas
+/// usan estilos adaptables del sistema, `ink`/`surfaceVariant` de arriba
+/// nunca llegaron a usarse en ningún sitio real), pero sin control ni
+/// verificación explícita, a diferencia de cualquier app grande. Mismo
+/// patrón exacto que AccentPreference. Equivalente de ThemeModePreference
+/// (Kotlin).
+final class ThemeModePreference: ObservableObject {
+    static let shared = ThemeModePreference()
+
+    @AppStorage("theme_mode") var mode: String = "system" {
+        didSet { objectWillChange.send() }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch mode {
+        case "dark": return .dark
+        case "light": return .light
+        default: return nil
+        }
+    }
+}

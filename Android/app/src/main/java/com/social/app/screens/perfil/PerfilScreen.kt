@@ -159,7 +159,17 @@ fun PerfilScreen(
                     Button(
                         onClick = { showNewPost = true },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = SocialColors.Ink)
+                        // Hallazgo real, parte del hueco de modo oscuro:
+                        // `SocialColors.Ink` es un literal FIJO -- en modo
+                        // oscuro (fondo ya oscuro) un botón "Ink" casi
+                        // negro se volvía casi invisible. `onBackground`/
+                        // `background` ya se invierten solos entre claro y
+                        // oscuro (ver SocialTheme.kt), así que este botón
+                        // se adapta sin lógica propia.
+                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.onBackground,
+                            contentColor = MaterialTheme.colorScheme.background
+                        )
                     ) { Text("＋ Publicar") }
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),

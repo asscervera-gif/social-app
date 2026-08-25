@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -148,7 +149,12 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                 // color de marca real. El icono "S" ahora usa el degradado
                 // real de social_logo.png (mismo Brush multicolor ya usado
                 // en el icono de pestaña de iOS, SocialTabIcon).
-                NavigationBar(containerColor = SocialColors.Background) {
+                // Hallazgo real, parte del hueco de modo oscuro: un
+                // `containerColor`/`indicatorColor` fijo (siempre blanco)
+                // dejaba una barra inferior clara aunque el resto de la
+                // app pasara a modo oscuro. `MaterialTheme.colorScheme.*`
+                // ya se invierte solo entre claro y oscuro (SocialTheme.kt).
+                NavigationBar(containerColor = MaterialTheme.colorScheme.background) {
                     Tab.values().forEach { tab ->
                         val selected = currentRoute == tab.route
                         NavigationBarItem(
@@ -190,7 +196,7 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                             },
                             label = { Text(tab.label) },
                             colors = NavigationBarItemDefaults.colors(
-                                indicatorColor = SocialColors.SurfaceVariant
+                                indicatorColor = MaterialTheme.colorScheme.surfaceVariant
                             )
                         )
                     }

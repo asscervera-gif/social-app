@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -132,6 +133,31 @@ fun AjustesScreen(
                             else Modifier
                         )
                         .clickable { com.social.app.ui.theme.AccentPreference.setAccent(context, key) }
+                )
+            }
+        }
+
+        // Hallazgo real, comparado con Instagram/Twitter/WhatsApp/TikTok/
+        // Facebook: no había modo oscuro en absoluto, ni forma de seguir
+        // el ajuste del sistema -- toda la app era clara siempre. Mismo
+        // patrón exacto que el selector de acento de arriba.
+        Text("Tema", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 20.dp))
+        val themeMode by com.social.app.ui.theme.ThemeModePreference.mode.collectAsState()
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf("system" to "Sistema", "light" to "Claro", "dark" to "Oscuro").forEach { (key, label) ->
+                val selected = themeMode == key
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+                        .clickable { com.social.app.ui.theme.ThemeModePreference.setMode(context, key) }
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
                 )
             }
         }

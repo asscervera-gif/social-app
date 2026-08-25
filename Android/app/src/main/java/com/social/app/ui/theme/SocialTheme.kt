@@ -31,6 +31,17 @@ object SocialColors {
     val OnSurfaceVariant = Color(0xFF49454F)
     val ErrorColor = Color(0xFFD32F2F)
 
+    // Hallazgo real, comparado con Instagram/Twitter/WhatsApp/TikTok/
+    // Facebook: ninguna de las dos plataformas de esta app tenía modo
+    // oscuro en absoluto -- ni siquiera seguía el ajuste del sistema.
+    // Mismos tonos base que Material Design recomienda para superficies
+    // oscuras (no #000 puro, que "sangra" en pantallas OLED y da menos
+    // jerarquía que un gris muy oscuro real).
+    val DarkBackground = Color(0xFF121212)
+    val DarkSurfaceVariant = Color(0xFF2A2A2E)
+    val DarkOnSurfaceVariant = Color(0xFFCAC4CF)
+    val DarkInk = Color(0xFFEDEDF2)
+
     // Los siete acentos reales del arcoíris del wordmark "SOCIAL", uno por
     // letra aproximadamente -- Coral es el que ya se usaba como primary.
     val Coral = Color(0xFFFF5A76)
@@ -95,26 +106,81 @@ object AccentPreference {
         SocialColors.accents.firstOrNull { it.first == key }?.second ?: SocialColors.Coral
 }
 
+/**
+ * Hallazgo real, comparado con Instagram/Twitter/WhatsApp/TikTok/Facebook:
+ * no había ninguna forma de elegir modo oscuro, ni de seguir el ajuste del
+ * sistema -- toda la app era clara siempre, sin importar la preferencia
+ * real del dispositivo. Mismo patrón exacto que AccentPreference
+ * (SharedPreferences + StateFlow, cambia al instante sin reiniciar).
+ * "system" (por defecto) sigue `isSystemInDarkTheme()`.
+ */
+object ThemeModePreference {
+    private const val PREFS_NAME = "social_theme_prefs"
+    private const val KEY_MODE = "theme_mode"
+
+    private val _mode = MutableStateFlow("system")
+    val mode: StateFlow<String> = _mode.asStateFlow()
+
+    private var initialized = false
+
+    private fun prefs(context: Context) =
+        context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    fun init(context: Context) {
+        if (initialized) return
+        initialized = true
+        _mode.value = prefs(context).getString(KEY_MODE, "system") ?: "system"
+    }
+
+    fun setMode(context: Context, value: String) {
+        _mode.value = value
+        prefs(context).edit().putString(KEY_MODE, value).apply()
+    }
+}
+
 @Composable
 fun SocialTheme(content: @Composable () -> Unit) {
     val context = LocalContext.current
-    remember { AccentPreference.init(context); true }
+    remember { AccentPreference.init(context); ThemeModePreference.init(context); true }
     val accentKey by AccentPreference.accentKey.collectAsState()
     val accent = AccentPreference.colorFor(accentKey)
+    val themeMode by ThemeModePreference.mode.collectAsState()
+    val isDark = when (themeMode) {
+        "dark" -> true
+        "light" -> false
+        else -> androidx.compose.foundation.isSystemInDarkTheme()
+    }
 
-    val colorScheme = lightColorScheme(
-        primary = accent,
-        onPrimary = Color.White,
-        secondary = SocialColors.Turquoise,
-        onSecondary = Color.White,
-        tertiary = SocialColors.Orange,
-        background = SocialColors.Background,
-        onBackground = SocialColors.Ink,
-        surface = SocialColors.Background,
-        onSurface = SocialColors.Ink,
-        surfaceVariant = SocialColors.SurfaceVariant,
-        onSurfaceVariant = SocialColors.OnSurfaceVariant,
-        error = SocialColors.ErrorColor
-    )
+    val colorScheme = if (isDark) {
+        androidx.compose.material3.darkColorScheme(
+            primary = accent,
+            onPrimary = Color.White,
+            secondary = SocialColors.Turquoise,
+            onSecondary = Color.White,
+            tertiary = SocialColors.Orange,
+            background = SocialColors.DarkBackground,
+            onBackground = SocialColors.DarkInk,
+            surface = SocialColors.DarkBackground,
+            onSurface = SocialColors.DarkInk,
+            surfaceVariant = SocialColors.DarkSurfaceVariant,
+            onSurfaceVariant = SocialColors.DarkOnSurfaceVariant,
+            error = SocialColors.ErrorColor
+        )
+    } else {
+        lightColorScheme(
+            primary = accent,
+            onPrimary = Color.White,
+            secondary = SocialColors.Turquoise,
+            onSecondary = Color.White,
+            tertiary = SocialColors.Orange,
+            background = SocialColors.Background,
+            onBackground = SocialColors.Ink,
+            surface = SocialColors.Background,
+            onSurface = SocialColors.Ink,
+            surfaceVariant = SocialColors.SurfaceVariant,
+            onSurfaceVariant = SocialColors.OnSurfaceVariant,
+            error = SocialColors.ErrorColor
+        )
+    }
     MaterialTheme(colorScheme = colorScheme, content = content)
 }

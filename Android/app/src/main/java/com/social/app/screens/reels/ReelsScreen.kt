@@ -45,7 +45,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
-import com.social.app.ui.theme.SocialColors
 import com.social.app.util.relativeTime
 import kotlinx.coroutines.launch
 
@@ -251,7 +250,13 @@ private fun UploadReelSheet(isUploading: Boolean, onDismiss: () -> Unit, onUploa
             Button(
                 onClick = { videoUri?.let { onUpload(it, caption, isSocialOnly) } },
                 enabled = videoUri != null && !isUploading,
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = SocialColors.Ink),
+                // Mismo criterio de modo oscuro que PerfilScreen.kt: colores
+                // de rol de tema, no un literal fijo que se volvería
+                // invisible en fondo oscuro.
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.onBackground,
+                    contentColor = MaterialTheme.colorScheme.background
+                ),
                 modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
             ) {
                 Text(if (isUploading) "Publicando…" else "Publicar reel")

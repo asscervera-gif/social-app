@@ -262,8 +262,8 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
             // se invierten para mostrar cronológicamente — un `limit()`
             // con orden ascendente traería los 100 MÁS ANTIGUOS, no los
             // recientes, que es lo que de verdad se quiere ver al abrir un
-            // chat. Paginar hacia atrás (cargar más historial antiguo) no
-            // se construye aquí — hueco real documentado, no inventado.
+            // chat. Paginar hacia atrás sí está construido -- ver
+            // loadOlderMessages() más abajo, cableado desde ChatScreen.kt.
             val recent = SupabaseManager.client.from("messages")
                 .select {
                     filter { eq("chat_id", chatId) }

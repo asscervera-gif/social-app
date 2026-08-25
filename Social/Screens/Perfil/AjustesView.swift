@@ -31,6 +31,10 @@ struct AjustesView: View {
     // pasada. Los siete colores son los reales del arcoíris del wordmark
     // del logo (ver Theme.swift), no inventados.
     @ObservedObject private var accent = AccentPreference.shared
+    // Hallazgo real, comparado con Instagram/Twitter/WhatsApp/TikTok/
+    // Facebook: no había ninguna forma explícita de elegir modo oscuro --
+    // ver Theme.swift.
+    @ObservedObject private var themeMode = ThemeModePreference.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -51,6 +55,14 @@ struct AjustesView: View {
                         .onTapGesture { accent.accentKey = entry.key }
                 }
             }
+
+            Text("Tema").font(.headline)
+            Picker("Tema", selection: $themeMode.mode) {
+                Text("Sistema").tag("system")
+                Text("Claro").tag("light")
+                Text("Oscuro").tag("dark")
+            }
+            .pickerStyle(.segmented)
 
             Text("Privacidad").font(.headline)
             Toggle(isOn: Binding(
