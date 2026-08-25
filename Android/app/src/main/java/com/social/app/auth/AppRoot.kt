@@ -50,6 +50,14 @@ fun AppRoot(proximity: SocialProximity) {
     // recién autenticado todavía no tiene avatar_config. Mismo patrón que
     // AppRootView.swift/checkNeedsAvatarOnboarding.
     var showAvatarOnboarding by remember { mutableStateOf(false) }
+    // Hallazgo real: ninguna plataforma explicaba qué es o cómo funciona
+    // la detección UWB antes de soltar al usuario en la cámara —
+    // comparado con cualquier app grande (Instagram/TikTok/Snapchat, que
+    // sí muestran un carrusel de bienvenida), un hueco real de
+    // onboarding. Se muestra una sola vez por dispositivo, la primera
+    // vez que hay sesión real. Mismo patrón que showHowItWorks en
+    // AppRootView.swift.
+    var showHowItWorks by remember { mutableStateOf(false) }
     // Hallazgo real (moderación, 0037_admin_ban.sql): un admin ya podía
     // banear desde ModerationScreen, pero nada del lado del cliente
     // comprobaba nunca si TU PROPIA cuenta estaba baneada — un usuario
@@ -83,6 +91,7 @@ fun AppRoot(proximity: SocialProximity) {
                 // mejor dejar entrar a la app que bloquear por un error de
                 // red puntual.
             }
+            showHowItWorks = !hasSeenHowItWorks(context)
             try {
                 banStatus = SupabaseManager.client.from("my_ban_status")
                     .select()
@@ -101,6 +110,8 @@ fun AppRoot(proximity: SocialProximity) {
                 BannedScreen(reason = banStatus?.banReason, onSignOut = {
                     coroutineScope.launch { SupabaseManager.client.auth.signOut() }
                 })
+            } else if (showHowItWorks) {
+                HowItWorksScreen(onFinished = { showHowItWorks = false })
             } else {
                 RootTabView(proximity)
                 if (showAvatarOnboarding) {

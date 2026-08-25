@@ -35,6 +35,16 @@ struct AppRootView: View {
     // onboarding. Se muestra una sola vez por dispositivo, encima de
     // RootTabView, la primera vez que hay sesión real.
     @State private var showHowItWorks = false
+    // Hallazgo real, encontrado comparando con AppRoot.kt (que SÍ lo
+    // tiene desde una pasada anterior): un admin ya podía banear desde
+    // ModerationView, pero nada del lado del cliente iOS comprobaba
+    // nunca si TU PROPIA cuenta estaba baneada — un usuario baneado
+    // seguía entrando a la app con normalidad, el baneo solo existía en
+    // la base de datos sin ningún efecto real en esta plataforma. Mismo
+    // hueco de confianza y seguridad que growth_strategy.md llama "el
+    // requisito de adopción más alto, no una función secundaria".
+    @State private var isBanned = false
+    @State private var banReason: String?
 
     var body: some View {
         Group {
@@ -46,13 +56,19 @@ struct AppRootView: View {
             // aunque los 3 casos ya cubran toda la realidad.
             switch isAuthenticated {
             case true:
-                RootTabView()
-                    .sheet(isPresented: $showAvatarOnboarding) {
-                        OnboardingAvatarView(onFinished: { showAvatarOnboarding = false })
-                    }
-                    .fullScreenCover(isPresented: $showHowItWorks) {
-                        HowItWorksView(onFinished: { showHowItWorks = false })
-                    }
+                if isBanned {
+                    BannedView(reason: banReason, onSignOut: {
+                        Task { try? await SupabaseManager.shared.client.auth.signOut() }
+                    })
+                } else {
+                    RootTabView()
+                        .sheet(isPresented: $showAvatarOnboarding) {
+                            OnboardingAvatarView(onFinished: { showAvatarOnboarding = false })
+                        }
+                        .fullScreenCover(isPresented: $showHowItWorks) {
+                            HowItWorksView(onFinished: { showHowItWorks = false })
+                        }
+                }
             case false:
                 AuthView()
             default:
@@ -76,6 +92,7 @@ struct AppRootView: View {
             let session = try? await SupabaseManager.shared.client.auth.session
             isAuthenticated = session != nil
             if session != nil {
+                await checkBanStatus()
                 await checkNeedsAvatarOnboarding()
                 showHowItWorks = !HowItWorksSeen.value
             }
@@ -84,6 +101,7 @@ struct AppRootView: View {
                 let wasAuthenticated = isAuthenticated == true
                 isAuthenticated = state.session != nil
                 if !wasAuthenticated && state.session != nil {
+                    await checkBanStatus()
                     await checkNeedsAvatarOnboarding()
                     showHowItWorks = !HowItWorksSeen.value
                 }
@@ -102,6 +120,28 @@ struct AppRootView: View {
         }
     }
 
+    private func checkBanStatus() async {
+        struct BanStatusRow: Decodable {
+            let is_currently_banned: Bool
+            let ban_reason: String?
+        }
+        // Si falla la comprobación (red, etc.), no se bloquea a un
+        // usuario legítimo — mismo criterio que checkNeedsAvatarOnboarding
+        // y que AppRoot.kt.
+        guard let row: BanStatusRow = try? await SupabaseManager.shared.client
+            .from("my_ban_status")
+            .select()
+            .single()
+            .execute()
+            .value
+        else {
+            isBanned = false
+            return
+        }
+        isBanned = row.is_currently_banned
+        banReason = row.ban_reason
+    }
+
     private func checkNeedsAvatarOnboarding() async {
         guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
         struct AvatarConfigRow: Decodable { let avatar_config: [String: String]? }
@@ -113,5 +153,30 @@ struct AppRootView: View {
             .execute()
             .value
         showAvatarOnboarding = row?.avatar_config == nil
+    }
+}
+
+/// Pantalla de bloqueo real cuando `my_ban_status.is_currently_banned` es
+/// true — hasta esta pasada, un usuario baneado por un admin en
+/// ModerationView seguía usando la app iOS con total normalidad, el
+/// baneo solo existía como una fila en la base de datos sin ningún
+/// efecto. Equivalente de BannedScreen en AppRoot.kt.
+private struct BannedView: View {
+    let reason: String?
+    let onSignOut: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text("Cuenta suspendida").font(.title2.bold())
+            Text(reason ?? "Tu cuenta ha sido suspendida por incumplir las normas de la comunidad.")
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 32)
+            Button("Cerrar sesión", action: onSignOut)
+                .buttonStyle(.borderedProminent)
+                .padding(.top, 12)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
