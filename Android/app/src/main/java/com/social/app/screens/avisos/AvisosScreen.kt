@@ -65,6 +65,7 @@ fun AvisosScreen(
 ) {
     val notifications by viewModel.notifications.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    val actorProfiles by viewModel.actorProfiles.collectAsState()
     var selected by remember { mutableStateOf<NotificationEntry?>(null) }
     LaunchedEffect(Unit) { viewModel.start() }
 
@@ -86,7 +87,7 @@ fun AvisosScreen(
             item { Text(message, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
         }
         items(notifications) { entry ->
-            NotificationRow(entry, onClick = {
+            NotificationRow(entry, actorProfile = entry.payload["actor_id"]?.let { actorProfiles[it] }, onClick = {
                 viewModel.markRead(entry)
                 val chatId = entry.payload["chat_id"]
                 when {
@@ -190,7 +191,7 @@ private fun NotificationActionsSheet(
 }
 
 @Composable
-private fun NotificationRow(entry: NotificationEntry, onClick: () -> Unit) {
+private fun NotificationRow(entry: NotificationEntry, actorProfile: com.social.app.backend.model.Profile?, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -199,6 +200,12 @@ private fun NotificationRow(entry: NotificationEntry, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        // Hallazgo real, mismo hueco raíz ya cerrado en el feed/comentarios/
+        // chats/duelos: solo había un emoji genérico por tipo de aviso,
+        // nunca el avatar de quién lo disparó -- comparado con la pestaña
+        // "Actividad" de Instagram, que siempre muestra la foto de perfil
+        // del actor como elemento visual principal.
+        com.social.app.avatar.AvatarView(config = actorProfile?.avatarConfig ?: emptyMap(), size = 40.dp)
         Text(entry.icon())
         Column(modifier = Modifier.weight(1f)) {
             Text(entry.title(), style = MaterialTheme.typography.bodyMedium)

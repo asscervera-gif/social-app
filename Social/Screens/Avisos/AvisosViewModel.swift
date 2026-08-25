@@ -32,6 +32,12 @@ final class AvisosViewModel: ObservableObject {
     @Published var notifications: [NotificationEntry] = []
     @Published var selected: NotificationEntry?
     @Published var errorMessage: String?
+    // Hallazgo real, mismo hueco raíz ya cerrado en el feed/comentarios/
+    // chats/duelos: Avisos mostraba un icono genérico por tipo, pero nunca
+    // el avatar de quién disparó el aviso -- comparado con la pestaña
+    // "Actividad" de Instagram, que siempre muestra la foto de perfil del
+    // actor como elemento visual principal de cada fila.
+    @Published var actorProfiles: [UUID: Profile] = [:]
 
     private var channel: RealtimeChannelV2?
     private var currentUserID: UUID?
@@ -50,15 +56,31 @@ final class AvisosViewModel: ObservableObject {
 
     func load() async {
         do {
-            notifications = try await SupabaseManager.shared.client
+            let loaded: [NotificationEntry] = try await SupabaseManager.shared.client
                 .from("notifications")
                 .select()
                 .order("created_at", ascending: false)
                 .limit(50)
                 .execute()
                 .value
+            notifications = loaded
+            let actorIDs = loaded.compactMap { $0.payload["actor_id"].flatMap { UUID(uuidString: $0) } }
+            await fetchActorProfiles(Array(Set(actorIDs)))
         } catch {
             errorMessage = "No se pudieron cargar los avisos: \(error.localizedDescription)"
+        }
+    }
+
+    private func fetchActorProfiles(_ actorIDs: [UUID]) async {
+        let missing = actorIDs.filter { actorProfiles[$0] == nil }
+        guard !missing.isEmpty else { return }
+        if let fetched: [Profile] = try? await SupabaseManager.shared.client
+            .from("profiles")
+            .select()
+            .in("id", values: missing)
+            .execute()
+            .value {
+            for profile in fetched { actorProfiles[profile.id] = profile }
         }
     }
 
@@ -80,6 +102,9 @@ final class AvisosViewModel: ObservableObject {
             for await change in inserts {
                 if let entry = try? change.decodeRecord(as: NotificationEntry.self, decoder: JSONDecoder()) {
                     notifications.insert(entry, at: 0)
+                    if let actorID = entry.payload["actor_id"].flatMap({ UUID(uuidString: $0) }) {
+                        await fetchActorProfiles([actorID])
+                    }
                 }
             }
         }

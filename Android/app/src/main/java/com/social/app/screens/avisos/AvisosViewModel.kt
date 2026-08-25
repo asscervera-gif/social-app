@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.social.app.backend.SupabaseManager
 import com.social.app.backend.model.NotificationEntry
+import com.social.app.backend.model.Profile
 import io.github.jan.supabase.gotrue.auth
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Columns
@@ -32,6 +33,14 @@ class AvisosViewModel : ViewModel() {
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
+    // Hallazgo real, mismo hueco raíz ya cerrado en el feed/comentarios/
+    // chats/duelos: Avisos mostraba un icono de emoji genérico por tipo,
+    // pero nunca el avatar de quién disparó el aviso -- comparado con la
+    // pestaña "Actividad" de Instagram, que siempre muestra la foto de
+    // perfil del actor como elemento visual principal de cada fila.
+    private val _actorProfiles = MutableStateFlow<Map<String, Profile>>(emptyMap())
+    val actorProfiles: StateFlow<Map<String, Profile>> = _actorProfiles.asStateFlow()
+
     fun start() {
         viewModelScope.launch {
             val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
@@ -51,13 +60,32 @@ class AvisosViewModel : ViewModel() {
             // Optimización: NotificationEntry no decodifica recipient_id ni
             // actor_id (el actor real se lee de payload["actor_id"], ver
             // convención documentada en FollowManager.kt) — se omiten.
-            _notifications.value = SupabaseManager.client.from("notifications")
+            val loaded = SupabaseManager.client.from("notifications")
                 .select(columns = Columns.raw("id,kind,payload,read_at,created_at")) {
                     order("created_at", Order.DESCENDING); limit(50)
                 }
                 .decodeList<NotificationEntry>()
+            _notifications.value = loaded
+            fetchActorProfiles(loaded.mapNotNull { it.payload["actor_id"] }.distinct())
         } catch (e: Exception) {
             _errorMessage.value = "No se pudieron cargar los avisos: ${e.message}"
+        }
+    }
+
+    private suspend fun fetchActorProfiles(actorIds: List<String>) {
+        val missing = actorIds.filter { it !in _actorProfiles.value }
+        if (missing.isEmpty()) return
+        try {
+            val fetched = SupabaseManager.client.from("profiles")
+                .select(columns = Columns.raw("id,display_name,avatar_url,avatar_config")) {
+                    filter { isIn("id", missing) }
+                }
+                .decodeList<Profile>()
+                .associateBy { it.id }
+            _actorProfiles.update { it + fetched }
+        } catch (e: Exception) {
+            // No bloquea el resto de Avisos si falla -- las filas se
+            // siguen mostrando aunque no se pueda mostrar el avatar.
         }
     }
 
@@ -70,6 +98,7 @@ class AvisosViewModel : ViewModel() {
             }.onEach { insert ->
                 val entry = Json.decodeFromJsonElement(NotificationEntry.serializer(), insert.record)
                 _notifications.update { listOf(entry) + it }
+                entry.payload["actor_id"]?.let { fetchActorProfiles(listOf(it)) }
             }.launchIn(viewModelScope)
             channel.subscribe()
         }

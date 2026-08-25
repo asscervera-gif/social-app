@@ -20,8 +20,18 @@ struct AvisosView: View {
                     Task { await viewModel.markRead(entry) }
                 } label: {
                     HStack(spacing: 14) {
+                        // Hallazgo real, mismo hueco raíz ya cerrado en el
+                        // feed/comentarios/chats/duelos: solo había un
+                        // icono genérico por tipo, nunca el avatar de
+                        // quién disparó el aviso -- comparado con la
+                        // pestaña "Actividad" de Instagram.
+                        let actorAvatar = entry.payload["actor_id"]
+                            .flatMap { UUID(uuidString: $0) }
+                            .flatMap { viewModel.actorProfiles[$0] }
+                        ActiveAvatarProvider.shared.avatarView(config: actorAvatar?.avatarConfig ?? [:], size: 40)
+
                         Image(systemName: entry.icon)
-                            .frame(width: 28)
+                            .frame(width: 20)
                             .foregroundStyle(entry.readAt == nil ? .pink : .secondary)
 
                         VStack(alignment: .leading, spacing: 2) {
