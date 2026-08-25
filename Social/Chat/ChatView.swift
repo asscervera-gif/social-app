@@ -21,6 +21,12 @@ struct ChatView: View {
     }
 
     @State private var showDuel = false
+    // Hallazgo real, comparado con Instagram/Twitter/WhatsApp: no había
+    // ninguna forma de denunciar o bloquear a la otra persona DESDE el
+    // propio chat -- justo donde ocurre la mayoría del acoso real, según
+    // cualquier app de mensajería grande. ReportSheet ya existe y ya
+    // incluye ambas acciones, solo faltaba este punto de entrada.
+    @State private var showReportSheet = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -39,6 +45,9 @@ struct ChatView: View {
                     .padding(.horizontal)
                     .sheet(isPresented: $showDuel) {
                         DuelEntryPoint(chatID: viewModel.chatID, currentUserID: currentUserID, opponentID: opponentID)
+                    }
+                    .sheet(isPresented: $showReportSheet) {
+                        ReportSheet(userID: currentUserID, reportedID: opponentID)
                     }
             }
 
@@ -141,8 +150,18 @@ struct ChatView: View {
             }
             .frame(height: 14)
 
-            Text("\(viewModel.compatibilityScore)% de compatibilidad")
-                .font(.caption.bold())
+            HStack {
+                Spacer()
+                Text("\(viewModel.compatibilityScore)% de compatibilidad")
+                    .font(.caption.bold())
+                Spacer()
+                Button {
+                    showReportSheet = true
+                } label: {
+                    Image(systemName: "exclamationmark.shield")
+                }
+                .tint(.red)
+            }
 
             if viewModel.isOpponentOnline {
                 Text("🟢 En línea")

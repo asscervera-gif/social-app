@@ -7,6 +7,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,7 +18,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -63,6 +68,12 @@ fun ChatScreen(chatId: String, currentUserId: String, onStartDuel: (opponentId: 
     var fullScreenImageUrl by remember { mutableStateOf<String?>(null) }
     val isLoadingOlder by viewModel.isLoadingOlder.collectAsState()
     var draft by remember { mutableStateOf("") }
+    // Hallazgo real, comparado con Instagram/Twitter/WhatsApp: no había
+    // ninguna forma de denunciar o bloquear a la otra persona DESDE el
+    // propio chat -- justo donde ocurre la mayoría del acoso real, según
+    // cualquier app de mensajería grande. ReportSheet ya existe y ya
+    // incluye ambas acciones, solo faltaba este punto de entrada.
+    var showReportSheet by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) viewModel.sendPhoto(context, uri)
@@ -76,12 +87,20 @@ fun ChatScreen(chatId: String, currentUserId: String, onStartDuel: (opponentId: 
             progress = { compatibility / 100f },
             modifier = Modifier.fillMaxWidth().height(10.dp).padding(horizontal = 16.dp)
         )
-        Text(
-            "$compatibility% de compatibilidad",
-            modifier = Modifier.fillMaxWidth().padding(4.dp),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            style = MaterialTheme.typography.labelMedium
-        )
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                "$compatibility% de compatibilidad",
+                modifier = Modifier.fillMaxWidth().padding(4.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                style = MaterialTheme.typography.labelMedium
+            )
+            IconButton(
+                onClick = { showReportSheet = true },
+                modifier = Modifier.align(Alignment.CenterEnd)
+            ) {
+                Icon(Icons.Filled.Warning, contentDescription = "Denunciar", tint = MaterialTheme.colorScheme.error)
+            }
+        }
         val isOpponentOnline by viewModel.isOpponentOnline.collectAsState()
         if (isOpponentOnline) {
             Text(
@@ -323,6 +342,15 @@ fun ChatScreen(chatId: String, currentUserId: String, onStartDuel: (opponentId: 
     }
     fullScreenImageUrl?.let { url ->
         com.social.app.util.FullScreenImageViewer(url = url, onDismiss = { fullScreenImageUrl = null })
+    }
+    if (showReportSheet) {
+        opponentId?.let { opponent ->
+            com.social.app.safety.ReportSheet(
+                reporterId = currentUserId,
+                reportedId = opponent,
+                onDismiss = { showReportSheet = false }
+            )
+        }
     }
 }
 
