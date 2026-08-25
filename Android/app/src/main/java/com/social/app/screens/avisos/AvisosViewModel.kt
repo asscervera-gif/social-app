@@ -159,6 +159,9 @@ fun NotificationEntry.icon(): String = when (kind) {
     // ningún mensaje nuevo generaba nunca un aviso -- ver
     // 0047_message_notify_mute.sql.
     "message" -> "💬"
+    // Reels (0050_reels.sql) -- mismos iconos que like/comment normales.
+    "reel_like" -> "❤"
+    "reel_comment" -> "💬"
     else -> "🔔"
 }
 
@@ -171,5 +174,7 @@ fun NotificationEntry.title(): String = when (kind) {
     "social_accepted" -> "Aceptó tu social"
     "compat_accepted" -> "Compartió su compatibilidad contigo"
     "message" -> "Nuevo mensaje"
+    "reel_like" -> "Le gustó tu reel"
+    "reel_comment" -> "Comentó tu reel"
     else -> "Notificación"
 }

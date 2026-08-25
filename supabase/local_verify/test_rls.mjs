@@ -641,6 +641,74 @@ async function main() {
   const messageAfterSenderFakeRead = (await db.query(`select read_at from messages where id = $1`, [messageToEdit.id])).rows[0];
   check('protect_message_columns: el remitente NO puede fijar read_at de su propio mensaje (sigue siendo el de u2, no null)', messageAfterSenderFakeRead.read_at !== null);
 
+  // --- reels (0050): primer hueco real del proyecto grande "Reels + En
+  // directo" pedido explícitamente por el usuario ("lo quiero exactamente
+  // igual" al boceto SOCIAL_APP.html). Mismo esquema exacto que
+  // posts/likes/comments, incluida la protección de bloqueo aplicada desde
+  // el principio (0012_block_enforcement_posts.sql), no como hallazgo
+  // dormido aparte. ---
+  await asUser(u3);
+  const publicReel = (await db.query(
+    `insert into reels (author_id, video_url, caption) values ($1, 'https://media/u3/reel1.mp4', 'reel público de u3') returning id`, [u3]
+  )).rows[0];
+  const socialOnlyReel = (await db.query(
+    `insert into reels (author_id, video_url, caption, is_social_only) values ($1, 'https://media/u3/reel2.mp4', 'reel solo socials de u3', true) returning id`, [u3]
+  )).rows[0];
+
+  // reels_select: u2 (sin ningún social con u3) SÍ ve el público, NO ve el social-only.
+  await asUser(u2);
+  const publicReelAsStranger = (await db.query(`select id from reels where id = $1`, [publicReel.id])).rows;
+  const socialReelAsStranger = (await db.query(`select id from reels where id = $1`, [socialOnlyReel.id])).rows;
+  check('reels_select: un tercero sin social SÍ ve el reel público de otro', publicReelAsStranger.length === 1);
+  check('reels_select: un tercero sin social NO ve el reel "solo socials" de otro', socialReelAsStranger.length === 0);
+
+  // reel_likes_insert_own + sync_reel_like_count + notify_new_reel_like:
+  // u2 da like al reel público de u3 -- contador sube y u3 recibe el aviso real.
+  await expectOk('reel_likes_insert_own: sin bloqueo, u2 SÍ puede dar like al reel público de u3', async () => {
+    await db.query(`insert into reel_likes (reel_id, user_id) values ($1, $2)`, [publicReel.id, u2]);
+  });
+  await asSuperuser();
+  const reelAfterLike = (await db.query(`select like_count from reels where id = $1`, [publicReel.id])).rows[0];
+  check('sync_reel_like_count: like_count real sube a 1 tras el insert', reelAfterLike.like_count === 1);
+  await asUser(u3);
+  const reelLikeNotif = (await db.query(
+    `select actor_id, payload from notifications where recipient_id = $1 and kind = 'reel_like'`, [u3]
+  )).rows;
+  check('notify_new_reel_like: u3 (autor) recibe el aviso real del like de u2', reelLikeNotif.length === 1);
+  check('notify_new_reel_like: actor_id es quien dio like (u2)', reelLikeNotif[0]?.actor_id === u2);
+  check('notify_new_reel_like: payload trae el reel_id real', reelLikeNotif[0]?.payload?.reel_id === publicReel.id);
+
+  // reel_comments_insert_own + sync_reel_comment_count + notify_new_reel_comment.
+  await asUser(u2);
+  const reelComment = (await db.query(
+    `insert into reel_comments (reel_id, author_id, body) values ($1, $2, 'buen reel') returning id`, [publicReel.id, u2]
+  )).rows[0];
+  await asSuperuser();
+  const reelAfterComment = (await db.query(`select comment_count from reels where id = $1`, [publicReel.id])).rows[0];
+  check('sync_reel_comment_count: comment_count real sube a 1 tras el insert', reelAfterComment.comment_count === 1);
+  await asUser(u3);
+  const reelCommentNotif = (await db.query(
+    `select actor_id, payload from notifications where recipient_id = $1 and kind = 'reel_comment'`, [u3]
+  )).rows;
+  check('notify_new_reel_comment: u3 (autor) recibe el aviso real del comentario de u2', reelCommentNotif.length === 1);
+  check('notify_new_reel_comment: payload trae el comment_id real', reelCommentNotif[0]?.payload?.comment_id === reelComment.id);
+
+  // protect_reel_counts: el propio autor no puede inflar sus contadores a mano.
+  await asUser(u3);
+  await db.query(`update reels set like_count = 999, caption = 'editado de verdad' where id = $1`, [publicReel.id]);
+  await asSuperuser();
+  const reelAfterFakeCount = (await db.query(`select like_count, caption from reels where id = $1`, [publicReel.id])).rows[0];
+  check('protect_reel_counts: like_count NO se puede fijar a mano (sigue siendo 1, el real)', reelAfterFakeCount.like_count === 1);
+  check('protect_reel_counts: el resto de la fila (caption) sí se actualiza con normalidad', reelAfterFakeCount.caption === 'editado de verdad');
+
+  // reel_likes_insert_own con bloqueo: u1 bloquea a u3, u1 ya NO puede dar
+  // like al reel de u3 (mismo criterio real que likes_insert_own/0012).
+  await asUser(u1);
+  await db.query(`insert into blocks (blocker_id, blocked_id) values ($1, $2) on conflict do nothing`, [u1, u3]);
+  await expectFail('reel_likes_insert_own: bloqueado (u1 bloqueó a u3), u1 no puede dar like al reel de u3', async () => {
+    await db.query(`insert into reel_likes (reel_id, user_id) values ($1, $2)`, [publicReel.id, u1]);
+  });
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

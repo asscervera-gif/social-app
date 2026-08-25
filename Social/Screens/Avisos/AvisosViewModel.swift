@@ -182,6 +182,9 @@ extension AvisosViewModel.NotificationEntry {
         // ningún mensaje nuevo generaba nunca un aviso -- ver
         // 0047_message_notify_mute.sql.
         case "message": return "message.fill"
+        // Reels (0050_reels.sql) -- mismos iconos que like/comment normales.
+        case "reel_like": return "heart.fill"
+        case "reel_comment": return "message.fill"
         default: return "bell"
         }
     }
@@ -196,6 +199,8 @@ extension AvisosViewModel.NotificationEntry {
         case "social_accepted": return "Aceptó tu social"
         case "compat_accepted": return "Compartió su compatibilidad contigo"
         case "message": return "Nuevo mensaje"
+        case "reel_like": return "Le gustó tu reel"
+        case "reel_comment": return "Comentó tu reel"
         default: return "Notificación"
         }
     }

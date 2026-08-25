@@ -78,6 +78,9 @@ function iconFor(kind: string): string {
     case "social_accepted": return "✅";
     case "compat_accepted": return "%";
     case "message": return "💬";
+    // Reels (0050_reels.sql) -- mismos iconos que like/comment normales.
+    case "reel_like": return "❤";
+    case "reel_comment": return "💬";
     default: return "🔔";
   }
 }
@@ -91,6 +94,8 @@ function titleFor(kind: string): string {
     case "social_accepted": return "Aceptó tu social";
     case "compat_accepted": return "Compartió su compatibilidad contigo";
     case "message": return "Nuevo mensaje";
+    case "reel_like": return "Le gustó tu reel";
+    case "reel_comment": return "Comentó tu reel";
     default: return "Notificación";
   }
 }
