@@ -308,6 +308,32 @@ async function main() {
   const followGone = (await db.query(`select 1 from follows where follower_id = $1 and followee_id = $2`, [u3, u1])).rows;
   check('follows_delete: dejar de seguir SÍ borra la fila de verdad', followGone.length === 0);
 
+  // --- device_tokens (0040): registro de token de dispositivo para push
+  // real — cada quien gestiona solo el suyo, nunca el de otro. Primera
+  // vez que se prueba con RLS real, no solo la migración aplicando
+  // limpio (la parte del trigger con pg_net, 0041, no es verificable en
+  // este harness — PGlite no trae esa extensión, documentado en la
+  // propia migración). ---
+  await asUser(u2);
+  await expectOk('device_tokens_insert_own: u2 SÍ puede registrar su propio token', async () => {
+    await db.query(`insert into device_tokens (profile_id, platform, token) values ($1, 'ios', 'tok-u2-real')`, [u2]);
+  });
+  await expectFail('device_tokens_insert_own: u2 NO puede registrar un token a nombre de u3', async () => {
+    await db.query(`insert into device_tokens (profile_id, platform, token) values ($1, 'ios', 'tok-fraud')`, [u3]);
+  });
+
+  await asUser(u3);
+  await db.query(`insert into device_tokens (profile_id, platform, token) values ($1, 'android', 'tok-u3-real')`, [u3]);
+  const u3SeesOwnToken = (await db.query(`select 1 from device_tokens where profile_id = $1`, [u3])).rows;
+  check('device_tokens_select_own: u3 SÍ ve su propio token', u3SeesOwnToken.length === 1);
+  const u3SeesU2Token = (await db.query(`select 1 from device_tokens where profile_id = $1`, [u2])).rows;
+  check('device_tokens_select_own: u3 NO ve el token de u2 (RLS real, no solo un filtro de cliente)', u3SeesU2Token.length === 0);
+
+  await db.query(`delete from device_tokens where profile_id = $1`, [u3]);
+  await asSuperuser();
+  const u3TokenGone = (await db.query(`select 1 from device_tokens where profile_id = $1`, [u3])).rows;
+  check('device_tokens_delete_own: borrar el propio token SÍ borra la fila de verdad', u3TokenGone.length === 0);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado
