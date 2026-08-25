@@ -100,6 +100,60 @@ class StoriesViewModel : ViewModel() {
         @SerialName("media_url") val mediaUrl: String
     )
 
+    @Serializable
+    private data class NewStoryView(
+        @SerialName("story_id") val storyId: String,
+        @SerialName("viewer_id") val viewerId: String
+    )
+
+    /**
+     * "Quién vio tu historia" (0053_story_views.sql), comparado con
+     * Instagram/Snapchat/WhatsApp Status. No se registra al ver tu propia
+     * historia (no tendría sentido contarte a ti mismo como espectador).
+     * `unique(story_id, viewer_id)` puede lanzar si ya se registró antes
+     * -- no es un error real, el estado deseado ya se cumple.
+     */
+    fun recordView(story: StoryRow) {
+        viewModelScope.launch {
+            val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+            if (userId == story.authorId) return@launch
+            try {
+                SupabaseManager.client.from("story_views").insert(NewStoryView(story.id, userId))
+            } catch (e: Exception) {
+                // Ya registrada (unique constraint) u otro fallo no
+                // crítico -- ver la historia no debe romperse por esto.
+            }
+        }
+    }
+
+    @Serializable
+    data class StoryViewer(val id: String, val displayName: String)
+
+    @Serializable
+    private data class ViewerIdRow(@SerialName("viewer_id") val viewerId: String)
+
+    @Serializable
+    private data class ViewerNameRow(val id: String, @SerialName("display_name") val displayName: String)
+
+    /** Solo tiene sentido llamarlo sobre tu propia historia -- RLS
+     * (`story_views_select_own_story`) ya lo exige, esta función no
+     * duplica esa comprobación en cliente. */
+    suspend fun loadViewers(storyId: String): List<StoryViewer> {
+        return try {
+            val viewerIds = SupabaseManager.client.from("story_views")
+                .select(columns = Columns.raw("viewer_id")) { filter { eq("story_id", storyId) } }
+                .decodeList<ViewerIdRow>()
+                .map { it.viewerId }
+            if (viewerIds.isEmpty()) return emptyList()
+            SupabaseManager.client.from("profiles")
+                .select(columns = Columns.raw("id,display_name")) { filter { isIn("id", viewerIds) } }
+                .decodeList<ViewerNameRow>()
+                .map { StoryViewer(it.id, it.displayName) }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
     fun createStory(context: Context, uri: Uri, onDone: () -> Unit) {
         viewModelScope.launch {
             val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch

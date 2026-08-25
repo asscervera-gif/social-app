@@ -709,6 +709,25 @@ async function main() {
     await db.query(`insert into reel_likes (reel_id, user_id) values ($1, $2)`, [publicReel.id, u1]);
   });
 
+  // --- story_views (0053_story_views.sql): "quién vio tu historia",
+  // comparado con Instagram/Snapchat/WhatsApp Status -- solo el AUTOR
+  // puede ver la lista de espectadores, ni siquiera el propio espectador
+  // ve una lista de "ya vista por ti". ---
+  await asUser(u3);
+  const story = (await db.query(
+    `insert into stories (author_id, media_url) values ($1, 'https://media/u3/story.jpg') returning id`, [u3]
+  )).rows[0];
+  await asUser(u2);
+  await expectOk('story_views_insert_own: u2 SÍ puede registrar que vio la historia de u3', async () => {
+    await db.query(`insert into story_views (story_id, viewer_id) values ($1, $2)`, [story.id, u2]);
+  });
+  await asUser(u3);
+  const viewsAsAuthor = (await db.query(`select viewer_id from story_views where story_id = $1`, [story.id])).rows;
+  check('story_views_select_own_story: el AUTOR real (u3) SÍ ve quién vio su historia', viewsAsAuthor.length === 1 && viewsAsAuthor[0].viewer_id === u2);
+  await asUser(u1);
+  const viewsAsStranger = (await db.query(`select viewer_id from story_views where story_id = $1`, [story.id])).rows;
+  check('story_views_select_own_story: un tercero (u1, no autor) NO ve quién vio la historia de u3', viewsAsStranger.length === 0);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

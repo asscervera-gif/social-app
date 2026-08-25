@@ -14,6 +14,7 @@ struct StoriesBar: View {
     @StateObject private var viewModel = StoriesViewModel()
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var viewingGroup: StoryGroup?
+    @State private var myID: UUID?
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -61,8 +62,9 @@ struct StoriesBar: View {
         }
         .task { await viewModel.load() }
         .fullScreenCover(item: $viewingGroup) { group in
-            StoryViewer(group: group)
+            StoryViewer(group: group, viewModel: viewModel, myID: myID)
         }
+        .task { myID = try? await SupabaseManager.shared.client.auth.session.user.id }
     }
 }
 
@@ -72,8 +74,15 @@ struct StoriesBar: View {
 /// no verificadas.
 private struct StoryViewer: View {
     let group: StoryGroup
+    @ObservedObject var viewModel: StoriesViewModel
+    let myID: UUID?
     @Environment(\.dismiss) private var dismiss
     @State private var index = 0
+    // "Quién vio tu historia" (0053_story_views.sql), comparado con
+    // Instagram/Snapchat/WhatsApp Status -- antes ni siquiera se
+    // registraba quién veía una historia, la tabla no existía.
+    @State private var viewers: [StoriesViewModel.StoryViewer] = []
+    @State private var showViewers = false
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -87,6 +96,22 @@ private struct StoryViewer: View {
                 Text(group.authorName)
                     .foregroundStyle(.white)
                     .padding()
+
+                if story.author_id == myID {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Button {
+                                showViewers = true
+                            } label: {
+                                Text("👁 \(viewers.count) \(viewers.count == 1 ? "vista" : "vistas")")
+                                    .foregroundStyle(.white)
+                            }
+                            Spacer()
+                        }
+                    }
+                    .padding()
+                }
             }
         }
         .contentShape(Rectangle())
@@ -95,6 +120,29 @@ private struct StoryViewer: View {
                 index += 1
             } else {
                 dismiss()
+            }
+        }
+        .task(id: index) {
+            showViewers = false
+            guard let story = group.stories[safe: index] else { return }
+            if story.author_id == myID {
+                viewers = await viewModel.loadViewers(storyID: story.id)
+            } else {
+                await viewModel.recordView(story)
+            }
+        }
+        .sheet(isPresented: $showViewers) {
+            NavigationStack {
+                List(viewers) { viewer in
+                    Text(viewer.displayName)
+                }
+                .overlay {
+                    if viewers.isEmpty {
+                        Text("Todavía nadie ha visto esta historia.")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .navigationTitle("Vistas")
             }
         }
     }

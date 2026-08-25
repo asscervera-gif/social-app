@@ -84,6 +84,53 @@ final class StoriesViewModel: ObservableObject {
         return row?.display_name
     }
 
+    /// "Quién vio tu historia" (0053_story_views.sql), comparado con
+    /// Instagram/Snapchat/WhatsApp Status. No se registra al ver tu propia
+    /// historia. `unique(story_id, viewer_id)` puede lanzar si ya se
+    /// registró antes -- no es un error real, el estado deseado ya se
+    /// cumple. Equivalente de StoriesViewModel.kt.recordView().
+    func recordView(_ story: StoryRow) async {
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id,
+              userID != story.author_id else { return }
+        struct NewStoryView: Encodable {
+            let story_id: UUID
+            let viewer_id: UUID
+        }
+        try? await SupabaseManager.shared.client
+            .from("story_views")
+            .insert(NewStoryView(story_id: story.id, viewer_id: userID))
+            .execute()
+    }
+
+    struct StoryViewer: Identifiable {
+        let id: UUID
+        let displayName: String
+    }
+
+    /// Solo tiene sentido llamarlo sobre tu propia historia -- RLS
+    /// (`story_views_select_own_story`) ya lo exige, esta función no
+    /// duplica esa comprobación en cliente. Equivalente de
+    /// StoriesViewModel.kt.loadViewers().
+    func loadViewers(storyID: UUID) async -> [StoryViewer] {
+        struct ViewerIDRow: Decodable { let viewer_id: UUID }
+        struct ViewerNameRow: Decodable { let id: UUID; let display_name: String }
+        guard let viewerRows: [ViewerIDRow] = try? await SupabaseManager.shared.client
+            .from("story_views")
+            .select("viewer_id")
+            .eq("story_id", value: storyID)
+            .execute()
+            .value else { return [] }
+        let viewerIDs = viewerRows.map { $0.viewer_id }
+        guard !viewerIDs.isEmpty else { return [] }
+        guard let profiles: [ViewerNameRow] = try? await SupabaseManager.shared.client
+            .from("profiles")
+            .select("id,display_name")
+            .in("id", values: viewerIDs)
+            .execute()
+            .value else { return [] }
+        return profiles.map { StoryViewer(id: $0.id, displayName: $0.display_name) }
+    }
+
     func createStory(imageData: Data) async {
         guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
         isUploading = true
