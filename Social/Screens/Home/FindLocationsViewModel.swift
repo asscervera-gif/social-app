@@ -18,6 +18,7 @@ struct PublicLocation: Identifiable {
     let id: UUID
     let displayName: String
     let coordinate: CLLocationCoordinate2D
+    let avatarConfig: [String: String]?
 }
 
 @MainActor
@@ -30,6 +31,7 @@ final class FindLocationsViewModel: ObservableObject {
         let display_name: String
         let last_lat: Double?
         let last_lng: Double?
+        let avatar_config: [String: String]?
     }
 
     private struct BlockRow: Decodable { let blocked_id: UUID }
@@ -63,7 +65,7 @@ final class FindLocationsViewModel: ObservableObject {
                 .filter { !blockedIDs.contains($0.id) }
                 .compactMap { row in
                     guard let lat = row.last_lat, let lng = row.last_lng else { return nil }
-                    return PublicLocation(id: row.id, displayName: row.display_name, coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng))
+                    return PublicLocation(id: row.id, displayName: row.display_name, coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng), avatarConfig: row.avatar_config)
                 }
         } catch {
             errorMessage = "No se pudieron cargar las ubicaciones."

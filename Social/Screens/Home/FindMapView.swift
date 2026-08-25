@@ -39,9 +39,18 @@ struct FindMapView: View {
                         openedProfileID = location.id
                     } label: {
                         VStack(spacing: 2) {
-                            Image(systemName: "mappin.circle.fill")
-                                .foregroundStyle(.red)
-                                .font(.title2)
+                            // Hallazgo real, comparado con SOCIAL_APP.html
+                            // (mapa "Find", `.pinav` -- el busto ilustrado,
+                            // no un pin suelto): el marcador era un icono
+                            // de sistema genérico sin relación con quién es
+                            // esa persona. Equivalente de FindMapScreen.kt
+                            // (renderAvatarBitmap) -- aquí no hace falta
+                            // dibujar a mano en un Canvas nativo, MapKit
+                            // acepta una View real como contenido del pin.
+                            ActiveAvatarProvider.shared.avatarView(config: location.avatarConfig ?? [:], size: 40)
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(.white, lineWidth: 2))
+                                .shadow(radius: 2)
                             Text(location.displayName)
                                 .font(.caption2)
                                 .padding(.horizontal, 4)

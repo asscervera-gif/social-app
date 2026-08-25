@@ -19,6 +19,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.social.app.avatar.AvatarLook
+import com.social.app.avatar.avatarColorInt
+import com.social.app.avatar.renderAvatarBitmap
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
@@ -66,6 +69,22 @@ fun FindMapScreen(viewModel: FindLocationsViewModel = viewModel(), onOpenProfile
                     val marker = Marker(mapView)
                     marker.position = GeoPoint(location.lat, location.lng)
                     marker.title = location.displayName
+                    // Hallazgo real, comparado con SOCIAL_APP.html (mapa
+                    // "Find", `.pinav` -- el busto ilustrado, no un pin
+                    // suelto): el marcador era el pin rojo genérico de OSM
+                    // sin ninguna relación con quién es esa persona.
+                    // `renderAvatarBitmap` dibuja la MISMA geometría exacta
+                    // que CartoonAvatar.kt con Canvas nativo, porque
+                    // osmdroid pinta con Drawable/Bitmap, no Composables.
+                    val config = location.avatarConfig
+                    val bitmap = renderAvatarBitmap(
+                        skin = avatarColorInt(config?.get("skin"), AvatarLook.SKIN_TONES.first()),
+                        hair = avatarColorInt(config?.get("hair"), AvatarLook.HAIR_TONES.first()),
+                        top = avatarColorInt(config?.get("top"), AvatarLook.TOP_COLORS.first()),
+                        sizePx = 96
+                    )
+                    marker.icon = android.graphics.drawable.BitmapDrawable(mapView.resources, bitmap)
+                    marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                     // Hallazgo real, comparado con Snapchat Map/BeReal:
                     // el marcador solo mostraba el nombre en la burbuja
                     // por defecto de OSM, sin ninguna forma de tocar para
