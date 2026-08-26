@@ -37,6 +37,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -100,9 +101,15 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
             }
         }
         items(groups, key = { it.authorId }) { group ->
+            // Silenciar las historias de alguien sin dejar de seguirlo,
+            // comparado con Instagram/Snapchat -- atenuada en la propia
+            // bandeja (ya mandada al final por el ViewModel), nunca
+            // oculta del todo (0085_muted_story_authors.sql).
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.clickable { viewingGroup = group }
+                modifier = Modifier
+                    .clickable { viewingGroup = group }
+                    .then(if (group.isMuted) Modifier.alpha(0.4f) else Modifier)
             ) {
                 Image(
                     painter = rememberAsyncImagePainter(group.stories.first().mediaUrl),
@@ -159,6 +166,9 @@ private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewMod
     // Instagram/Snapchat/WhatsApp Status -- antes ni siquiera se
     // registraba quién veía una historia, la tabla no existía.
     val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
+    // Silenciar las historias de alguien sin dejar de seguirlo, comparado
+    // con Instagram/Snapchat (0085_muted_story_authors.sql).
+    val mutedAuthorIds by viewModel.mutedAuthorIds.collectAsState()
     var showViewers by remember { mutableStateOf(false) }
     var viewers by remember { mutableStateOf<List<StoriesViewModel.StoryViewer>>(emptyList()) }
     val progress = remember(index) { androidx.compose.animation.core.Animatable(0f) }
@@ -264,12 +274,30 @@ private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewMod
                     }
                 }
             }
-            Text(
-                group.authorName,
-                color = androidx.compose.ui.graphics.Color.White,
-                style = MaterialTheme.typography.titleMedium,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(top = 24.dp, start = 16.dp, end = 16.dp)
-            )
+            ) {
+                Text(
+                    group.authorName,
+                    color = androidx.compose.ui.graphics.Color.White,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                // Silenciar las historias de esta persona sin dejar de
+                // seguirla, comparado con Instagram/Snapchat -- solo tiene
+                // sentido sobre la historia de OTRA persona, nunca la
+                // propia.
+                if (story.authorId != myId) {
+                    val isMuted = story.authorId in mutedAuthorIds
+                    Text(
+                        if (isMuted) "🔇" else "🔊",
+                        color = androidx.compose.ui.graphics.Color.White,
+                        modifier = Modifier
+                            .padding(start = 10.dp)
+                            .clickable { viewModel.toggleMuteAuthor(story.authorId) }
+                    )
+                }
+            }
             if (story.authorId == myId) {
                 Text(
                     "👁 ${viewers.size} ${if (viewers.size == 1) "vista" else "vistas"}",

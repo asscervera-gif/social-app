@@ -1406,6 +1406,43 @@ async function main() {
   const closeFriendsStoryAfterRemoval = (await db.query(`select id from stories where id = $1`, [closeFriendsStory.id])).rows;
   check('stories_select: tras quitarlo de la lista real, u2 ya NO ve la historia "close_friends"', closeFriendsStoryAfterRemoval.length === 0);
 
+  // --- muted_story_authors (0085_muted_story_authors.sql): silenciar las
+  // historias de alguien sin dejar de seguirlo, comparado con Instagram/
+  // Snapchat -- a diferencia de close_friends, esto NO es control de
+  // acceso: no toca stories_select, solo protege la lista en sí (ni
+  // siquiera la persona silenciada puede leer que lo está, mismo criterio
+  // que close_friends). ---
+  await asUser(u2);
+  const storyToMute = (await db.query(
+    `insert into stories (author_id, media_url) values ($1, 'https://media/u2/story-real.jpg') returning id`, [u2]
+  )).rows[0];
+
+  await asUser(u1);
+  await expectOk('muted_story_authors_insert: u1 SÍ puede silenciar las historias reales de u2', async () => {
+    await db.query(`insert into muted_story_authors (muter_id, muted_id) values ($1, $2)`, [u1, u2]);
+  });
+  const canStillSeeStoryWhileMuted = (await db.query(`select id from stories where id = $1`, [storyToMute.id])).rows;
+  check('muted_story_authors: silenciar NO es control de acceso -- u1 SIGUE viendo la historia real de u2 (everyone)', canStillSeeStoryWhileMuted.length === 1);
+
+  await asUser(u2);
+  const mutedListAsMutedPerson = (await db.query(`select muted_id from muted_story_authors where muter_id = $1`, [u1])).rows;
+  check('muted_story_authors_select: ni siquiera la persona silenciada real (u2) puede leer la lista de quien la silenció', mutedListAsMutedPerson.length === 0);
+  await db.query(`insert into muted_story_authors (muter_id, muted_id) values ($1, $2)`, [u2, u1]);
+  const u2OwnMutedList = (await db.query(`select muted_id from muted_story_authors where muter_id = $1`, [u2])).rows;
+  check('muted_story_authors_select: u2 SÍ ve su propia lista real', u2OwnMutedList.length === 1);
+
+  await asUser(u3);
+  await expectFail('muted_story_authors_insert: u3 NO puede silenciar a alguien en la lista ajena de u1', async () => {
+    await db.query(`insert into muted_story_authors (muter_id, muted_id) values ($1, $2)`, [u1, u3]);
+  });
+
+  await asUser(u1);
+  await expectOk('muted_story_authors_delete: u1 SÍ puede dejar de silenciar a u2 real', async () => {
+    await db.query(`delete from muted_story_authors where muter_id = $1 and muted_id = $2`, [u1, u2]);
+  });
+  const mutedListAfterRemoval = (await db.query(`select muted_id from muted_story_authors where muter_id = $1`, [u1])).rows;
+  check('muted_story_authors_delete: la lista real de u1 queda vacía tras quitarlo', mutedListAfterRemoval.length === 0);
+
   // --- posts.archived_at (0076_archive_posts.sql): archivar una
   // publicación real sin borrarla, comparado con Instagram/Facebook. ---
   //

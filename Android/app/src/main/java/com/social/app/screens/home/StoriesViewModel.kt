@@ -13,6 +13,7 @@ import io.github.jan.supabase.postgrest.query.Order
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -30,7 +31,16 @@ data class StoryRow(
     val visibility: String = "everyone"
 )
 
-data class StoryGroup(val authorId: String, val authorName: String, val stories: List<StoryRow>)
+data class StoryGroup(
+    val authorId: String,
+    val authorName: String,
+    val stories: List<StoryRow>,
+    // Silenciar las historias de alguien sin dejar de seguirlo, comparado
+    // con Instagram/Snapchat -- preferencia personal de orden/atenuación
+    // en la propia bandeja, NO control de acceso (0085_muted_story_authors.sql,
+    // `stories_select` no cambia: sigue siendo tan accesible como siempre).
+    val isMuted: Boolean = false
+)
 
 /**
  * Historias — hueco documentado toda la sesión como "bloqueado por
@@ -51,11 +61,55 @@ class StoriesViewModel : ViewModel() {
     private val _isUploading = MutableStateFlow(false)
     val isUploading: StateFlow<Boolean> = _isUploading.asStateFlow()
 
+    // Silenciar las historias de alguien sin dejar de seguirlo, comparado
+    // con Instagram/Snapchat (0085_muted_story_authors.sql).
+    private val _mutedAuthorIds = MutableStateFlow<Set<String>>(emptySet())
+    val mutedAuthorIds: StateFlow<Set<String>> = _mutedAuthorIds.asStateFlow()
+
     @Serializable
     private data class NameRow(@SerialName("display_name") val displayName: String)
 
     @Serializable
     private data class BlockRow(@SerialName("blocked_id") val blockedId: String)
+
+    @Serializable
+    private data class MutedStoryAuthorRow(@SerialName("muted_id") val mutedId: String)
+
+    @Serializable
+    private data class NewMutedStoryAuthor(
+        @SerialName("muter_id") val muterId: String,
+        @SerialName("muted_id") val mutedId: String
+    )
+
+    /** Silenciar/dejar de silenciar las historias reales de una persona,
+     * comparado con Instagram/Snapchat -- NO es un bloqueo ni afecta
+     * `stories_select`, solo el orden/atenuación en la propia bandeja
+     * (`muted_story_authors_insert/_delete`, 0085_muted_story_authors.sql,
+     * ya garantizan del lado del servidor que solo se toca la lista
+     * propia). */
+    fun toggleMuteAuthor(authorId: String) {
+        val currentlyMuted = _mutedAuthorIds.value.contains(authorId)
+        _mutedAuthorIds.update { if (currentlyMuted) it - authorId else it + authorId }
+        _groups.update { list ->
+            list.map { if (it.authorId == authorId) it.copy(isMuted = !currentlyMuted) else it }
+                .sortedBy { it.isMuted }
+        }
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                if (currentlyMuted) {
+                    SupabaseManager.client.from("muted_story_authors").delete {
+                        filter { eq("muter_id", userId); eq("muted_id", authorId) }
+                    }
+                } else {
+                    SupabaseManager.client.from("muted_story_authors").insert(NewMutedStoryAuthor(userId, authorId))
+                }
+            } catch (e: Exception) {
+                // No crítico: si falla, la próxima carga real reconcilia
+                // el estado con el servidor.
+            }
+        }
+    }
 
     fun load() {
         viewModelScope.launch {
@@ -83,7 +137,27 @@ class StoriesViewModel : ViewModel() {
                     .decodeList<StoryRow>()
                     .filter { it.authorId !in blockedIds }
 
-                _groups.value = stories.groupBy { it.authorId }.map { (authorId, authorStories) ->
+                // Silenciar las historias de alguien sin dejar de
+                // seguirlo, comparado con Instagram/Snapchat
+                // (0085_muted_story_authors.sql) -- lista propia, nunca
+                // visible para nadie más.
+                val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
+                val mutedIds = if (myId != null) {
+                    try {
+                        SupabaseManager.client.from("muted_story_authors")
+                            .select(columns = Columns.raw("muted_id")) { filter { eq("muter_id", myId) } }
+                            .decodeList<MutedStoryAuthorRow>()
+                            .map { it.mutedId }
+                            .toSet()
+                    } catch (e: Exception) {
+                        emptySet()
+                    }
+                } else {
+                    emptySet()
+                }
+                _mutedAuthorIds.value = mutedIds
+
+                val groups = stories.groupBy { it.authorId }.map { (authorId, authorStories) ->
                     val name = try {
                         SupabaseManager.client.from("profiles")
                             .select(columns = Columns.raw("display_name")) { filter { eq("id", authorId) } }
@@ -91,8 +165,12 @@ class StoriesViewModel : ViewModel() {
                     } catch (e: Exception) {
                         null
                     } ?: "Perfil"
-                    StoryGroup(authorId, name, authorStories)
+                    StoryGroup(authorId, name, authorStories, isMuted = authorId in mutedIds)
                 }
+                // Silenciado se manda al final de la bandeja, atenuado en
+                // el cliente -- nunca oculto del todo, mismo criterio real
+                // que Instagram/Snapchat (a diferencia de un bloqueo).
+                _groups.value = groups.sortedBy { it.isMuted }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudieron cargar las historias."
             }

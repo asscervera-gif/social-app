@@ -58,6 +58,12 @@ struct StoriesBar: View {
                             .clipShape(Circle())
                             Text(group.authorName).font(.caption2)
                         }
+                        // Silenciar las historias de alguien sin dejar de
+                        // seguirlo, comparado con Instagram/Snapchat --
+                        // atenuada en la propia bandeja (ya mandada al
+                        // final por el ViewModel), nunca oculta del todo
+                        // (0085_muted_story_authors.sql).
+                        .opacity(group.isMuted ? 0.4 : 1)
                     }
                     .buttonStyle(.plain)
                 }
@@ -173,10 +179,23 @@ private struct StoryViewer: View {
                 .padding(.horizontal, 8)
                 .padding(.top, 10)
 
-                Text(group.authorName)
-                    .foregroundStyle(.white)
-                    .padding(.top, 24)
-                    .padding(.horizontal, 16)
+                HStack(spacing: 10) {
+                    Text(group.authorName)
+                        .foregroundStyle(.white)
+                    // Silenciar las historias de esta persona sin dejar de
+                    // seguirla, comparado con Instagram/Snapchat -- solo
+                    // tiene sentido sobre la historia de OTRA persona,
+                    // nunca la propia.
+                    if story.author_id != myID {
+                        Button {
+                            Task { await viewModel.toggleMuteAuthor(story.author_id) }
+                        } label: {
+                            Text(viewModel.mutedAuthorIDs.contains(story.author_id) ? "🔇" : "🔊")
+                        }
+                    }
+                }
+                .padding(.top, 24)
+                .padding(.horizontal, 16)
 
                 if story.author_id == myID {
                     VStack {

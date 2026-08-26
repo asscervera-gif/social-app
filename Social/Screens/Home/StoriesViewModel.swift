@@ -29,6 +29,11 @@ struct StoryGroup: Identifiable {
     let authorID: UUID
     let authorName: String
     let stories: [StoryRow]
+    // Silenciar las historias de alguien sin dejar de seguirlo, comparado
+    // con Instagram/Snapchat -- preferencia personal de orden/atenuación
+    // en la propia bandeja, NO control de acceso
+    // (0085_muted_story_authors.sql, `stories_select` no cambia).
+    var isMuted: Bool = false
 }
 
 @MainActor
@@ -36,8 +41,12 @@ final class StoriesViewModel: ObservableObject {
     @Published var groups: [StoryGroup] = []
     @Published var errorMessage: String?
     @Published var isUploading = false
+    // Silenciar las historias de alguien sin dejar de seguirlo, comparado
+    // con Instagram/Snapchat (0085_muted_story_authors.sql).
+    @Published var mutedAuthorIDs: Set<UUID> = []
 
     private struct BlockRow: Decodable { let blocked_id: UUID }
+    private struct MutedStoryAuthorRow: Decodable { let muted_id: UUID }
 
     func load() async {
         do {
@@ -65,15 +74,76 @@ final class StoriesViewModel: ObservableObject {
                 .value
             let stories = allStories.filter { !blockedIDs.contains($0.author_id) }
 
+            // Silenciar las historias de alguien sin dejar de seguirlo,
+            // comparado con Instagram/Snapchat
+            // (0085_muted_story_authors.sql) -- lista propia, nunca
+            // visible para nadie más.
+            var mutedIDs: Set<UUID> = []
+            if let userID = try? await SupabaseManager.shared.client.auth.session.user.id,
+               let mutedRows: [MutedStoryAuthorRow] = try? await SupabaseManager.shared.client
+                   .from("muted_story_authors")
+                   .select("muted_id")
+                   .eq("muter_id", value: userID)
+                   .execute()
+                   .value {
+                mutedIDs = Set(mutedRows.map { $0.muted_id })
+            }
+            mutedAuthorIDs = mutedIDs
+
             let byAuthor = Dictionary(grouping: stories, by: { $0.author_id })
             var newGroups: [StoryGroup] = []
             for (authorID, authorStories) in byAuthor {
                 let name = await displayName(id: authorID) ?? "Perfil"
-                newGroups.append(StoryGroup(authorID: authorID, authorName: name, stories: authorStories))
+                newGroups.append(StoryGroup(authorID: authorID, authorName: name, stories: authorStories, isMuted: mutedIDs.contains(authorID)))
             }
-            groups = newGroups
+            // Silenciado se manda al final de la bandeja, atenuado en el
+            // cliente -- nunca oculto del todo, mismo criterio real que
+            // Instagram/Snapchat (a diferencia de un bloqueo).
+            groups = newGroups.sorted { !$0.isMuted && $1.isMuted }
         } catch {
             errorMessage = "No se pudieron cargar las historias."
+        }
+    }
+
+    /// Silenciar/dejar de silenciar las historias reales de una persona,
+    /// comparado con Instagram/Snapchat -- NO es un bloqueo ni afecta
+    /// `stories_select`, solo el orden/atenuación en la propia bandeja
+    /// (`muted_story_authors_insert`/`_delete`, 0085_muted_story_authors.sql,
+    /// ya garantizan del lado del servidor que solo se toca la lista
+    /// propia). Equivalente de StoriesViewModel.kt.toggleMuteAuthor().
+    func toggleMuteAuthor(_ authorID: UUID) async {
+        let currentlyMuted = mutedAuthorIDs.contains(authorID)
+        if currentlyMuted {
+            mutedAuthorIDs.remove(authorID)
+        } else {
+            mutedAuthorIDs.insert(authorID)
+        }
+        if let index = groups.firstIndex(where: { $0.authorID == authorID }) {
+            groups[index].isMuted = !currentlyMuted
+        }
+        groups.sort { !$0.isMuted && $1.isMuted }
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        do {
+            if currentlyMuted {
+                try await SupabaseManager.shared.client
+                    .from("muted_story_authors")
+                    .delete()
+                    .eq("muter_id", value: userID)
+                    .eq("muted_id", value: authorID)
+                    .execute()
+            } else {
+                struct NewMutedStoryAuthor: Encodable {
+                    let muter_id: UUID
+                    let muted_id: UUID
+                }
+                try await SupabaseManager.shared.client
+                    .from("muted_story_authors")
+                    .insert(NewMutedStoryAuthor(muter_id: userID, muted_id: authorID))
+                    .execute()
+            }
+        } catch {
+            // No crítico: si falla, la próxima carga real reconcilia el
+            // estado con el servidor.
         }
     }
 
