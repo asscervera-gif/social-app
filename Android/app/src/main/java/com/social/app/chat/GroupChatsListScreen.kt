@@ -1,7 +1,9 @@
 package com.social.app.chat
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,7 +50,7 @@ import kotlinx.coroutines.launch
  * mezclan las dos listas para no reescribir ChatListScreen/ViewModel, que
  * ya funcionan bien para 1:1.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun GroupChatsListScreen(viewModel: GroupChatsViewModel = viewModel(), onOpenGroup: (String, String) -> Unit) {
     val groups by viewModel.groups.collectAsState()
@@ -81,9 +83,17 @@ fun GroupChatsListScreen(viewModel: GroupChatsViewModel = viewModel(), onOpenGro
             LazyColumn {
                 items(groups, key = { it.id }) { group ->
                     Row(
+                        // Ocultar un chat de grupo real
+                        // (0068_group_chat_hide.sql), comparado con
+                        // WhatsApp/Instagram/Messenger -- mismo patrón
+                        // exacto que ChatListScreen.kt (chat 1:1): mantener
+                        // pulsado lo oculta de la lista sin salir de él.
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onOpenGroup(group.id, group.name) }
+                            .combinedClickable(
+                                onClick = { onOpenGroup(group.id, group.name) },
+                                onLongClick = { viewModel.hideGroup(group) }
+                            )
                             .padding(horizontal = 16.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {

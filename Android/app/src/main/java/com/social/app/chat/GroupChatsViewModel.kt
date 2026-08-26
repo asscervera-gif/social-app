@@ -73,17 +73,24 @@ class GroupChatsViewModel : ViewModel() {
                 // `group_chats` -- una segunda consulta, filtrada a MI
                 // propio user_id (RLS ya solo deja ver la propia igualmente).
                 val userId = SupabaseManager.client.auth.currentUserOrNull()?.id
-                val mutedByGroupId = if (userId != null && groups.isNotEmpty()) {
+                val myMemberships = if (userId != null && groups.isNotEmpty()) {
                     SupabaseManager.client.from("group_chat_members")
-                        .select(columns = Columns.raw("group_chat_id,muted")) {
+                        .select(columns = Columns.raw("group_chat_id,muted,hidden")) {
                             filter { eq("user_id", userId); isIn("group_chat_id", groups.map { it.id }) }
                         }
                         .decodeList<MyMembership>()
-                        .associate { it.groupChatId to it.muted }
+                        .associateBy { it.groupChatId }
                 } else {
                     emptyMap()
                 }
-                _groups.value = groups.map { it.copy(isMutedForMe = mutedByGroupId[it.id] ?: false) }
+                // Ocultar un chat de grupo real (0068_group_chat_hide.sql),
+                // comparado con WhatsApp/Instagram/Messenger -- mismo
+                // criterio que ChatListViewModel.kt.load() (chat 1:1): un
+                // grupo oculto para MÍ desaparece de la lista por completo,
+                // no se muestra tachado ni aparte.
+                _groups.value = groups
+                    .filter { myMemberships[it.id]?.hidden != true }
+                    .map { it.copy(isMutedForMe = myMemberships[it.id]?.muted ?: false) }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudieron cargar los grupos: ${e.message}"
             } finally {
@@ -95,7 +102,8 @@ class GroupChatsViewModel : ViewModel() {
     @Serializable
     private data class MyMembership(
         @SerialName("group_chat_id") val groupChatId: String,
-        val muted: Boolean
+        val muted: Boolean,
+        val hidden: Boolean = false
     )
 
     /** Silenciar/activar un grupo real, comparado con WhatsApp/Instagram/
@@ -112,6 +120,26 @@ class GroupChatsViewModel : ViewModel() {
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo cambiar el silencio del grupo."
+                load()
+            }
+        }
+    }
+
+    /** Ocultar un chat de grupo real de la lista sin salir de él, comparado
+     * con WhatsApp/Instagram/Messenger -- mismo criterio de "archivar" que
+     * ChatListViewModel.kt.hideChat() (chat 1:1): desaparece de la lista
+     * hasta que llegue un mensaje nuevo real, que lo restaura solo
+     * (`unhide_group_on_new_message`, 0068_group_chat_hide.sql). */
+    fun hideGroup(group: GroupChat) {
+        _groups.update { list -> list.filter { it.id != group.id } }
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                SupabaseManager.client.from("group_chat_members").update({ set("hidden", true) }) {
+                    filter { eq("group_chat_id", group.id); eq("user_id", userId) }
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo ocultar el grupo."
                 load()
             }
         }

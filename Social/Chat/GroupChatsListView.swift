@@ -67,6 +67,13 @@ struct GroupChatsListView: View {
                 // patrón `.swipeActions` ya usado en ChatListView.swift
                 // (chat 1:1).
                 .swipeActions {
+                    // Ocultar un chat de grupo real
+                    // (0068_group_chat_hide.sql), comparado con WhatsApp/
+                    // Instagram/Messenger -- mismo patrón que
+                    // ChatListView.swift (chat 1:1).
+                    Button("Ocultar", role: .destructive) {
+                        Task { await viewModel.hideGroup(group) }
+                    }
                     Button(group.isMutedForMe ? "Activar" : "Silenciar") {
                         Task { await viewModel.toggleMute(group) }
                     }

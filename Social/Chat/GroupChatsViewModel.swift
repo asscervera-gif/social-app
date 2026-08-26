@@ -54,36 +54,46 @@ final class GroupChatsViewModel: ObservableObject {
     private struct MyMembership: Decodable {
         let group_chat_id: UUID
         let muted: Bool
+        let hidden: Bool
     }
 
     func load() async {
         isLoading = true
         defer { isLoading = false }
         do {
-            var loaded: [GroupChat] = try await SupabaseManager.shared.client
+            let loaded: [GroupChat] = try await SupabaseManager.shared.client
                 .from("group_chats")
                 .select()
                 .order("created_at", ascending: false)
                 .execute()
                 .value
-            // Silenciar un chat de grupo real (0064_group_chat_mute.sql):
-            // `muted` vive en la propia fila de membresía, no en
-            // `group_chats` -- una segunda consulta, filtrada a MI propio
-            // user_id (RLS ya solo deja ver la propia igualmente).
+            // Silenciar (0064) y ocultar (0068_group_chat_hide.sql) un
+            // chat de grupo real, comparado con WhatsApp/Instagram/
+            // Messenger -- ambos viven en la propia fila de membresía, no
+            // en `group_chats` -- una segunda consulta, filtrada a MI
+            // propio user_id (RLS ya solo deja ver la propia igualmente).
+            var memberships: [UUID: MyMembership] = [:]
             if let userID = try? await SupabaseManager.shared.client.auth.session.user.id, !loaded.isEmpty {
-                let memberships: [MyMembership] = (try? await SupabaseManager.shared.client
+                let rows: [MyMembership] = (try? await SupabaseManager.shared.client
                     .from("group_chat_members")
-                    .select("group_chat_id,muted")
+                    .select("group_chat_id,muted,hidden")
                     .eq("user_id", value: userID)
                     .in("group_chat_id", values: loaded.map { $0.id })
                     .execute()
                     .value) ?? []
-                let mutedByGroupID = Dictionary(uniqueKeysWithValues: memberships.map { ($0.group_chat_id, $0.muted) })
-                for index in loaded.indices {
-                    loaded[index].isMutedForMe = mutedByGroupID[loaded[index].id] ?? false
-                }
+                memberships = Dictionary(uniqueKeysWithValues: rows.map { ($0.group_chat_id, $0) })
             }
+            // Ocultar un chat de grupo real, comparado con WhatsApp/
+            // Instagram/Messenger -- mismo criterio que
+            // ChatListViewModel.swift.load() (chat 1:1): un grupo oculto
+            // para MÍ desaparece de la lista por completo.
             groups = loaded
+                .filter { memberships[$0.id]?.hidden != true }
+                .map { group in
+                    var group = group
+                    group.isMutedForMe = memberships[group.id]?.muted ?? false
+                    return group
+                }
         } catch {
             errorMessage = "No se pudieron cargar los grupos: \(error.localizedDescription)"
         }
@@ -108,6 +118,27 @@ final class GroupChatsViewModel: ObservableObject {
                 .execute()
         } catch {
             errorMessage = "No se pudo cambiar el silencio del grupo."
+            await load()
+        }
+    }
+
+    /// Ocultar un chat de grupo real de la lista sin salir de él, comparado
+    /// con WhatsApp/Instagram/Messenger -- mismo criterio de "archivar"
+    /// que ChatListViewModel.swift.hideChat() (chat 1:1): desaparece de la
+    /// lista hasta que llegue un mensaje nuevo real, que lo restaura solo
+    /// (`unhide_group_on_new_message`, 0068_group_chat_hide.sql).
+    func hideGroup(_ group: GroupChat) async {
+        groups.removeAll { $0.id == group.id }
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        do {
+            try await SupabaseManager.shared.client
+                .from("group_chat_members")
+                .update(["hidden": true])
+                .eq("group_chat_id", value: group.id)
+                .eq("user_id", value: userID)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo ocultar el grupo."
             await load()
         }
     }

@@ -1213,6 +1213,20 @@ async function main() {
   const reportedGroupMsgAsAdmin = (await db.query(`select id, body from group_messages where id = $1`, [groupMsgToReport.id])).rows;
   check('group_messages_select_admin: un admin real (u3, no miembro del grupo) SÍ ve el mensaje de grupo REALMENTE denunciado', reportedGroupMsgAsAdmin.length === 1 && reportedGroupMsgAsAdmin[0].body === 'mensaje para denunciar');
 
+  // --- group_chat_members.hidden / unhide_group_on_new_message
+  // (0068_group_chat_hide.sql): ocultar un chat de grupo real de la
+  // lista, comparado con WhatsApp/Instagram/Messenger. u1 sigue siendo el
+  // único miembro real del grupo en este punto. ---
+  await asUser(u1);
+  await expectOk('group_chat_members_update_own: u1 SÍ puede ocultar su propia fila de membresía', async () => {
+    await db.query(`update group_chat_members set hidden = true where group_chat_id = $1 and user_id = $2`, [group.id, u1]);
+  });
+  const hiddenBeforeNewMessage = (await db.query(`select hidden from group_chat_members where group_chat_id = $1 and user_id = $2`, [group.id, u1])).rows[0];
+  check('group_chat_members.hidden: la fila real queda oculta', hiddenBeforeNewMessage.hidden === true);
+  await db.query(`insert into group_messages (group_chat_id, sender_id, body) values ($1, $2, 'mensaje que debe desocultar')`, [group.id, u1]);
+  const hiddenAfterNewMessage = (await db.query(`select hidden from group_chat_members where group_chat_id = $1 and user_id = $2`, [group.id, u1])).rows[0];
+  check('unhide_group_on_new_message: un mensaje nuevo real restaura la visibilidad -- mismo criterio que unhide_chat_on_new_message (0044) para el 1:1', hiddenAfterNewMessage.hidden === false);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado
