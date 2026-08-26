@@ -1890,7 +1890,7 @@ Resultado real medido: `sys.boot_completed` en ~0s (antes ~30-40s), `adb shell e
 
 - **Ronda 2026-08-26 (dentro de `/loop`), fotos en chats de grupo, comparado con WhatsApp/Instagram/Messenger/Facebook -- cierra la paridad completa con el chat 1:1**: última pieza menor identificada al terminar la ronda de voz -- `group_messages.media_url` ya existía en el esquema desde 0057_group_chats.sql (columna reservada desde el principio, mismo criterio que `messages.media_url`), pero sin ninguna UI real para enviarla ni mostrarla. Sin migración nueva -- solo cliente.
   - **Cliente (ambas plataformas)**: botón de cámara/galería junto al compositor, mismo patrón exacto que ChatScreen.kt/ChatView.swift (chat 1:1) -- reutiliza `StorageUploader.uploadImage` tal cual, sin infraestructura nueva. Miniatura de 200x200 en la burbuja, toque abre a tamaño completo reutilizando el visor ya compartido (`FullScreenImageViewer`/`FullScreenImageView`, el mismo componente del chat 1:1 y del feed).
-  - **Verificado real, no simulado**: Android `:app:compileDebugKotlin` OK (`BUILD SUCCESSFUL`). iOS: push pendiente, CI real por confirmar en cuanto se suba.
+  - **Verificado real, no simulado**: Android `:app:compileDebugKotlin` OK (`BUILD SUCCESSFUL`). **iOS: CI real VERIFICADO EN VERDE** (`46bbfb7`, run `32927417071`).
   - Con esto, chats de grupo alcanzan paridad de funciones completa con el chat 1:1 (texto, fotos, voz, reacciones, "visto por" -- sin typing/presence en grupo todavía, hueco real menor no documentado hasta ahora).
 
 ## Archivo de pasadas anteriores (resumido)
