@@ -352,30 +352,34 @@ private struct MessageBubble: View {
                 Group {
                     // Enviar una publicación a un chat real
                     // (0069_message_shared_post.sql), comparado con
-                    // Instagram/TikTok/Twitter/Snapchat -- vista previa
-                    // real (miniatura + caption + autor), toque abre la
-                    // foto a tamaño completo (reutiliza el visor ya
-                    // compartido, sin pantalla propia de "post" todavía --
-                    // hueco menor documentado, no fingido).
-                    if message.sharedPostID != nil {
-                        VStack(alignment: .leading, spacing: 4) {
-                            if let mediaURLString = sharedPost?.mediaURL, let url = URL(string: mediaURLString) {
-                                AsyncImage(url: url) { image in
-                                    image.resizable().scaledToFill()
-                                } placeholder: {
-                                    ProgressView()
+                    // Instagram/TikTok/Twitter/Snapchat -- toque en
+                    // cualquier parte de la vista previa abre la
+                    // publicación completa real (PostDetailView.swift),
+                    // mismo criterio que Instagram/Messenger: antes solo
+                    // abría la foto a tamaño completo.
+                    if let sharedPostID = message.sharedPostID {
+                        NavigationLink {
+                            PostDetailView(postID: sharedPostID)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                if let mediaURLString = sharedPost?.mediaURL, let url = URL(string: mediaURLString) {
+                                    AsyncImage(url: url) { image in
+                                        image.resizable().scaledToFill()
+                                    } placeholder: {
+                                        ProgressView()
+                                    }
+                                    .frame(width: 200, height: 200)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
                                 }
-                                .frame(width: 200, height: 200)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .onTapGesture { fullScreenURL = url }
+                                Text("Publicación de \(sharedPostAuthor?.displayName ?? "…")")
+                                    .font(.caption2)
+                                if let caption = sharedPost?.caption {
+                                    Text(caption).font(.footnote)
+                                }
                             }
-                            Text("Publicación de \(sharedPostAuthor?.displayName ?? "…")")
-                                .font(.caption2)
-                            if let caption = sharedPost?.caption {
-                                Text(caption).font(.footnote)
-                            }
+                            .padding(8)
                         }
-                        .padding(8)
+                        .buttonStyle(.plain)
                     } else if let mediaURL = message.mediaURL, let url = URL(string: mediaURL) {
                         AsyncImage(url: url) { image in
                             image.resizable().scaledToFill()

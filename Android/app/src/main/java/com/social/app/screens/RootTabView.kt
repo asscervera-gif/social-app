@@ -336,7 +336,8 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                     com.social.app.chat.GroupChatScreen(
                         groupChatId = groupId,
                         groupName = groupName,
-                        onBack = { navController.popBackStack() }
+                        onBack = { navController.popBackStack() },
+                        onOpenPost = { postId -> navController.navigate("post/$postId") }
                     )
                 }
                 // Hallazgo real, comparado con Instagram/Twitter/TikTok:
@@ -460,7 +461,8 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                         ChatScreen(
                             chatId = chatId,
                             currentUserId = currentUserId,
-                            onStartDuel = { opponentId -> navController.navigate("duel/$chatId/$opponentId") }
+                            onStartDuel = { opponentId -> navController.navigate("duel/$chatId/$opponentId") },
+                            onOpenPost = { postId -> navController.navigate("post/$postId") }
                         )
                     }
                 }

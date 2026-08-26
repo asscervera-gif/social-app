@@ -53,7 +53,17 @@ import coil.compose.rememberAsyncImagePainter
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ChatScreen(chatId: String, currentUserId: String, onStartDuel: (opponentId: String) -> Unit = {}) {
+fun ChatScreen(
+    chatId: String,
+    currentUserId: String,
+    onStartDuel: (opponentId: String) -> Unit = {},
+    // Enviar una publicación a un chat real (0069_message_shared_post.sql),
+    // comparado con Instagram/TikTok/Twitter/Snapchat -- ver
+    // PostDetailScreen.kt para el hallazgo completo: antes tocar la vista
+    // previa de una publicación compartida solo abría la foto, sin
+    // pantalla propia de "post".
+    onOpenPost: (String) -> Unit = {}
+) {
     val viewModel = remember(chatId) { ChatViewModel(chatId) }
     val messages by viewModel.messages.collectAsState()
     // Enviar una publicación a un chat real (0069_message_shared_post.sql),
@@ -213,22 +223,22 @@ fun ChatScreen(chatId: String, currentUserId: String, onStartDuel: (opponentId: 
                     ) {
                         // Enviar una publicación a un chat real
                         // (0069_message_shared_post.sql), comparado con
-                        // Instagram/TikTok/Twitter/Snapchat -- vista previa
-                        // real (miniatura + caption + autor), toque abre la
-                        // foto a tamaño completo (reutiliza el visor ya
-                        // compartido, sin pantalla propia de "post" todavía
-                        // -- hueco menor documentado, no fingido).
+                        // Instagram/TikTok/Twitter/Snapchat -- toque en
+                        // cualquier parte de la vista previa abre la
+                        // publicación completa real (PostDetailScreen.kt),
+                        // mismo criterio que Instagram/Messenger: antes
+                        // solo abría la foto a tamaño completo.
                         if (message.sharedPostId != null) {
-                            val sharedPost = sharedPosts[message.sharedPostId]
+                            val sharedPostId = message.sharedPostId
+                            val sharedPost = sharedPosts[sharedPostId]
                             val sharedAuthor = sharedPost?.let { sharedPostAuthors[it.authorId] }
-                            Column(modifier = Modifier.padding(8.dp)) {
+                            Column(modifier = Modifier.padding(8.dp).clickable { onOpenPost(sharedPostId) }) {
                                 if (sharedPost?.mediaUrl != null) {
                                     Image(
                                         painter = rememberAsyncImagePainter(sharedPost.mediaUrl),
                                         contentDescription = null,
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier.size(200.dp).clip(RoundedCornerShape(10.dp))
-                                            .clickable { fullScreenImageUrl = sharedPost.mediaUrl }
                                     )
                                 }
                                 Text(

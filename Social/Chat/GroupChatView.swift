@@ -401,29 +401,35 @@ private struct GroupMessageBubble: View {
             // Nota de voz real (0062_group_message_audio.sql), comparado
             // con WhatsApp/Messenger/Telegram -- mismo reproductor nativo
             // que ChatView.swift (1:1).
-            if message.sharedPostID != nil {
+            if let sharedPostID = message.sharedPostID {
                 // Enviar una publicación a un chat de grupo real
                 // (0069_message_shared_post.sql), comparado con
-                // Instagram/TikTok/Twitter/Snapchat -- mismo patrón exacto
-                // que ChatView.swift (chat 1:1).
-                VStack(alignment: .leading, spacing: 4) {
-                    if let mediaURLString = sharedPost?.mediaURL, let url = URL(string: mediaURLString) {
-                        AsyncImage(url: url) { image in
-                            image.resizable().scaledToFill()
-                        } placeholder: {
-                            ProgressView()
+                // Instagram/TikTok/Twitter/Snapchat -- toque en cualquier
+                // parte de la vista previa abre la publicación completa
+                // real (PostDetailView.swift), mismo patrón exacto que
+                // ChatView.swift (chat 1:1).
+                NavigationLink {
+                    PostDetailView(postID: sharedPostID)
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if let mediaURLString = sharedPost?.mediaURL, let url = URL(string: mediaURLString) {
+                            AsyncImage(url: url) { image in
+                                image.resizable().scaledToFill()
+                            } placeholder: {
+                                ProgressView()
+                            }
+                            .frame(width: 200, height: 200)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
-                        .frame(width: 200, height: 200)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .onTapGesture { onOpenFullScreen(url) }
+                        Text("Publicación de \(sharedPostAuthor?.displayName ?? "…")")
+                            .font(.caption2)
+                        if let caption = sharedPost?.caption {
+                            Text(caption).font(.footnote)
+                        }
                     }
-                    Text("Publicación de \(sharedPostAuthor?.displayName ?? "…")")
-                        .font(.caption2)
-                    if let caption = sharedPost?.caption {
-                        Text(caption).font(.footnote)
-                    }
+                    .padding(8)
                 }
-                .padding(8)
+                .buttonStyle(.plain)
             } else if let audioURLString = message.audioURL, let audioURL = URL(string: audioURLString) {
                 GroupAudioMessageBubble(url: audioURL, isMine: isMine)
                     .onTapGesture { showPicker.toggle() }

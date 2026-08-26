@@ -54,7 +54,16 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) {
+fun GroupChatScreen(
+    groupChatId: String,
+    groupName: String,
+    onBack: () -> Unit,
+    // Enviar una publicación a un chat de grupo real
+    // (0069_message_shared_post.sql), comparado con Instagram/TikTok/
+    // Twitter/Snapchat -- ver PostDetailScreen.kt para el hallazgo
+    // completo.
+    onOpenPost: (String) -> Unit = {}
+) {
     val viewModel = remember(groupChatId) { GroupChatViewModel(groupChatId) }
     val messages by viewModel.messages.collectAsState()
     val members by viewModel.members.collectAsState()
@@ -173,19 +182,21 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
                         val mediaUrl = message.mediaUrl
                         // Enviar una publicación a un chat de grupo real
                         // (0069_message_shared_post.sql), comparado con
-                        // Instagram/TikTok/Twitter/Snapchat -- mismo patrón
-                        // exacto que ChatScreen.kt (chat 1:1).
+                        // Instagram/TikTok/Twitter/Snapchat -- toque en
+                        // cualquier parte de la vista previa abre la
+                        // publicación completa real (PostDetailScreen.kt),
+                        // mismo patrón exacto que ChatScreen.kt (chat 1:1).
                         if (message.sharedPostId != null) {
-                            val sharedPost = sharedPosts[message.sharedPostId]
+                            val sharedPostId = message.sharedPostId
+                            val sharedPost = sharedPosts[sharedPostId]
                             val sharedAuthor = sharedPost?.let { sharedPostAuthors[it.authorId] }
-                            Column(modifier = Modifier.padding(8.dp)) {
+                            Column(modifier = Modifier.padding(8.dp).clickable { onOpenPost(sharedPostId) }) {
                                 if (sharedPost?.mediaUrl != null) {
                                     androidx.compose.foundation.Image(
                                         painter = coil.compose.rememberAsyncImagePainter(sharedPost.mediaUrl),
                                         contentDescription = null,
                                         contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                                         modifier = Modifier.size(200.dp).clip(RoundedCornerShape(10.dp))
-                                            .clickable { fullScreenImageUrl = sharedPost.mediaUrl }
                                     )
                                 }
                                 Text(
