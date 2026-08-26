@@ -15,6 +15,10 @@ struct StoriesBar: View {
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var viewingGroup: StoryGroup?
     @State private var myID: UUID?
+    // "Mejores amigos" real (0075_close_friends_stories.sql), comparado
+    // con Instagram/Snapchat -- antes de subir, se pregunta la audiencia
+    // real en vez de fijarla siempre a "everyone" en silencio.
+    @State private var pendingImageData: Data?
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -35,7 +39,7 @@ struct StoriesBar: View {
                 .onChange(of: selectedPhoto) { newValue in
                     Task {
                         if let data = try? await newValue?.loadTransferable(type: Data.self) {
-                            await viewModel.createStory(imageData: data)
+                            pendingImageData = data
                         }
                     }
                 }
@@ -65,6 +69,33 @@ struct StoriesBar: View {
             StoryViewer(group: group, viewModel: viewModel, myID: myID)
         }
         .task { myID = try? await SupabaseManager.shared.client.auth.session.user.id }
+        // "Mejores amigos" real (0075_close_friends_stories.sql),
+        // comparado con Instagram/Snapchat -- audiencia elegida en el
+        // momento de subir, no un ajuste global fijo para todas las
+        // historias. Mismo criterio que StoriesBar.kt.
+        .confirmationDialog(
+            "¿Quién puede ver esta historia?",
+            isPresented: Binding(
+                get: { pendingImageData != nil },
+                set: { isPresented in if !isPresented { pendingImageData = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Todos") {
+                if let data = pendingImageData {
+                    pendingImageData = nil
+                    Task { await viewModel.createStory(imageData: data, visibility: "everyone") }
+                }
+            }
+            Button("Mejores amigos") {
+                if let data = pendingImageData {
+                    pendingImageData = nil
+                    Task { await viewModel.createStory(imageData: data, visibility: "close_friends") }
+                }
+            }
+        } message: {
+            Text("\"Mejores amigos\" solo se la enseña a la gente que actives en Ajustes.")
+        }
     }
 }
 

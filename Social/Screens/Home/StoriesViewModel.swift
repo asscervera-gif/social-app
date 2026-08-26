@@ -17,6 +17,11 @@ struct StoryRow: Decodable, Identifiable {
     let author_id: UUID
     let media_url: String
     let created_at: String
+    // "Mejores amigos" real (0075_close_friends_stories.sql), comparado
+    // con Instagram/Snapchat -- decodificado aunque el cliente no lo
+    // necesite para filtrar (RLS ya decide quién ve qué fila en
+    // absoluto), solo para poder mostrarlo si hiciera falta más adelante.
+    var visibility: String = "everyone"
 }
 
 struct StoryGroup: Identifiable {
@@ -131,7 +136,10 @@ final class StoriesViewModel: ObservableObject {
         return profiles.map { StoryViewer(id: $0.id, displayName: $0.display_name) }
     }
 
-    func createStory(imageData: Data) async {
+    // "Mejores amigos" real (0075_close_friends_stories.sql), comparado
+    // con Instagram/Snapchat -- `visibility` elegido por el usuario al
+    // subir, "everyone" por defecto (mismo comportamiento de siempre).
+    func createStory(imageData: Data, visibility: String = "everyone") async {
         guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
         isUploading = true
         defer { isUploading = false }
@@ -140,10 +148,11 @@ final class StoriesViewModel: ObservableObject {
             struct NewStory: Encodable {
                 let author_id: UUID
                 let media_url: String
+                let visibility: String
             }
             try await SupabaseManager.shared.client
                 .from("stories")
-                .insert(NewStory(author_id: userID, media_url: url))
+                .insert(NewStory(author_id: userID, media_url: url, visibility: visibility))
                 .execute()
             // Hallazgo real, mismo criterio ya aplicado en la versión
             // Kotlin equivalente: publicar una historia no se registraba,

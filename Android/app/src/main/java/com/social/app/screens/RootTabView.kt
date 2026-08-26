@@ -77,6 +77,7 @@ private const val COMPAT_SHARES_ROUTE = "compat_shares"
 private const val PRIVACY_POLICY_ROUTE = "privacy_policy"
 private const val TERMS_ROUTE = "terms"
 private const val BLOCKED_USERS_ROUTE = "blocked_users"
+private const val CLOSE_FRIENDS_ROUTE = "close_friends"
 private const val HASHTAG_SEARCH_ROUTE = "search_hashtag/{tag}"
 private const val DUEL_HISTORY_ROUTE = "duel_history"
 private const val CHAT_LIST_ROUTE = "chat_list"
@@ -443,8 +444,14 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                             onOpenBlockedUsers = { navController.navigate(BLOCKED_USERS_ROUTE) },
                             onOpenCompatShares = { navController.navigate(COMPAT_SHARES_ROUTE) },
                             onOpenPrivacyPolicy = { navController.navigate(PRIVACY_POLICY_ROUTE) },
-                            onOpenModeration = { navController.navigate(MODERATION_ROUTE) }
+                            onOpenModeration = { navController.navigate(MODERATION_ROUTE) },
+                            onOpenCloseFriends = { navController.navigate(CLOSE_FRIENDS_ROUTE) }
                         )
+                    }
+                }
+                composable(CLOSE_FRIENDS_ROUTE) {
+                    com.social.app.ui.theme.BackScaffold(title = "Mejores amigos", onBack = { navController.popBackStack() }) {
+                        com.social.app.screens.perfil.CloseFriendsScreen()
                     }
                 }
                 composable(MODERATION_ROUTE) {

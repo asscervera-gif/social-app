@@ -22,7 +22,12 @@ data class StoryRow(
     val id: String,
     @SerialName("author_id") val authorId: String,
     @SerialName("media_url") val mediaUrl: String,
-    @SerialName("created_at") val createdAt: String
+    @SerialName("created_at") val createdAt: String,
+    // "Mejores amigos" real (0075_close_friends_stories.sql), comparado
+    // con Instagram/Snapchat -- decodificado aunque el cliente no lo
+    // necesite para filtrar (RLS ya decide quién ve qué fila en absoluto),
+    // solo para poder mostrarlo si hiciera falta más adelante.
+    val visibility: String = "everyone"
 )
 
 data class StoryGroup(val authorId: String, val authorName: String, val stories: List<StoryRow>)
@@ -72,7 +77,7 @@ class StoriesViewModel : ViewModel() {
                     emptySet()
                 }
                 val stories = SupabaseManager.client.from("stories")
-                    .select(columns = Columns.raw("id,author_id,media_url,created_at")) {
+                    .select(columns = Columns.raw("id,author_id,media_url,created_at,visibility")) {
                         order("created_at", Order.DESCENDING)
                     }
                     .decodeList<StoryRow>()
@@ -97,7 +102,8 @@ class StoriesViewModel : ViewModel() {
     @Serializable
     private data class NewStory(
         @SerialName("author_id") val authorId: String,
-        @SerialName("media_url") val mediaUrl: String
+        @SerialName("media_url") val mediaUrl: String,
+        val visibility: String
     )
 
     @Serializable
@@ -154,13 +160,16 @@ class StoriesViewModel : ViewModel() {
         }
     }
 
-    fun createStory(context: Context, uri: Uri, onDone: () -> Unit) {
+    // "Mejores amigos" real (0075_close_friends_stories.sql), comparado
+    // con Instagram/Snapchat -- `visibility` elegido por el usuario al
+    // subir, "everyone" por defecto (mismo comportamiento de siempre).
+    fun createStory(context: Context, uri: Uri, visibility: String = "everyone", onDone: () -> Unit) {
         viewModelScope.launch {
             val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
             _isUploading.value = true
             try {
                 val url = StorageUploader.uploadImage(context, uri, userId)
-                SupabaseManager.client.from("stories").insert(NewStory(userId, url))
+                SupabaseManager.client.from("stories").insert(NewStory(userId, url, visibility))
                 // Hallazgo real, mismo criterio ya aplicado a
                 // post_created/signup_completed: publicar una historia no
                 // se registraba, dejando un hueco en cualquier análisis

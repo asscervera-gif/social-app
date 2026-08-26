@@ -1294,6 +1294,53 @@ async function main() {
     await db.query(`update profiles set username = 'maria99' where id = $1`, [u2]);
   });
 
+  // --- close_friends/stories.visibility (0075_close_friends_stories.sql):
+  // "Mejores amigos" real para historias, comparado con Instagram/Snapchat.
+  // Hallazgo real de seguridad: stories_select (0002_rls.sql) no tenía
+  // NINGUNA restricción de audiencia -- cualquiera veía la historia de
+  // cualquiera. ---
+  await asUser(u1);
+  const everyoneStory = (await db.query(
+    `insert into stories (author_id, media_url) values ($1, 'foto.jpg') returning id`, [u1]
+  )).rows[0];
+  await asUser(u3);
+  const everyoneStoryAsStranger = (await db.query(`select id from stories where id = $1`, [everyoneStory.id])).rows;
+  check('stories_select: comportamiento por defecto ("everyone") sin cambios -- un tercero cualquiera SÍ la ve', everyoneStoryAsStranger.length === 1);
+
+  await asUser(u1);
+  await expectOk('close_friends_insert_own: u1 SÍ puede añadir a u2 como mejor amigo real', async () => {
+    await db.query(`insert into close_friends (owner_id, friend_id) values ($1, $2)`, [u1, u2]);
+  });
+  await asUser(u2);
+  await expectFail('close_friends_insert_own: u2 NO puede añadirse a sí mismo en la lista de u1 (owner_id ajeno)', async () => {
+    await db.query(`insert into close_friends (owner_id, friend_id) values ($1, $2)`, [u1, u3]);
+  });
+  const listAsFriend = (await db.query(`select * from close_friends where owner_id = $1`, [u1])).rows;
+  check('close_friends_select_own: ni siquiera el propio amigo añadido (u2) puede leer la lista de u1', listAsFriend.length === 0);
+
+  await asUser(u1);
+  const closeFriendsStory = (await db.query(
+    `insert into stories (author_id, media_url, visibility) values ($1, 'privada.jpg', 'close_friends') returning id`, [u1]
+  )).rows[0];
+  const ownStoryAsAuthor = (await db.query(`select id from stories where id = $1`, [closeFriendsStory.id])).rows;
+  check('stories_select: el propio autor (u1) SIEMPRE ve su historia real de "close_friends"', ownStoryAsAuthor.length === 1);
+
+  await asUser(u2);
+  const closeFriendsStoryAsFriend = (await db.query(`select id from stories where id = $1`, [closeFriendsStory.id])).rows;
+  check('stories_select: un mejor amigo real (u2) SÍ ve la historia "close_friends"', closeFriendsStoryAsFriend.length === 1);
+
+  await asUser(u3);
+  const closeFriendsStoryAsStranger = (await db.query(`select id from stories where id = $1`, [closeFriendsStory.id])).rows;
+  check('stories_select: un tercero que NO es mejor amigo (u3) NO ve la historia "close_friends"', closeFriendsStoryAsStranger.length === 0);
+
+  await asUser(u1);
+  await expectOk('close_friends_delete_own: u1 SÍ puede quitar a u2 real de su lista de mejores amigos', async () => {
+    await db.query(`delete from close_friends where owner_id = $1 and friend_id = $2`, [u1, u2]);
+  });
+  await asUser(u2);
+  const closeFriendsStoryAfterRemoval = (await db.query(`select id from stories where id = $1`, [closeFriendsStory.id])).rows;
+  check('stories_select: tras quitarlo de la lista real, u2 ya NO ve la historia "close_friends"', closeFriendsStoryAfterRemoval.length === 0);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

@@ -79,7 +79,10 @@ fun AjustesScreen(
     onOpenBlockedUsers: () -> Unit,
     onOpenCompatShares: () -> Unit = {},
     onOpenPrivacyPolicy: () -> Unit = {},
-    onOpenModeration: () -> Unit = {}
+    onOpenModeration: () -> Unit = {},
+    // "Mejores amigos" real para historias (0075_close_friends_stories.sql),
+    // comparado con Instagram/Snapchat.
+    onOpenCloseFriends: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val account = remember { AccountManager() }
@@ -254,6 +257,17 @@ fun AjustesScreen(
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
         ) {
             Text("Usuarios bloqueados")
+        }
+
+        // Hallazgo real de seguridad, comparado con Instagram/Snapchat:
+        // `stories_select` no tenía NINGUNA restricción de audiencia --
+        // cualquiera veía la historia de cualquiera. Ver
+        // CloseFriendsViewModel.kt.
+        OutlinedButton(
+            onClick = onOpenCloseFriends,
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+        ) {
+            Text("Mejores amigos")
         }
 
         if (isAdmin) {

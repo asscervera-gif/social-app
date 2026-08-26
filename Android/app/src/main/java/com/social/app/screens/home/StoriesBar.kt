@@ -22,9 +22,11 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -66,9 +68,13 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
     val errorMessage by viewModel.errorMessage.collectAsState()
     var viewingGroup by remember { mutableStateOf<StoryGroup?>(null) }
     val context = LocalContext.current
+    // "Mejores amigos" real (0075_close_friends_stories.sql), comparado
+    // con Instagram/Snapchat -- antes de subir, se pregunta la audiencia
+    // real en vez de fijarla siempre a "everyone" en silencio.
+    var pendingUploadUri by remember { mutableStateOf<android.net.Uri?>(null) }
 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) viewModel.createStory(context, uri) {}
+        if (uri != null) pendingUploadUri = uri
     }
 
     LaunchedEffect(Unit) { viewModel.load() }
@@ -113,6 +119,29 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
 
     viewingGroup?.let { group ->
         StoryViewer(group = group, viewModel = viewModel, onDismiss = { viewingGroup = null })
+    }
+
+    // "Mejores amigos" real (0075_close_friends_stories.sql), comparado
+    // con Instagram/Snapchat -- audiencia elegida en el momento de subir,
+    // no un ajuste global fijo para todas las historias.
+    pendingUploadUri?.let { uri ->
+        AlertDialog(
+            onDismissRequest = { pendingUploadUri = null },
+            title = { Text("¿Quién puede ver esta historia?") },
+            text = { Text("\"Mejores amigos\" solo se la enseña a la gente que actives en Ajustes.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingUploadUri = null
+                    viewModel.createStory(context, uri, visibility = "close_friends") {}
+                }) { Text("Mejores amigos") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    pendingUploadUri = null
+                    viewModel.createStory(context, uri, visibility = "everyone") {}
+                }) { Text("Todos") }
+            }
+        )
     }
 }
 

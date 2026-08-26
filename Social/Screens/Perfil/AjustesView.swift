@@ -142,6 +142,15 @@ struct AjustesView: View {
             }
             .buttonStyle(.bordered)
 
+            // Hallazgo real de seguridad, comparado con Instagram/
+            // Snapchat: `stories_select` no tenía NINGUNA restricción de
+            // audiencia -- cualquiera veía la historia de cualquiera. Ver
+            // CloseFriendsViewModel.swift.
+            NavigationLink("Mejores amigos") {
+                CloseFriendsView()
+            }
+            .buttonStyle(.bordered)
+
             if isAdmin {
                 NavigationLink("Moderación") {
                     ModerationView()
