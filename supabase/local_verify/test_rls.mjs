@@ -770,6 +770,12 @@ async function main() {
   check('notify_new_comment_like: u3 (autor del comentario) recibe el aviso real del like de u2', commentLikeNotif.length === 1);
   check('notify_new_comment_like: actor_id es quien dio like (u2)', commentLikeNotif[0]?.actor_id === u2);
   check('notify_new_comment_like: payload trae el comment_id real', commentLikeNotif[0]?.payload?.comment_id === comment.id);
+  // Hallazgo real (0070_notify_comment_like_post_reference.sql), comparado
+  // con Instagram/Twitter/Facebook: a diferencia de like/comment (que sí
+  // llevan post_id desde el principio), comment_like solo llevaba
+  // comment_id -- sin dato con el que abrir la publicación real al tocar
+  // el aviso, sin una consulta extra en cada tap.
+  check('notify_new_comment_like: payload trae el post_id real (0070)', commentLikeNotif[0]?.payload?.post_id === post2.id);
 
   // comment_likes_insert_own con bloqueo: u1 y u3 ya están bloqueados entre
   // sí (bloqueo insertado en la sección de reel_likes de más arriba) --
@@ -796,6 +802,8 @@ async function main() {
   check('notify_new_reel_comment_like: u2 (autor del comentario) recibe el aviso real del like de u3', reelCommentLikeNotif.length === 1);
   check('notify_new_reel_comment_like: actor_id es quien dio like (u3)', reelCommentLikeNotif[0]?.actor_id === u3);
   check('notify_new_reel_comment_like: payload trae el reel_comment_id real', reelCommentLikeNotif[0]?.payload?.reel_comment_id === reelComment.id);
+  // Mismo hallazgo real que comment_like (0070_notify_comment_like_post_reference.sql).
+  check('notify_new_reel_comment_like: payload trae el reel_id real (0070)', reelCommentLikeNotif[0]?.payload?.reel_id === publicReel.id);
 
   // reel_comment_likes_insert_own con bloqueo: el único bloqueo vigente a
   // esta altura del archivo es u1-u3 (el bloqueo u1-u2 de la sección de

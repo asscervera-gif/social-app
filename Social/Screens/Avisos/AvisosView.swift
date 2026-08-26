@@ -42,9 +42,13 @@ struct AvisosView: View {
                        let chatID = UUID(uuidString: chatIDString) {
                         selectedChatID = chatID
                         showOpenedChat = true
-                    } else if (entry.kind == "like" || entry.kind == "comment"),
+                    } else if (entry.kind == "like" || entry.kind == "comment" || entry.kind == "comment_like"),
                               let postIDString = entry.payload["post_id"],
                               let postID = UUID(uuidString: postIDString) {
+                        // "comment_like" real (0070_notify_comment_like_post_reference.sql):
+                        // mismo hueco exacto que like/comment, pero para un
+                        // like a un COMENTARIO -- payload.post_id no
+                        // existía hasta esa migración.
                         selectedPostID = postID
                         showOpenedPost = true
                     } else if entry.kind == "group_message",

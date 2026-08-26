@@ -140,6 +140,13 @@ fun AvisosScreen(
                     // muerto (marcaba leído y ya). Ver PostDetailScreen.kt.
                     (entry.kind == "like" || entry.kind == "comment") && entry.payload["post_id"] != null ->
                         onOpenPost(entry.payload["post_id"]!!)
+                    // Hallazgo real de paso (0070_notify_comment_like_post_reference.sql):
+                    // mismo hueco exacto que like/comment, pero para un
+                    // like a un COMENTARIO -- `payload.post_id` no existía
+                    // hasta esa migración (solo comment_id, sin dato con
+                    // el que abrir la publicación real).
+                    entry.kind == "comment_like" && entry.payload["post_id"] != null ->
+                        onOpenPost(entry.payload["post_id"]!!)
                     // Hallazgo real de paso: mismo hueco exacto que
                     // "message" pero para un mensaje de GRUPO
                     // (0058_group_message_notify.sql ya manda
