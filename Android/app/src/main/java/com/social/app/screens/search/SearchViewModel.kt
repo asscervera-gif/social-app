@@ -128,14 +128,23 @@ class SearchViewModel : ViewModel() {
                 emptySet()
             }
             val matches = SupabaseManager.client.from("profiles")
-                .select(columns = Columns.raw("id,display_name,avatar_url,avatar_config,interests,bio,is_invisible,location_public,compat_public,is_verified")) {
+                .select(columns = Columns.raw("id,display_name,avatar_url,avatar_config,interests,bio,is_invisible,location_public,compat_public,is_verified,username")) {
                     // Mismo filtro real ya aplicado en Home/Match
                     // (`eq("is_invisible", false)`) — sin esto, el modo
                     // invisible (SafetyManager.setInvisible) solo ocultaba
                     // a alguien de la cámara de proximidad, no del buscador
                     // por nombre, dejando la promesa de privacidad a medias.
+                    // Nombre de usuario único real (@handle,
+                    // 0073_profile_username.sql), comparado con Instagram/
+                    // Twitter/TikTok -- buscar por @handle exacto es tan
+                    // real como buscar por nombre para mostrar, sobre todo
+                    // para desambiguar cuando dos personas comparten
+                    // nombre.
                     filter {
-                        ilike("display_name", "%$text%")
+                        or {
+                            ilike("display_name", "%$text%")
+                            ilike("username", "%$text%")
+                        }
                         eq("is_invisible", false)
                     }
                     limit(30)

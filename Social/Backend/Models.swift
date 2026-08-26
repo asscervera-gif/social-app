@@ -25,6 +25,9 @@ struct Profile: Codable, Identifiable {
     // (no Date) para no depender de la estrategia de fecha configurada en
     // SupabaseManager, mismo criterio que Profile.kt.createdAt.
     var createdAt: String?
+    // Nombre de usuario único real (@handle, 0073_profile_username.sql),
+    // comparado con Instagram/Twitter/TikTok.
+    var username: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -39,6 +42,7 @@ struct Profile: Codable, Identifiable {
         case lastLat = "last_lat"
         case lastLng = "last_lng"
         case createdAt = "created_at"
+        case username
     }
 }
 

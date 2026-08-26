@@ -119,8 +119,13 @@ struct PerfilView: View {
                     initialSkin: viewModel.profile?.avatarConfig?["skin"] ?? AvatarLook.skinTones[0],
                     initialHair: viewModel.profile?.avatarConfig?["hair"] ?? AvatarLook.hairTones[0],
                     initialTop: viewModel.profile?.avatarConfig?["top"] ?? AvatarLook.topColors[0],
+                    initialUsername: viewModel.profile?.username ?? "",
+                    usernameErrorMessage: viewModel.usernameErrorMessage,
                     onSave: { name, bio, skin, hair, top in
                         Task { await viewModel.updateBasicInfo(displayName: name, bio: bio, skin: skin, hair: hair, top: top) }
+                    },
+                    onSaveUsername: { username in
+                        Task { await viewModel.updateUsername(username) }
                     }
                 )
             }
@@ -211,6 +216,15 @@ struct PerfilView: View {
                 if viewModel.profile?.isVerified == true {
                     Image(systemName: "checkmark.seal.fill").foregroundStyle(.blue)
                 }
+            }
+            // Nombre de usuario único real (@handle,
+            // 0073_profile_username.sql), comparado con Instagram/
+            // Twitter/TikTok -- distinto del nombre para mostrar, que sí
+            // puede repetirse y cambiar libremente.
+            if let username = viewModel.profile?.username {
+                Text("@\(username)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
             }
             if let bio = viewModel.profile?.bio {
                 Text(bio)

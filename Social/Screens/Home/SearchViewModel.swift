@@ -108,10 +108,18 @@ final class SearchViewModel: ObservableObject {
             // alguien de la cámara de proximidad, no del buscador por
             // nombre, dejando la promesa de privacidad a medias. Mismo
             // hallazgo real ya corregido en la versión Kotlin equivalente.
+            //
+            // Nombre de usuario único real (@handle, 0073_profile_username.sql),
+            // comparado con Instagram/Twitter/TikTok -- el buscador solo
+            // encontraba por nombre para mostrar (no único, puede repetirse),
+            // ahora también por @usuario. `.or("col.op.val,col.op.val")` es
+            // el mismo patrón ya usado y compiler-verificado en esta app
+            // (DuelHistoryViewModel.swift, SocialsListViewModel.swift,
+            // ChatListViewModel.swift), no una firma nueva sin confirmar.
             let matches: [Profile] = try await SupabaseManager.shared.client
                 .from("profiles")
                 .select()
-                .ilike("display_name", pattern: "%\(text)%")
+                .or("display_name.ilike.%\(text)%,username.ilike.%\(text)%")
                 .eq("is_invisible", value: false)
                 .limit(30)
                 .execute()

@@ -55,11 +55,24 @@ struct SearchView: View {
                     } label: {
                         HStack {
                             ActiveAvatarProvider.shared.avatarView(config: profile.avatarConfig ?? [:], size: 44)
-                            Text(profile.displayName)
-                            // Hallazgo real: `isVerified` nunca se renderizaba
-                            // como badge en ningún sitio de la app.
-                            if profile.isVerified {
-                                Image(systemName: "checkmark.seal.fill").foregroundStyle(.blue)
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 4) {
+                                    Text(profile.displayName)
+                                    // Hallazgo real: `isVerified` nunca se renderizaba
+                                    // como badge en ningún sitio de la app.
+                                    if profile.isVerified {
+                                        Image(systemName: "checkmark.seal.fill").foregroundStyle(.blue)
+                                    }
+                                }
+                                // Nombre de usuario único real (@handle,
+                                // 0073_profile_username.sql), comparado con
+                                // Instagram/Twitter/TikTok -- desambigua
+                                // cuando dos personas comparten nombre.
+                                if let username = profile.username {
+                                    Text("@\(username)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                         }
                     }

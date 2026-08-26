@@ -31,7 +31,10 @@ data class Profile(
     // "Cerca" de Match no podia existir de verdad sin esto en el modelo.
     @SerialName("last_lat") val lastLat: Double? = null,
     @SerialName("last_lng") val lastLng: Double? = null,
-    @SerialName("created_at") val createdAt: String? = null
+    @SerialName("created_at") val createdAt: String? = null,
+    // Nombre de usuario único real (@handle, 0073_profile_username.sql),
+    // comparado con Instagram/Twitter/TikTok.
+    val username: String? = null
 )
 
 @Serializable

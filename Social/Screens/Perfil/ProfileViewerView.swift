@@ -43,6 +43,15 @@ struct ProfileViewerView: View {
                         Image(systemName: "checkmark.seal.fill").foregroundStyle(.blue)
                     }
                 }
+                // Nombre de usuario único real (@handle,
+                // 0073_profile_username.sql), comparado con Instagram/
+                // Twitter/TikTok -- desambigua cuando dos personas
+                // comparten nombre para mostrar.
+                if let username = profile?.username {
+                    Text("@\(username)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
                 if let bio = profile?.bio {
                     Text(bio).foregroundStyle(.secondary)
                 }

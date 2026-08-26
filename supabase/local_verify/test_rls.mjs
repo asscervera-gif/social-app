@@ -1277,6 +1277,23 @@ async function main() {
   const forwardedInChatAsRecipient = (await db.query(`select is_forwarded from messages where chat_id = $1 and body = 'mensaje reenviado'`, [chat.id])).rows;
   check('messages_select: el destinatario real (u2) SÍ ve el mensaje reenviado, con is_forwarded real', forwardedInChatAsRecipient.length === 1 && forwardedInChatAsRecipient[0].is_forwarded === true);
 
+  // --- profiles.username (0073_profile_username.sql): nombre de usuario
+  // único real (@handle), comparado con Instagram/Twitter/TikTok. ---
+  await asUser(u1);
+  await expectOk('profiles_update_own: u1 SÍ puede ponerse un username real con formato válido', async () => {
+    await db.query(`update profiles set username = 'juan_perez1' where id = $1`, [u1]);
+  });
+  await expectFail('profiles_username_format: un username con mayúsculas/demasiado corto NO se puede guardar', async () => {
+    await db.query(`update profiles set username = 'AB' where id = $1`, [u1]);
+  });
+  await asUser(u2);
+  await expectFail('profiles_username_unique: u2 no puede quedarse el username real ya usado por u1', async () => {
+    await db.query(`update profiles set username = 'juan_perez1' where id = $1`, [u2]);
+  });
+  await expectOk('profiles_update_own: u2 SÍ puede ponerse un username real distinto', async () => {
+    await db.query(`update profiles set username = 'maria99' where id = $1`, [u2]);
+  });
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

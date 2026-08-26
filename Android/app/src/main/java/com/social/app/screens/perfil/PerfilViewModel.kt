@@ -6,6 +6,7 @@ import com.social.app.backend.SupabaseManager
 import com.social.app.backend.model.Profile
 import io.github.jan.supabase.gotrue.auth
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.query.Columns
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -74,6 +75,13 @@ class PerfilViewModel : ViewModel() {
     // vacía.
     private val _latestPostMediaUrl = MutableStateFlow<String?>(null)
     val latestPostMediaUrl: StateFlow<String?> = _latestPostMediaUrl.asStateFlow()
+
+    // Nombre de usuario único real (@handle, 0073_profile_username.sql),
+    // comparado con Instagram/Twitter/TikTok -- error aparte del genérico
+    // de arriba, porque el fallo más probable (username ya en uso) tiene
+    // un mensaje real y específico, no el genérico "No se pudo guardar".
+    private val _usernameErrorMessage = MutableStateFlow<String?>(null)
+    val usernameErrorMessage: StateFlow<String?> = _usernameErrorMessage.asStateFlow()
 
     private var userId: String? = null
 
@@ -188,6 +196,50 @@ class PerfilViewModel : ViewModel() {
                     .update(ProfileUpdate(trimmedName, bio.ifBlank { null }, newConfig)) { filter { eq("id", id) } }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo guardar el perfil."
+            }
+        }
+    }
+
+    @Serializable
+    private data class UsernameUpdate(val username: String)
+
+    @Serializable
+    private data class UsernameRow(val id: String)
+
+    /** Nombre de usuario único real (@handle, 0073_profile_username.sql),
+     * comparado con Instagram/Twitter/TikTok -- distinto del nombre para
+     * mostrar (`updateBasicInfo`), que sí puede repetirse y cambiar
+     * libremente. Comprueba disponibilidad con una consulta real ANTES de
+     * intentar guardar, en vez de un mensaje genérico si el guardado
+     * falla por cualquier motivo -- aviso de honestidad: no verificado en
+     * este entorno qué excepción concreta lanza Postgrest ante una
+     * violación de `unique` real, así que no se intenta distinguirla
+     * adivinando su forma exacta. Mismo formato real que
+     * `profiles_username_format` (0073): minúsculas, dígitos y guión
+     * bajo, 3-20 caracteres, normalizado aquí antes de comprobar/guardar. */
+    fun updateUsername(username: String) {
+        val id = userId ?: return
+        val normalized = username.trim().lowercase()
+        _usernameErrorMessage.value = null
+        if (normalized.isEmpty()) return
+        if (!Regex("^[a-z0-9_]{3,20}$").matches(normalized)) {
+            _usernameErrorMessage.value = "El nombre de usuario debe tener 3-20 letras minúsculas, números o \"_\"."
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val existing = SupabaseManager.client.from("profiles")
+                    .select(columns = Columns.raw("id")) { filter { eq("username", normalized) } }
+                    .decodeList<UsernameRow>()
+                if (existing.any { it.id != id }) {
+                    _usernameErrorMessage.value = "Ese nombre de usuario ya está en uso."
+                    return@launch
+                }
+                SupabaseManager.client.from("profiles")
+                    .update(UsernameUpdate(normalized)) { filter { eq("id", id) } }
+                _profile.value = _profile.value?.copy(username = normalized)
+            } catch (e: Exception) {
+                _usernameErrorMessage.value = "No se pudo guardar el nombre de usuario."
             }
         }
     }

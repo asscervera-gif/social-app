@@ -24,15 +24,30 @@ struct EditProfileView: View {
     @State private var hair: String
     @State private var top: String
     let onSave: (String, String, String, String, String) -> Void
+    // Nombre de usuario único real (@handle, 0073_profile_username.sql),
+    // comparado con Instagram/Twitter/TikTok -- guardado aparte del resto
+    // (botón propio), porque su fallo más probable (ya en uso) necesita
+    // su propio mensaje real, no el genérico de nombre/bio/avatar.
+    @State private var username: String
+    let usernameErrorMessage: String?
+    let onSaveUsername: (String) -> Void
     @Environment(\.dismiss) private var dismiss
 
-    init(initialName: String, initialBio: String, initialSkin: String, initialHair: String, initialTop: String, onSave: @escaping (String, String, String, String, String) -> Void) {
+    init(
+        initialName: String, initialBio: String, initialSkin: String, initialHair: String, initialTop: String,
+        initialUsername: String, usernameErrorMessage: String?,
+        onSave: @escaping (String, String, String, String, String) -> Void,
+        onSaveUsername: @escaping (String) -> Void
+    ) {
         _name = State(initialValue: initialName)
         _bio = State(initialValue: initialBio)
         _skin = State(initialValue: initialSkin)
         _hair = State(initialValue: initialHair)
         _top = State(initialValue: initialTop)
+        _username = State(initialValue: initialUsername)
         self.onSave = onSave
+        self.usernameErrorMessage = usernameErrorMessage
+        self.onSaveUsername = onSaveUsername
     }
 
     var body: some View {
@@ -55,6 +70,30 @@ struct EditProfileView: View {
                 Text("\(bio.count)/300")
                     .font(.caption2)
                     .foregroundStyle(bio.count > 300 ? .red : .secondary)
+
+                // Nombre de usuario único real (@handle,
+                // 0073_profile_username.sql), comparado con Instagram/
+                // Twitter/TikTok.
+                HStack {
+                    Text("@")
+                    TextField("nombre_de_usuario", text: $username)
+                        .textFieldStyle(.roundedBorder)
+                        .autocapitalization(.none)
+                        .onChange(of: username) { newValue in
+                            username = newValue.lowercased()
+                        }
+                }
+                Text("Minúsculas, números o \"_\", 3-20 caracteres.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                if let usernameErrorMessage {
+                    Text(usernameErrorMessage).font(.caption2).foregroundStyle(.red)
+                }
+                Button("Guardar nombre de usuario") {
+                    onSaveUsername(username)
+                }
+                .buttonStyle(.bordered)
+                .disabled(username.trimmingCharacters(in: .whitespaces).isEmpty)
 
                 HStack(spacing: 12) {
                     CartoonAvatarView(skin: Color(hex: skin), hair: Color(hex: hair), top: Color(hex: top))

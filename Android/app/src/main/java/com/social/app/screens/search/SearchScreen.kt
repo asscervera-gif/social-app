@@ -90,11 +90,27 @@ fun SearchScreen(viewModel: SearchViewModel = viewModel(), onOpenProfile: (Strin
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         com.social.app.avatar.AvatarView(config = profile.avatarConfig ?: emptyMap(), size = 44.dp)
-                        Text(profile.displayName, modifier = Modifier.padding(start = 12.dp))
-                        // Hallazgo real: `is_verified` se consultaba pero nunca
-                        // se renderizaba como badge en ningún sitio de la app.
-                        if (profile.isVerified) {
-                            Text(" ✔️", color = MaterialTheme.colorScheme.primary)
+                        Column(modifier = Modifier.padding(start = 12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(profile.displayName)
+                                // Hallazgo real: `is_verified` se consultaba pero
+                                // nunca se renderizaba como badge en ningún sitio
+                                // de la app.
+                                if (profile.isVerified) {
+                                    Text(" ✔️", color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                            // Nombre de usuario único real (@handle,
+                            // 0073_profile_username.sql), comparado con
+                            // Instagram/Twitter/TikTok -- desambigua
+                            // cuando dos personas comparten nombre.
+                            profile.username?.let {
+                                Text(
+                                    "@$it",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }

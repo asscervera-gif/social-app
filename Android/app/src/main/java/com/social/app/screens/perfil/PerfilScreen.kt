@@ -142,10 +142,23 @@ fun PerfilScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(profile?.displayName ?: "Tu perfil", style = MaterialTheme.typography.titleMedium)
-                    if (profile?.isVerified == true) {
-                        Text(" ✔️", color = SocialColors.Turquoise)
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(profile?.displayName ?: "Tu perfil", style = MaterialTheme.typography.titleMedium)
+                        if (profile?.isVerified == true) {
+                            Text(" ✔️", color = SocialColors.Turquoise)
+                        }
+                    }
+                    // Nombre de usuario único real (@handle,
+                    // 0073_profile_username.sql), comparado con
+                    // Instagram/Twitter/TikTok -- distinto del nombre para
+                    // mostrar, que sí puede repetirse y cambiar libremente.
+                    profile?.username?.let {
+                        Text(
+                            "@$it",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
                 IconButton(onClick = onOpenAjustes) {
@@ -302,14 +315,18 @@ fun PerfilScreen(
     }
 
     if (showEditProfile) {
+        val usernameErrorMessage by viewModel.usernameErrorMessage.collectAsState()
         EditProfileSheet(
             initialName = profile?.displayName ?: "",
             initialBio = profile?.bio ?: "",
             initialSkin = profile?.avatarConfig?.get("skin") ?: com.social.app.avatar.AvatarLook.SKIN_TONES.first(),
             initialHair = profile?.avatarConfig?.get("hair") ?: com.social.app.avatar.AvatarLook.HAIR_TONES.first(),
             initialTop = profile?.avatarConfig?.get("top") ?: com.social.app.avatar.AvatarLook.TOP_COLORS.first(),
+            initialUsername = profile?.username ?: "",
+            usernameErrorMessage = usernameErrorMessage,
             onDismiss = { showEditProfile = false },
-            onSave = { name, bio, skin, hair, top -> viewModel.updateBasicInfo(name, bio, skin, hair, top) }
+            onSave = { name, bio, skin, hair, top -> viewModel.updateBasicInfo(name, bio, skin, hair, top) },
+            onSaveUsername = { username -> viewModel.updateUsername(username) }
         )
     }
 

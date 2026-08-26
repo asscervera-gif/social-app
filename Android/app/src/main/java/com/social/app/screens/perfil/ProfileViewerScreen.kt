@@ -60,7 +60,7 @@ fun ProfileViewerScreen(profileId: String) {
             // renderizaba como badge en ningún sitio — dato muerto, mismo
             // patrón que otros hallazgos de esta sesión.
             profile = SupabaseManager.client.from("profiles")
-                .select(columns = Columns.raw("id,display_name,bio,avatar_config,is_verified")) { filter { eq("id", profileId) } }
+                .select(columns = Columns.raw("id,display_name,bio,avatar_config,is_verified,username")) { filter { eq("id", profileId) } }
                 .decodeSingle()
             sections = SupabaseManager.client.from("profile_sections")
                 .select { filter { eq("profile_id", profileId) } }
@@ -86,6 +86,17 @@ fun ProfileViewerScreen(profileId: String) {
                 if (profile?.isVerified == true) {
                     Text(" ✔️", color = MaterialTheme.colorScheme.primary)
                 }
+            }
+            // Nombre de usuario único real (@handle,
+            // 0073_profile_username.sql), comparado con Instagram/
+            // Twitter/TikTok -- distinto del nombre para mostrar, que sí
+            // puede repetirse y cambiar libremente.
+            profile?.username?.let {
+                Text(
+                    "@$it",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             profile?.bio?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
             errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }

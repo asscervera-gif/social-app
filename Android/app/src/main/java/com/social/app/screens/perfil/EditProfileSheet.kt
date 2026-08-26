@@ -54,14 +54,22 @@ fun EditProfileSheet(
     initialSkin: String,
     initialHair: String,
     initialTop: String,
+    // Nombre de usuario único real (@handle, 0073_profile_username.sql),
+    // comparado con Instagram/Twitter/TikTok -- guardado aparte del resto
+    // (botón propio), porque su fallo más probable (ya en uso) necesita
+    // su propio mensaje real, no el genérico de nombre/bio/avatar.
+    initialUsername: String,
+    usernameErrorMessage: String?,
     onDismiss: () -> Unit,
-    onSave: (String, String, String, String, String) -> Unit
+    onSave: (String, String, String, String, String) -> Unit,
+    onSaveUsername: (String) -> Unit
 ) {
     var name by remember { mutableStateOf(initialName) }
     var bio by remember { mutableStateOf(initialBio) }
     var skin by remember { mutableStateOf(initialSkin) }
     var hair by remember { mutableStateOf(initialHair) }
     var top by remember { mutableStateOf(initialTop) }
+    var username by remember { mutableStateOf(initialUsername) }
     val sheetState = rememberModalBottomSheetState()
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
@@ -97,6 +105,32 @@ fun EditProfileSheet(
                 style = MaterialTheme.typography.labelSmall,
                 color = if (bio.length > 300) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            // Nombre de usuario único real (@handle,
+            // 0073_profile_username.sql), comparado con Instagram/
+            // Twitter/TikTok.
+            OutlinedTextField(
+                value = username,
+                onValueChange = { username = it.lowercase() },
+                label = { Text("Nombre de usuario") },
+                leadingIcon = { Text("@") },
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+            )
+            Text(
+                "Minúsculas, números o \"_\", 3-20 caracteres.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            usernameErrorMessage?.let {
+                Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+            }
+            Button(
+                onClick = { onSaveUsername(username) },
+                enabled = username.isNotBlank() && username != initialUsername,
+                modifier = Modifier.padding(top = 6.dp)
+            ) {
+                Text("Guardar nombre de usuario")
+            }
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,

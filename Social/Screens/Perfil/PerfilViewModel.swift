@@ -15,6 +15,11 @@ final class PerfilViewModel: ObservableObject {
     @Published var followerCount = 0
     @Published var socialCount = 0
     @Published var errorMessage: String?
+    // Nombre de usuario único real (@handle, 0073_profile_username.sql),
+    // comparado con Instagram/Twitter/TikTok -- error aparte del genérico
+    // de arriba, porque el fallo más probable (username ya en uso) tiene
+    // un mensaje real y específico.
+    @Published var usernameErrorMessage: String?
     // Hallazgo real, comparado con SOCIAL_APP.html: la cabecera del perfil
     // alterna cada 3.5s entre el avatar y una foto real -- sin una tabla
     // de "foto de perfil" propia, la fuente honesta más cercana es la
@@ -145,6 +150,51 @@ final class PerfilViewModel: ObservableObject {
                 .execute()
         } catch {
             errorMessage = "No se pudo guardar el perfil."
+        }
+    }
+
+    /// Nombre de usuario único real (@handle, 0073_profile_username.sql),
+    /// comparado con Instagram/Twitter/TikTok -- distinto del nombre para
+    /// mostrar (`updateBasicInfo`), que sí puede repetirse y cambiar
+    /// libremente. Comprueba disponibilidad con una consulta real ANTES
+    /// de intentar guardar, en vez de un mensaje genérico si el guardado
+    /// falla por cualquier motivo -- aviso de honestidad: no verificado
+    /// en este entorno qué excepción concreta lanza supabase-swift ante
+    /// una violación de `unique` real, así que no se intenta distinguirla
+    /// adivinando su forma exacta. Mismo formato real que
+    /// `profiles_username_format` (0073): minúsculas, dígitos y guión
+    /// bajo, 3-20 caracteres, normalizado aquí antes de comprobar/guardar.
+    /// Equivalente de PerfilViewModel.kt.updateUsername().
+    func updateUsername(_ username: String) async {
+        guard let userID else { return }
+        let normalized = username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        usernameErrorMessage = nil
+        guard !normalized.isEmpty else { return }
+        guard normalized.range(of: "^[a-z0-9_]{3,20}$", options: .regularExpression) != nil else {
+            usernameErrorMessage = "El nombre de usuario debe tener 3-20 letras minúsculas, números o \"_\"."
+            return
+        }
+        struct UsernameRow: Decodable { let id: UUID }
+        struct UsernameUpdate: Encodable { let username: String }
+        do {
+            let existing: [UsernameRow] = try await SupabaseManager.shared.client
+                .from("profiles")
+                .select("id")
+                .eq("username", value: normalized)
+                .execute()
+                .value
+            if existing.contains(where: { $0.id != userID }) {
+                usernameErrorMessage = "Ese nombre de usuario ya está en uso."
+                return
+            }
+            try await SupabaseManager.shared.client
+                .from("profiles")
+                .update(UsernameUpdate(username: normalized))
+                .eq("id", value: userID)
+                .execute()
+            profile?.username = normalized
+        } catch {
+            usernameErrorMessage = "No se pudo guardar el nombre de usuario."
         }
     }
 
