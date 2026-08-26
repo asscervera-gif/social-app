@@ -16,9 +16,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -62,7 +67,12 @@ fun GroupChatScreen(
     // (0069_message_shared_post.sql), comparado con Instagram/TikTok/
     // Twitter/Snapchat -- ver PostDetailScreen.kt para el hallazgo
     // completo.
-    onOpenPost: (String) -> Unit = {}
+    onOpenPost: (String) -> Unit = {},
+    // Videollamada de GRUPO real (0083_group_calls.sql), comparado con
+    // WhatsApp/Messenger/Telegram -- mismo `CallManager` global ya usado
+    // en ChatScreen.kt para el 1:1 (montado una sola vez en
+    // RootTabView.kt), este chat solo INICIA la llamada.
+    callManager: com.social.app.calls.CallManager? = null
 ) {
     val viewModel = remember(groupChatId) { GroupChatViewModel(groupChatId) }
     val messages by viewModel.messages.collectAsState()
@@ -135,6 +145,17 @@ fun GroupChatScreen(
         title = groupName,
         onBack = onBack,
         actions = {
+            // Videollamada/llamada de voz de GRUPO real
+            // (0083_group_calls.sql), comparado con WhatsApp/Messenger/
+            // Telegram -- mismos botones que ChatScreen.kt (1:1), aquí
+            // llaman a TODO el grupo de una vez en vez de a una sola
+            // persona.
+            IconButton(onClick = { callManager?.startGroupCall(groupChatId, "audio") }) {
+                Icon(Icons.Filled.Call, contentDescription = "Llamar al grupo")
+            }
+            IconButton(onClick = { callManager?.startGroupCall(groupChatId, "video") }) {
+                Icon(Icons.Filled.Videocam, contentDescription = "Videollamada de grupo")
+            }
             TextButton(onClick = { showMembers = true }) { Text("👥 ${members.size}") }
         }
     ) {

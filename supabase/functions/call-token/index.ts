@@ -11,10 +11,17 @@
 // módulo común solo para el firmado HS256 en sí no ahorraría la parte que
 // de verdad importa (la comprobación real contra la base de datos).
 //
-// Autorización real, no confiada al cliente: solo se emite un token
-// cuando la llamada YA está `accepted` de verdad en la base de datos (RLS
-// ya garantiza que solo caller_id/callee_id pudieron ponerla en ese
-// estado) y quien lo pide es de verdad uno de los dos participantes.
+// Autorización real, no confiada al cliente: para una llamada 1:1, solo se
+// emite un token cuando la llamada YA está `accepted` de verdad en la base
+// de datos (RLS ya garantiza que solo caller_id/callee_id pudieron ponerla
+// en ese estado) y quien lo pide es de verdad uno de los dos participantes.
+//
+// Llamada de GRUPO real (0083_group_calls.sql), comparado con
+// WhatsApp/Messenger/Telegram: no hay un único "destinatario" que acepte
+// primero -- la autorización se comprueba contra la fila real de
+// `call_participants` de quien pide el token (tiene que existir y no estar
+// en 'declined'/'ended', mismo criterio que `is_call_participant`, pero
+// consultado aquí con `service_role` porque esta función no pasa por RLS).
 //
 // Pendiente real de DESPLIEGUE, no de código (mismo criterio que
 // push/APNs-FCM y que live-token): LIVEKIT_API_KEY/LIVEKIT_API_SECRET/
@@ -65,23 +72,37 @@ serve(async (req) => {
 
   const { data: call, error: callError } = await admin
     .from("calls")
-    .select("id, caller_id, callee_id, room_name, status")
+    .select("id, caller_id, callee_id, group_chat_id, room_name, status")
     .eq("id", callId)
     .maybeSingle();
   if (callError || !call) {
     return new Response(JSON.stringify({ error: "Llamada no encontrada" }), { status: 404 });
   }
-  if (call.caller_id !== userId && call.callee_id !== userId) {
-    return new Response(JSON.stringify({ error: "No eres parte de esta llamada" }), { status: 403 });
-  }
-  if (call.status !== "accepted") {
-    return new Response(JSON.stringify({ error: "Esta llamada todavía no se ha aceptado" }), { status: 400 });
+
+  if (call.group_chat_id) {
+    const { data: participant } = await admin
+      .from("call_participants")
+      .select("status")
+      .eq("call_id", call.id)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!participant || participant.status === "declined" || participant.status === "ended") {
+      return new Response(JSON.stringify({ error: "No eres parte de esta llamada de grupo" }), { status: 403 });
+    }
+  } else {
+    if (call.caller_id !== userId && call.callee_id !== userId) {
+      return new Response(JSON.stringify({ error: "No eres parte de esta llamada" }), { status: 403 });
+    }
+    if (call.status !== "accepted") {
+      return new Response(JSON.stringify({ error: "Esta llamada todavía no se ha aceptado" }), { status: 400 });
+    }
   }
 
   // Simétrico a propósito, a diferencia de live-token (host publica,
-  // espectador solo se suscribe): en una llamada 1:1 real las dos partes
-  // publican y se suscriben por igual, sea de voz o de vídeo -- el propio
-  // cliente decide si activa la cámara según `calls.kind`.
+  // espectador solo se suscribe): en una llamada real (1:1 o de grupo)
+  // todas las partes publican y se suscriben por igual, sea de voz o de
+  // vídeo -- el propio cliente decide si activa la cámara según
+  // `calls.kind`.
   const token = await buildLiveKitJwt({
     apiKey: LIVEKIT_API_KEY,
     apiSecret: LIVEKIT_API_SECRET,

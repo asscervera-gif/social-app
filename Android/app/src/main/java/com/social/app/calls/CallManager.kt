@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.social.app.backend.SupabaseManager
 import com.social.app.backend.model.Call
+import com.social.app.backend.model.CallParticipant
 import io.github.jan.supabase.functions.functions
 import io.github.jan.supabase.gotrue.auth
 import io.github.jan.supabase.postgrest.from
@@ -19,6 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -50,7 +52,14 @@ class CallManager : ViewModel() {
     private val _activeCall = MutableStateFlow<Call?>(null)
     val activeCall: StateFlow<Call?> = _activeCall.asStateFlow()
 
+    // Solo relevante para llamadas de GRUPO (0083_group_calls.sql): una
+    // fila real por miembro del grupo, a diferencia de la 1:1 que solo
+    // tiene caller/callee dentro de la propia fila de `calls`.
+    private val _participants = MutableStateFlow<List<CallParticipant>>(emptyList())
+    val participants: StateFlow<List<CallParticipant>> = _participants.asStateFlow()
+
     private var channel: RealtimeChannel? = null
+    private var participantsChannel: RealtimeChannel? = null
     private var myId: String? = null
 
     fun start() {
@@ -62,7 +71,10 @@ class CallManager : ViewModel() {
     }
 
     fun stop() {
-        viewModelScope.launch { channel?.unsubscribe() }
+        viewModelScope.launch {
+            channel?.unsubscribe()
+            participantsChannel?.unsubscribe()
+        }
     }
 
     /** El usuario ya vio el estado final (aceptada y en curso en su propia
@@ -73,6 +85,11 @@ class CallManager : ViewModel() {
      * resucitar una llamada ya cerrada -- la pantalla decide cuándo. */
     fun dismiss() {
         _activeCall.value = null
+        _participants.value = emptyList()
+        viewModelScope.launch {
+            participantsChannel?.unsubscribe()
+            participantsChannel = null
+        }
     }
 
     @Serializable
@@ -103,6 +120,126 @@ class CallManager : ViewModel() {
     fun accept() = updateStatus("accepted")
     fun decline() = updateStatus("declined")
     fun cancelOutgoing() = updateStatus("ended")
+
+    @Serializable
+    private data class NewGroupCall(
+        @SerialName("group_chat_id") val groupChatId: String,
+        @SerialName("caller_id") val callerId: String,
+        val kind: String
+    )
+
+    /** Videollamada de GRUPO real (0083_group_calls.sql), comparado con
+     * WhatsApp/Messenger/Telegram -- a diferencia de startCall() (1:1), no
+     * hay un único destinatario que la acepte primero: el propio emisor
+     * queda ya 'accepted' de inmediato (populate_call_participants lo
+     * garantiza también del lado del servidor). */
+    fun startGroupCall(groupChatId: String, kind: String) {
+        viewModelScope.launch {
+            val userId = myId ?: return@launch
+            if (_activeCall.value != null) return@launch
+            try {
+                val call = SupabaseManager.client.from("calls")
+                    .insert(NewGroupCall(groupChatId, userId, kind)) { select() }
+                    .decodeSingle<Call>()
+                // El RETURNING de este INSERT todavía refleja 'ringing'
+                // (el valor por defecto de la columna, antes de que el
+                // trigger AFTER INSERT la corrija con un UPDATE aparte --
+                // RETURNING nunca ve cambios de un trigger AFTER sobre
+                // otra sentencia, mismo hallazgo real documentado en
+                // test_rls.mjs) -- se corrige aquí mismo en vez de hacer
+                // una segunda ida y vuelta de red solo para confirmar algo
+                // que el propio diseño del servidor ya garantiza.
+                val liveCall = call.copy(status = "accepted")
+                _activeCall.value = liveCall
+                loadParticipants(liveCall.id)
+                subscribeToParticipants(liveCall.id)
+            } catch (e: Exception) {
+                // Falla en silencio, mismo criterio que startCall().
+            }
+        }
+    }
+
+    fun acceptGroupCall() {
+        val call = _activeCall.value ?: return
+        val userId = myId ?: return
+        _participants.update { list -> list.map { if (it.userId == userId) it.copy(status = "accepted") else it } }
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("call_participants").update({
+                    set("status", "accepted")
+                    set("joined_at", java.time.Instant.now().toString())
+                }) { filter { eq("call_id", call.id); eq("user_id", userId) } }
+            } catch (e: Exception) {
+                // No crítico.
+            }
+        }
+    }
+
+    fun declineGroupCall() {
+        val call = _activeCall.value ?: return
+        val userId = myId ?: return
+        _participants.update { list -> list.map { if (it.userId == userId) it.copy(status = "declined") else it } }
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("call_participants")
+                    .update({ set("status", "declined") }) { filter { eq("call_id", call.id); eq("user_id", userId) } }
+            } catch (e: Exception) {
+                // No crítico.
+            }
+        }
+    }
+
+    /** Colgar MI PROPIA participación real en una llamada de grupo --
+     * a diferencia de end() (1:1), esto nunca termina la llamada para el
+     * resto: cada participante sale por su cuenta, mismo criterio que
+     * WhatsApp/Messenger. */
+    fun leaveGroupCall() {
+        val call = _activeCall.value ?: return
+        val userId = myId ?: return
+        _participants.update { list -> list.map { if (it.userId == userId) it.copy(status = "ended") else it } }
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("call_participants").update({
+                    set("status", "ended")
+                    set("left_at", java.time.Instant.now().toString())
+                }) { filter { eq("call_id", call.id); eq("user_id", userId) } }
+            } catch (e: Exception) {
+                // No crítico.
+            }
+        }
+    }
+
+    private suspend fun loadParticipants(callId: String) {
+        try {
+            val rows = SupabaseManager.client.from("call_participants")
+                .select { filter { eq("call_id", callId) } }
+                .decodeList<CallParticipant>()
+            _participants.value = rows
+        } catch (e: Exception) {
+            // Se queda vacía -- IncomingGroupCallScreen/LiveGroupCallScreen
+            // simplemente no tendrán roster hasta que Realtime traiga algo.
+        }
+    }
+
+    /** Canal real acotado a UNA llamada de grupo concreta (no global, no
+     * por-usuario): mismo criterio de "nunca un canal global" que el resto
+     * de este archivo, pero aquí hace falta ver el estado de TODOS los
+     * participantes reales de esta llamada (quién se unió/rechazó/salió),
+     * no solo el propio -- se crea al entrar en la llamada y se destruye
+     * al salir (dismiss()/el siguiente startGroupCall()). */
+    private fun subscribeToParticipants(callId: String) {
+        viewModelScope.launch { participantsChannel?.unsubscribe() }
+        val ch = SupabaseManager.client.realtime.channel("call-participants-$callId")
+        participantsChannel = ch
+        ch.postgresChangeFlow<PostgresAction.Update>(schema = "public") {
+            table = "call_participants"
+            filter("call_id", FilterOperator.EQ, callId)
+        }.onEach { update ->
+            val updated = Json.decodeFromJsonElement(CallParticipant.serializer(), update.record)
+            _participants.update { list -> list.map { if (it.userId == updated.userId) updated else it } }
+        }.launchIn(viewModelScope)
+        viewModelScope.launch { ch.subscribe() }
+    }
 
     fun end() {
         val call = _activeCall.value ?: return
@@ -184,6 +321,33 @@ class CallManager : ViewModel() {
         }.onEach { update ->
             val call = Json.decodeFromJsonElement(Call.serializer(), update.record)
             if (_activeCall.value?.id == call.id) _activeCall.value = call
+        }.launchIn(viewModelScope)
+
+        // Llamada de GRUPO entrante real (0083_group_calls.sql): mi propia
+        // fila real en call_participants se inserta en el momento de
+        // crear la llamada, ya 'accepted' si soy quien llama o 'ringing'
+        // si soy cualquier otro miembro real del grupo -- mismo canal
+        // por-usuario que el resto de este archivo, nunca global.
+        ch.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
+            table = "call_participants"
+            filter("user_id", FilterOperator.EQ, userId)
+        }.onEach { insert ->
+            val participant = Json.decodeFromJsonElement(CallParticipant.serializer(), insert.record)
+            if (_activeCall.value?.id == participant.callId) return@onEach
+            if (_activeCall.value != null) return@onEach
+            viewModelScope.launch {
+                try {
+                    val call = SupabaseManager.client.from("calls")
+                        .select { filter { eq("id", participant.callId) } }
+                        .decodeSingle<Call>()
+                    _activeCall.value = call
+                    loadParticipants(call.id)
+                    subscribeToParticipants(call.id)
+                } catch (e: Exception) {
+                    // No crítico: la llamada real sigue viva en el
+                    // servidor aunque este dispositivo no la muestre.
+                }
+            }
         }.launchIn(viewModelScope)
 
         viewModelScope.launch { ch.subscribe() }

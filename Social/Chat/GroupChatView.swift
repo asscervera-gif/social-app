@@ -20,6 +20,12 @@ struct GroupChatView: View {
     let groupName: String
     @State private var draft = ""
     @State private var showMembers = false
+    // Videollamada/llamada de voz de GRUPO real (0083_group_calls.sql),
+    // comparado con WhatsApp/Messenger/Telegram -- mismo `CallManager`
+    // compartido vía entorno que ya usa ChatView.swift para el 1:1
+    // (RootTabView.swift lo publica con `.environmentObject`), aquí
+    // llama a TODO el grupo de una vez en vez de a una sola persona.
+    @EnvironmentObject private var callManager: CallManager
     @State private var myID: UUID?
     @Environment(\.dismiss) private var dismiss
     // Nota de voz real (0062_group_message_audio.sql), mismo patrón
@@ -165,6 +171,20 @@ struct GroupChatView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("👥 \(viewModel.members.count)") { showMembers = true }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    callManager.startGroupCall(groupChatID: viewModel.groupChatID, kind: "video")
+                } label: {
+                    Image(systemName: "video.fill")
+                }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    callManager.startGroupCall(groupChatID: viewModel.groupChatID, kind: "audio")
+                } label: {
+                    Image(systemName: "phone.fill")
+                }
             }
         }
         .task {

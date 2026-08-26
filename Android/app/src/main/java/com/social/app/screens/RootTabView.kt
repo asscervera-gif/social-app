@@ -371,7 +371,8 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                         groupChatId = groupId,
                         groupName = groupName,
                         onBack = { navController.popBackStack() },
-                        onOpenPost = { postId -> navController.navigate("post/$postId") }
+                        onOpenPost = { postId -> navController.navigate("post/$postId") },
+                        callManager = callManager
                     )
                 }
                 // Hallazgo real, comparado con Instagram/Twitter/TikTok:

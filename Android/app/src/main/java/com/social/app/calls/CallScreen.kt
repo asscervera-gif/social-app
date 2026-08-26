@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -45,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.social.app.backend.SupabaseManager
 import com.social.app.backend.model.Call
+import com.social.app.backend.model.CallParticipant
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Columns
 import io.livekit.android.LiveKit
@@ -70,17 +73,38 @@ import kotlinx.serialization.Serializable
 @Composable
 fun CallOverlay(callManager: CallManager, myId: String) {
     val call by callManager.activeCall.collectAsState()
+    val participants by callManager.participants.collectAsState()
     call?.let { c ->
         Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-            when {
-                c.status == "ringing" && c.calleeId == myId ->
-                    IncomingCallScreen(call = c, onAccept = callManager::accept, onDecline = callManager::decline)
-                c.status == "ringing" && c.callerId == myId ->
-                    OutgoingCallScreen(call = c, onCancel = callManager::cancelOutgoing)
-                c.status == "accepted" ->
-                    LiveCallScreen(call = c, myId = myId, callManager = callManager, onEnd = callManager::end)
-                else ->
-                    TerminalCallScreen(call = c, onDismiss = callManager::dismiss)
+            if (c.groupChatId != null) {
+                val myStatus = participants.firstOrNull { it.userId == myId }?.status
+                when (myStatus) {
+                    "ringing" ->
+                        IncomingGroupCallScreen(call = c, onAccept = callManager::acceptGroupCall, onDecline = callManager::declineGroupCall)
+                    "accepted" ->
+                        LiveGroupCallScreen(call = c, myId = myId, participants = participants, callManager = callManager, onEnd = callManager::leaveGroupCall)
+                    else ->
+                        // "declined"/"ended", o todavía null mientras se
+                        // carga la lista real de participantes tras crear
+                        // la llamada -- un spinner breve es preferible a
+                        // parpadear a un estado terminal falso.
+                        if (myStatus == null) {
+                            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = Color.White)
+                        } else {
+                            TerminalGroupCallScreen(myStatus = myStatus, onDismiss = callManager::dismiss)
+                        }
+                }
+            } else {
+                when {
+                    c.status == "ringing" && c.calleeId == myId ->
+                        IncomingCallScreen(call = c, onAccept = callManager::accept, onDecline = callManager::decline)
+                    c.status == "ringing" && c.callerId == myId ->
+                        OutgoingCallScreen(call = c, onCancel = callManager::cancelOutgoing)
+                    c.status == "accepted" ->
+                        LiveCallScreen(call = c, myId = myId, callManager = callManager, onEnd = callManager::end)
+                    else ->
+                        TerminalCallScreen(call = c, onDismiss = callManager::dismiss)
+                }
             }
         }
     }
@@ -98,6 +122,25 @@ private fun rememberProfileName(profileId: String): String {
                 .select(columns = Columns.raw("display_name")) { filter { eq("id", profileId) } }
                 .decodeSingleOrNull<NameRow>()
             name = row?.displayName ?: "Alguien"
+        } catch (e: Exception) {
+            // Se queda con "…" -- no crítico para poder aceptar/colgar.
+        }
+    }
+    return name
+}
+
+@Serializable
+private data class GroupNameRow(val name: String)
+
+@Composable
+private fun rememberGroupName(groupChatId: String): String {
+    var name by remember(groupChatId) { mutableStateOf("…") }
+    LaunchedEffect(groupChatId) {
+        try {
+            val row = SupabaseManager.client.from("group_chats")
+                .select(columns = Columns.raw("name")) { filter { eq("id", groupChatId) } }
+                .decodeSingleOrNull<GroupNameRow>()
+            name = row?.name ?: "Grupo"
         } catch (e: Exception) {
             // Se queda con "…" -- no crítico para poder aceptar/colgar.
         }
@@ -131,9 +174,46 @@ private fun IncomingCallScreen(call: Call, onAccept: () -> Unit, onDecline: () -
     }
 }
 
+/** Llamada de GRUPO entrante real (0083_group_calls.sql), comparado con
+ * WhatsApp/Messenger/Telegram -- a diferencia de la 1:1, no hay un único
+ * "destinatario" (el propio emisor ya entra 'accepted' de inmediato,
+ * nunca ve esta pantalla): esto lo ve cualquier OTRO miembro real del
+ * grupo mientras su propia fila de call_participants siga en 'ringing'. */
+@Composable
+private fun IncomingGroupCallScreen(call: Call, onAccept: () -> Unit, onDecline: () -> Unit) {
+    val callerName = rememberProfileName(call.callerId)
+    val groupName = rememberGroupName(call.groupChatId ?: "")
+    Column(
+        modifier = Modifier.fillMaxSize().padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(top = 64.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                if (call.kind == "video") "Videollamada de grupo entrante" else "Llamada de grupo entrante",
+                color = Color.White.copy(alpha = 0.7f),
+                style = MaterialTheme.typography.labelLarge
+            )
+            Text(groupName, color = Color.White, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 8.dp))
+            Text("$callerName está llamando", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(48.dp), modifier = Modifier.padding(bottom = 48.dp)) {
+            CallActionButton(icon = Icons.Filled.CallEnd, background = Color(0xFFE53935), onClick = onDecline)
+            CallActionButton(icon = Icons.Filled.Call, background = Color(0xFF43A047), onClick = onAccept)
+        }
+    }
+}
+
 @Composable
 private fun OutgoingCallScreen(call: Call, onCancel: () -> Unit) {
-    val name = rememberProfileName(call.calleeId)
+    // calleeId es nullable en el modelo desde 0083_group_calls.sql (una
+    // llamada de grupo no tiene destinatario único), pero esta pantalla
+    // solo se muestra para 1:1 -- nunca debería llegar null aquí de
+    // verdad.
+    val name = rememberProfileName(call.calleeId ?: "")
     Column(
         modifier = Modifier.fillMaxSize().padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -169,6 +249,28 @@ private fun TerminalCallScreen(call: Call, onDismiss: () -> Unit) {
     }
 }
 
+/** Estado final real de MI PROPIA participación en una llamada de grupo
+ * (0083_group_calls.sql) -- a diferencia de TerminalCallScreen, el mensaje
+ * depende de mi propia fila de call_participants, no de `calls.status`
+ * global (que sigue 'accepted' para el resto aunque yo ya haya colgado). */
+@Composable
+private fun TerminalGroupCallScreen(myStatus: String, onDismiss: () -> Unit) {
+    val message = when (myStatus) {
+        "declined" -> "Rechazaste la llamada"
+        else -> "Saliste de la llamada"
+    }
+    Column(
+        modifier = Modifier.fillMaxSize().padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(message, color = Color.White, style = MaterialTheme.typography.headlineSmall)
+        OutlinedButton(onClick = onDismiss, modifier = Modifier.padding(top = 24.dp)) {
+            Text("Cerrar")
+        }
+    }
+}
+
 /**
  * Sala de llamada real -- mismo motor y misma API real que
  * LiveStreamRoomScreen.kt (verificada contra el código fuente de
@@ -186,7 +288,10 @@ private fun LiveCallScreen(call: Call, myId: String, callManager: CallManager, o
     val context = LocalContext.current
     val room = remember { LiveKit.create(context) }
     val scope = rememberCoroutineScope()
-    val otherId = if (call.callerId == myId) call.calleeId else call.callerId
+    // calleeId es nullable en el modelo desde 0083_group_calls.sql, pero
+    // LiveCallScreen es exclusiva de 1:1 (las de grupo usan
+    // LiveGroupCallScreen) -- nunca debería llegar null aquí de verdad.
+    val otherId = if (call.callerId == myId) (call.calleeId ?: "") else call.callerId
     val name = rememberProfileName(otherId)
     var connecting by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -318,6 +423,194 @@ private fun LiveCallScreen(call: Call, myId: String, callManager: CallManager, o
             }
             CallActionButton(icon = Icons.Filled.CallEnd, background = Color(0xFFE53935), onClick = onEnd)
         }
+    }
+}
+
+/**
+ * Sala de llamada de GRUPO real (0083_group_calls.sql), comparado con
+ * WhatsApp/Messenger/Telegram -- mismo motor LiveKit exacto que
+ * LiveCallScreen (una sala admite de sobra más de dos participantes sin
+ * cambio de infraestructura), pero generalizada a N vídeos en vez de uno
+ * solo. Alcance deliberadamente simple para este primer corte: una lista
+ * vertical de participantes en vez de una cuadrícula real que calcule
+ * columnas -- funciona igual de bien con 3 que con 12 personas reales.
+ */
+@Composable
+private fun LiveGroupCallScreen(call: Call, myId: String, participants: List<CallParticipant>, callManager: CallManager, onEnd: () -> Unit) {
+    val context = LocalContext.current
+    val room = remember { LiveKit.create(context) }
+    val scope = rememberCoroutineScope()
+    val groupName = rememberGroupName(call.groupChatId ?: "")
+    var connecting by remember { mutableStateOf(true) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var localVideoTrack by remember { mutableStateOf<VideoTrack?>(null) }
+    // Identidad de LiveKit == user_id real (mismo `identity` que firma
+    // call-token/index.ts), no un Sid de sala -- permite emparejar cada
+    // pista remota con su fila real de call_participants.
+    var remoteVideoTracks by remember { mutableStateOf<Map<String, VideoTrack>>(emptyMap()) }
+    var micEnabled by remember { mutableStateOf(true) }
+    var cameraEnabled by remember { mutableStateOf(call.kind == "video") }
+
+    val requestPermissions = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { /* si se deniega, connect() seguirá adelante sin cámara/micro real */ }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            room.disconnect()
+            room.release()
+        }
+    }
+
+    LaunchedEffect(call.id) {
+        launch {
+            room.events.collect { event ->
+                when (event) {
+                    is RoomEvent.TrackSubscribed -> {
+                        val track = event.track
+                        val identity = event.participant.identity?.value
+                        if (track is VideoTrack && identity != null) {
+                            remoteVideoTracks = remoteVideoTracks + (identity to track)
+                        }
+                    }
+                    is RoomEvent.TrackUnsubscribed -> {
+                        val identity = event.participant.identity?.value
+                        if (identity != null) remoteVideoTracks = remoteVideoTracks - identity
+                    }
+                    else -> {}
+                }
+            }
+        }
+
+        val permissions = if (call.kind == "video") {
+            arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+        } else {
+            arrayOf(Manifest.permission.RECORD_AUDIO)
+        }
+        requestPermissions.launch(permissions)
+
+        val tokenInfo = callManager.requestToken(call.id)
+        if (tokenInfo == null) {
+            errorMessage = "No se pudo conseguir el token real de la llamada -- revisa que LIVEKIT_API_KEY/SECRET/WS_URL estén configurados de verdad (ver call-token/index.ts)."
+            connecting = false
+            return@LaunchedEffect
+        }
+        try {
+            room.connect(tokenInfo.wsUrl, tokenInfo.token)
+            room.localParticipant.setMicrophoneEnabled(true)
+            if (call.kind == "video") {
+                room.localParticipant.setCameraEnabled(true)
+                localVideoTrack = room.localParticipant.videoTrackPublications
+                    .firstOrNull { (pub, _) -> pub.source == Track.Source.CAMERA }
+                    ?.second as? LocalVideoTrack
+            }
+            connecting = false
+        } catch (e: Exception) {
+            errorMessage = "No se pudo conectar al servidor real de llamadas: ${e.message}"
+            connecting = false
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Text(
+                groupName,
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(16.dp)
+            )
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                items(participants.filter { it.userId != myId }) { participant ->
+                    ParticipantTile(
+                        room = room,
+                        participant = participant,
+                        videoTrack = remoteVideoTracks[participant.userId],
+                        isVideoCall = call.kind == "video"
+                    )
+                }
+            }
+        }
+
+        // Vista propia en miniatura, mismo sitio que LiveCallScreen (1:1).
+        if (call.kind == "video" && cameraEnabled && localVideoTrack != null) {
+            LiveCallVideoView(
+                room = room,
+                videoTrack = localVideoTrack!!,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp)
+                    .size(width = 100.dp, height = 140.dp)
+                    .clip(MaterialTheme.shapes.medium)
+            )
+        }
+
+        if (connecting) {
+            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = Color.White)
+        }
+        errorMessage?.let {
+            Text(
+                it,
+                color = Color.White,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.align(Alignment.Center).padding(24.dp)
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).padding(32.dp),
+            horizontalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            CallActionButton(
+                icon = if (micEnabled) Icons.Filled.Mic else Icons.Filled.MicOff,
+                background = Color.White.copy(alpha = 0.2f),
+                onClick = {
+                    micEnabled = !micEnabled
+                    scope.launch { room.localParticipant.setMicrophoneEnabled(micEnabled) }
+                }
+            )
+            if (call.kind == "video") {
+                CallActionButton(
+                    icon = if (cameraEnabled) Icons.Filled.Videocam else Icons.Filled.VideocamOff,
+                    background = Color.White.copy(alpha = 0.2f),
+                    onClick = {
+                        cameraEnabled = !cameraEnabled
+                        scope.launch { room.localParticipant.setCameraEnabled(cameraEnabled) }
+                    }
+                )
+            }
+            CallActionButton(icon = Icons.Filled.CallEnd, background = Color(0xFFE53935), onClick = onEnd)
+        }
+    }
+}
+
+@Composable
+private fun ParticipantTile(room: Room, participant: CallParticipant, videoTrack: VideoTrack?, isVideoCall: Boolean) {
+    val name = rememberProfileName(participant.userId)
+    Box(modifier = Modifier.fillMaxWidth().size(160.dp).clip(MaterialTheme.shapes.medium).background(Color(0xFF1C1C1E))) {
+        if (isVideoCall && videoTrack != null) {
+            LiveCallVideoView(room = room, videoTrack = videoTrack, modifier = Modifier.fillMaxSize())
+        } else {
+            Column(modifier = Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    modifier = Modifier.size(64.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) { Text(name.take(1).uppercase(), style = MaterialTheme.typography.headlineSmall) }
+            }
+        }
+        Text(
+            when (participant.status) {
+                "ringing" -> "$name · llamando…"
+                "declined" -> "$name · rechazó"
+                "ended" -> "$name · salió"
+                else -> name
+            },
+            color = Color.White,
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.align(Alignment.BottomStart).padding(8.dp)
+        )
     }
 }
 

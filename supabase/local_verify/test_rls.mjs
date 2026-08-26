@@ -1629,6 +1629,75 @@ async function main() {
   const pinnedMembership = (await db.query(`select pinned from group_chat_members where group_chat_id = $1 and user_id = $2`, [pinGroupId, u1])).rows[0];
   check('group_chat_members.pinned: la fila real queda fijada', pinnedMembership.pinned === true);
 
+  // --- calls.group_chat_id + call_participants (0083_group_calls.sql):
+  // videollamada de GRUPO real, comparado con WhatsApp/Messenger/Telegram
+  // -- hueco aplazado explícitamente en 0079_calls.sql ("llamadas de
+  // GRUPO quedan fuera de esta ronda"). Grupo propio y nuevo (no el
+  // `group` usado desde el bloque de chats de grupo de más arriba, que
+  // tiene un historial real de altas/bajas/expulsiones no trivial de
+  // reconstruir aquí). ---
+  const callGroupId = crypto.randomUUID();
+  await asUser(u1);
+  await db.query(`insert into group_chats (id, name, created_by) values ($1, $2, $3)`, [callGroupId, 'Grupo para llamar', u1]);
+  await db.query(`insert into group_chat_members (group_chat_id, user_id) values ($1, $2)`, [callGroupId, u2]);
+
+  const groupCall = (await db.query(
+    `insert into calls (group_chat_id, caller_id, kind) values ($1, $2, 'video') returning id, status, room_name`,
+    [callGroupId, u1]
+  )).rows[0];
+  check('calls_insert (grupo): room_name real autogenerado, no vacío', typeof groupCall.room_name === 'string' && groupCall.room_name.length > 0);
+  // El RETURNING del propio INSERT reflejaba 'ringing' (el valor por
+  // defecto de la columna en el momento de insertar) -- Postgres NO
+  // recoge en RETURNING los cambios que un trigger AFTER INSERT hace
+  // luego con una sentencia UPDATE aparte sobre la misma fila, solo los
+  // que un trigger BEFORE hace sobre NEW dentro de la misma sentencia.
+  // Hallazgo real de Postgres, no un fallo de populate_call_participants
+  // -- se confirma con un SELECT aparte, que sí ve el estado ya escrito.
+  const groupCallPersisted = (await db.query(`select status from calls where id = $1`, [groupCall.id])).rows[0];
+  check('calls (grupo): arranca ya \'accepted\' a nivel global -- no hay un único destinatario que la acepte primero', groupCallPersisted.status === 'accepted');
+
+  const callerParticipant = (await db.query(`select status, joined_at from call_participants where call_id = $1 and user_id = $2`, [groupCall.id, u1])).rows[0];
+  check('populate_call_participants: el propio emisor real entra ya \'accepted\' con joined_at real', callerParticipant.status === 'accepted' && callerParticipant.joined_at !== null);
+  const calleeParticipant = (await db.query(`select status, joined_at from call_participants where call_id = $1 and user_id = $2`, [groupCall.id, u2])).rows[0];
+  check('populate_call_participants: el resto real de miembros del grupo entra \'ringing\' sin joined_at', calleeParticipant.status === 'ringing' && calleeParticipant.joined_at === null);
+
+  await asUser(u4);
+  await expectFail('calls_insert (grupo): u4 real, que NO es miembro del grupo, NO puede crear una llamada de grupo ajena', async () => {
+    await db.query(`insert into calls (group_chat_id, caller_id, kind) values ($1, $2, 'audio')`, [callGroupId, u4]);
+  });
+  const groupCallAsStranger = (await db.query(`select id from calls where id = $1`, [groupCall.id])).rows;
+  check('calls_select (grupo): un tercero real (u4), que no es participante, NO ve la llamada de grupo ajena', groupCallAsStranger.length === 0);
+  const participantsAsStranger = (await db.query(`select user_id from call_participants where call_id = $1`, [groupCall.id])).rows;
+  check('call_participants_select: un tercero real (u4) NO ve la lista de participantes de una llamada ajena', participantsAsStranger.length === 0);
+
+  await asUser(u2);
+  const groupCallAsParticipant = (await db.query(`select id from calls where id = $1`, [groupCall.id])).rows;
+  check('calls_select (grupo): un participante real (u2) SÍ ve la llamada de grupo', groupCallAsParticipant.length === 1);
+  const participantsAsParticipant = (await db.query(`select user_id, status from call_participants where call_id = $1`, [groupCall.id])).rows;
+  check('call_participants_select: un participante real (u2) SÍ ve a TODOS los participantes, no solo su propia fila', participantsAsParticipant.length === 2);
+
+  await expectOk('call_participants_update: u2 SÍ puede aceptar su propia participación real', async () => {
+    await db.query(`update call_participants set status = 'accepted', joined_at = now() where call_id = $1 and user_id = $2`, [groupCall.id, u2]);
+  });
+  const u2Accepted = (await db.query(`select status from call_participants where call_id = $1 and user_id = $2`, [groupCall.id, u2])).rows[0];
+  check('call_participants_update: la fila real de u2 queda \'accepted\'', u2Accepted.status === 'accepted');
+
+  // RLS `using` filtra la fila ajena antes de tocarla -- 0 filas
+  // afectadas, no un error (mismo criterio ya documentado varias veces en
+  // este archivo, p. ej. group_chats_update_own para quien no es
+  // creador).
+  await db.query(`update call_participants set status = 'declined' where call_id = $1 and user_id = $2`, [groupCall.id, u1]);
+  const u1StillAccepted = (await db.query(`select status from call_participants where call_id = $1 and user_id = $2`, [groupCall.id, u1])).rows[0];
+  check('call_participants_update: u2 NO puede tocar la participación ajena de u1 (RLS real: 0 filas afectadas, no un error)', u1StillAccepted.status === 'accepted');
+
+  await asUser(u1);
+  await db.query(`update calls set caller_id = $2, group_chat_id = $3, chat_id = $2, room_name = 'hackeado-grupo' where id = $1`, [groupCall.id, u4, pinGroupId]);
+  const groupCallAfterIdentityAttack = (await db.query(`select caller_id, group_chat_id, chat_id, room_name from calls where id = $1`, [groupCall.id])).rows[0];
+  check(
+    'protect_call_identity (grupo): un UPDATE real NO puede redirigir caller_id/group_chat_id/chat_id/room_name de una llamada de grupo',
+    groupCallAfterIdentityAttack.caller_id === u1 && groupCallAfterIdentityAttack.group_chat_id === callGroupId && groupCallAfterIdentityAttack.chat_id === null && groupCallAfterIdentityAttack.room_name === groupCall.room_name
+  );
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

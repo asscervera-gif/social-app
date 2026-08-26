@@ -250,11 +250,16 @@ struct DuelQuestion: Codable {
 /// Videollamada/llamada de voz 1:1 real (0079_calls.sql), comparado con
 /// WhatsApp/Messenger/Instagram -- ver CallManager.swift para el
 /// hallazgo completo.
+// chatID/calleeID opcionales y groupChatID añadido (0083_group_calls.sql):
+// una llamada es 1:1 XOR de grupo, nunca las dos cosas -- exactamente uno
+// de los dos destinos está presente de verdad (`calls_target_check` lo
+// garantiza también del lado del servidor).
 struct Call: Codable, Identifiable {
     let id: UUID
-    let chatID: UUID
+    let chatID: UUID?
     let callerID: UUID
-    let calleeID: UUID
+    let calleeID: UUID?
+    let groupChatID: UUID?
     let kind: String
     let roomName: String
     var status: String
@@ -266,10 +271,31 @@ struct Call: Codable, Identifiable {
         case chatID = "chat_id"
         case callerID = "caller_id"
         case calleeID = "callee_id"
+        case groupChatID = "group_chat_id"
         case kind
         case roomName = "room_name"
         case status
         case createdAt = "created_at"
         case endedAt = "ended_at"
+    }
+}
+
+// Una fila por miembro real de una llamada de GRUPO
+// (0083_group_calls.sql) -- mismo motivo que GroupChatMember frente a
+// Chat.userAID/userBID: no hay un único "destinatario" al que apuntar.
+struct CallParticipant: Codable, Identifiable {
+    var id: String { "\(callID)-\(userID)" }
+    let callID: UUID
+    let userID: UUID
+    var status: String
+    var joinedAt: String?
+    var leftAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case callID = "call_id"
+        case userID = "user_id"
+        case status
+        case joinedAt = "joined_at"
+        case leftAt = "left_at"
     }
 }

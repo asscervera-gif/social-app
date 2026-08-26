@@ -163,21 +163,40 @@ data class DuelQuestion(
 )
 
 /**
- * Videollamada/llamada de voz 1:1 real (0079_calls.sql), comparado con
+ * Videollamada/llamada de voz real (0079_calls.sql), comparado con
  * WhatsApp/Messenger/Instagram -- ver CallManager.kt para el hallazgo
- * completo.
+ * completo. `chatId`/`calleeId` nullable y `groupChatId` añadido
+ * (0083_group_calls.sql): una llamada es 1:1 XOR de grupo, nunca las dos
+ * cosas -- exactamente uno de los dos destinos está presente de verdad
+ * (`calls_target_check` lo garantiza también del lado del servidor).
  */
 @Serializable
 data class Call(
     val id: String,
-    @SerialName("chat_id") val chatId: String,
+    @SerialName("chat_id") val chatId: String? = null,
     @SerialName("caller_id") val callerId: String,
-    @SerialName("callee_id") val calleeId: String,
+    @SerialName("callee_id") val calleeId: String? = null,
+    @SerialName("group_chat_id") val groupChatId: String? = null,
     val kind: String,
     @SerialName("room_name") val roomName: String,
     val status: String,
     @SerialName("created_at") val createdAt: String = "",
     @SerialName("ended_at") val endedAt: String? = null
+)
+
+/**
+ * Una fila por miembro real de una llamada de GRUPO (0083_group_calls.sql)
+ * -- mismo motivo que `group_chat_members` frente a
+ * `chats.user_a_id/user_b_id`: no hay un único "destinatario" al que
+ * apuntar.
+ */
+@Serializable
+data class CallParticipant(
+    @SerialName("call_id") val callId: String,
+    @SerialName("user_id") val userId: String,
+    val status: String,
+    @SerialName("joined_at") val joinedAt: String? = null,
+    @SerialName("left_at") val leftAt: String? = null
 )
 
 @Serializable
