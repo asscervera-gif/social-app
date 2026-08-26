@@ -58,10 +58,27 @@ struct AppealEntry: Decodable, Identifiable {
     var profileName: String?
 }
 
+// Verificación real (insignia azul, 0080_verification_requests.sql),
+// comparado con Instagram/Twitter/TikTok -- las tres dejan al usuario
+// SOLICITAR la verificación; un equipo revisa y aprueba o rechaza.
+// `is_verified` ya se pintaba de verdad en varias pantallas, pero no
+// existía ningún camino real para llegar a `true` salvo escribirlo a
+// mano en la base de datos. Mismo patrón exacto que AppealEntry: cola
+// aparte porque es un concepto distinto.
+struct VerificationRequestEntry: Decodable, Identifiable {
+    let id: UUID
+    let profile_id: UUID
+    let message: String
+    let status: String
+    let created_at: String
+    var profileName: String?
+}
+
 @MainActor
 final class ModerationViewModel: ObservableObject {
     @Published var reports: [ReportEntry] = []
     @Published var appeals: [AppealEntry] = []
+    @Published var verificationRequests: [VerificationRequestEntry] = []
     @Published var errorMessage: String?
 
     private func name(for userID: UUID) async -> String? {
@@ -163,6 +180,60 @@ final class ModerationViewModel: ObservableObject {
             errorMessage = "No se pudieron cargar las denuncias."
         }
         await loadAppeals()
+        await loadVerificationRequests()
+    }
+
+    private func loadVerificationRequests() async {
+        do {
+            // verification_requests_select_admin (0080) devuelve cero
+            // filas si quien llama no es admin real -- mismo criterio
+            // que reports/ban_appeals.
+            let rows: [VerificationRequestEntry] = try await SupabaseManager.shared.client
+                .from("verification_requests")
+                .select()
+                .eq("status", value: "open")
+                .order("created_at", ascending: false)
+                .limit(100)
+                .execute()
+                .value
+            var resolved: [VerificationRequestEntry] = []
+            for var row in rows {
+                row.profileName = await name(for: row.profile_id)
+                resolved.append(row)
+            }
+            verificationRequests = resolved
+        } catch {
+            errorMessage = "No se pudieron cargar las solicitudes de verificación."
+        }
+    }
+
+    private struct VerifiedParams: Encodable {
+        let p_target_id: UUID
+        let p_verified: Bool
+    }
+
+    /// La autorización real vive en `admin_set_verified()` (comprueba
+    /// `is_admin` del llamante server-side antes de escribir nada) --
+    /// mismo criterio que banReportedUser()/acceptAppeal() con
+    /// `admin_ban_user()`.
+    func resolveVerificationRequest(_ requestID: UUID, profileID: UUID, approve: Bool) async {
+        verificationRequests.removeAll { $0.id == requestID }
+        do {
+            if approve {
+                try await SupabaseManager.shared.client
+                    .rpc("admin_set_verified", params: VerifiedParams(p_target_id: profileID, p_verified: true))
+                    .execute()
+                AnalyticsManager.track("verification_approved")
+            }
+            try await SupabaseManager.shared.client
+                .from("verification_requests")
+                .update(["status": approve ? "approved" : "rejected"])
+                .eq("id", value: requestID)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo actualizar la solicitud de verificación."
+            await loadVerificationRequests()
+        }
     }
 
     func setStatus(_ reportID: UUID, status: String) async {
@@ -290,6 +361,28 @@ struct ModerationView: View {
                                 }
                                 Button("Descartar") {
                                     Task { await viewModel.dismissAppeal(appeal.id) }
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                }
+            }
+            // Verificación real (insignia azul,
+            // 0080_verification_requests.sql), comparado con
+            // Instagram/Twitter/TikTok.
+            if !viewModel.verificationRequests.isEmpty {
+                Section("Solicitudes de verificación") {
+                    ForEach(viewModel.verificationRequests) { request in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(request.profileName ?? "Perfil").font(.caption).foregroundStyle(.secondary)
+                            Text(request.message).font(.subheadline)
+                            HStack {
+                                Button("Verificar") {
+                                    Task { await viewModel.resolveVerificationRequest(request.id, profileID: request.profile_id, approve: true) }
+                                }
+                                Button("Rechazar") {
+                                    Task { await viewModel.resolveVerificationRequest(request.id, profileID: request.profile_id, approve: false) }
                                 }
                             }
                             .buttonStyle(.bordered)

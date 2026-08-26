@@ -44,6 +44,16 @@ data class AppealEntry(
 )
 
 @Serializable
+data class VerificationRequestEntry(
+    val id: String,
+    @SerialName("profile_id") val profileId: String,
+    val message: String,
+    val status: String,
+    @SerialName("created_at") val createdAt: String,
+    val profileName: String? = null
+)
+
+@Serializable
 data class ReportEntry(
     val id: String,
     @SerialName("reporter_id") val reporterId: String,
@@ -94,6 +104,14 @@ class ModerationViewModel : ViewModel() {
     // una denuncia no).
     private val _appeals = MutableStateFlow<List<AppealEntry>>(emptyList())
     val appeals: StateFlow<List<AppealEntry>> = _appeals.asStateFlow()
+
+    // Verificación real (insignia azul, 0080_verification_requests.sql),
+    // comparado con Instagram/Twitter/TikTok -- mismo patrón exacto que
+    // ban_appeals: cola aparte porque es un concepto distinto (una
+    // solicitud de verificación siempre implica conceder o no la
+    // insignia, una denuncia no).
+    private val _verificationRequests = MutableStateFlow<List<VerificationRequestEntry>>(emptyList())
+    val verificationRequests: StateFlow<List<VerificationRequestEntry>> = _verificationRequests.asStateFlow()
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
@@ -200,8 +218,57 @@ class ModerationViewModel : ViewModel() {
                 _errorMessage.value = "No se pudieron cargar las denuncias."
             }
             loadAppeals()
+            loadVerificationRequests()
         }
     }
+
+    private suspend fun loadVerificationRequests() {
+        try {
+            // verification_requests_select_admin (0080) devuelve cero
+            // filas si quien llama no es admin real -- mismo criterio
+            // que reports/ban_appeals.
+            val rows = SupabaseManager.client.from("verification_requests")
+                .select {
+                    filter { eq("status", "open") }
+                    order("created_at", Order.DESCENDING)
+                    limit(100)
+                }
+                .decodeList<VerificationRequestEntry>()
+            _verificationRequests.value = rows.map { it.copy(profileName = nameFor(it.profileId)) }
+        } catch (e: Exception) {
+            _errorMessage.value = "No se pudieron cargar las solicitudes de verificación."
+        }
+    }
+
+    /** La autorización real vive en `admin_set_verified()` (comprueba
+     * `is_admin` del llamante server-side antes de escribir nada) --
+     * mismo criterio que banReportedUser()/acceptAppeal() con
+     * `admin_ban_user()`. */
+    fun resolveVerificationRequest(requestId: String, profileId: String, approve: Boolean) {
+        _verificationRequests.value = _verificationRequests.value.filter { it.id != requestId }
+        viewModelScope.launch {
+            try {
+                if (approve) {
+                    SupabaseManager.client.postgrest.rpc(
+                        "admin_set_verified",
+                        VerifiedParams(targetId = profileId, verified = true)
+                    )
+                    com.social.app.backend.AnalyticsManager.track("verification_approved")
+                }
+                SupabaseManager.client.from("verification_requests")
+                    .update({ set("status", if (approve) "approved" else "rejected") }) { filter { eq("id", requestId) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo actualizar la solicitud de verificación."
+                loadVerificationRequests()
+            }
+        }
+    }
+
+    @Serializable
+    private data class VerifiedParams(
+        @SerialName("p_target_id") val targetId: String,
+        @SerialName("p_verified") val verified: Boolean
+    )
 
     private suspend fun loadAppeals() {
         try {
@@ -307,6 +374,7 @@ class ModerationViewModel : ViewModel() {
 fun ModerationScreen(viewModel: ModerationViewModel = viewModel()) {
     val reports by viewModel.reports.collectAsState()
     val appeals by viewModel.appeals.collectAsState()
+    val verificationRequests by viewModel.verificationRequests.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
 
     LaunchedEffect(Unit) { viewModel.load() }
@@ -333,6 +401,30 @@ fun ModerationScreen(viewModel: ModerationViewModel = viewModel()) {
                                 onClick = { viewModel.dismissAppeal(appeal.id) },
                                 modifier = Modifier.padding(start = 8.dp)
                             ) { Text("Descartar") }
+                        }
+                    }
+                    HorizontalDivider()
+                }
+            }
+        }
+
+        // Verificación real (insignia azul, 0080_verification_requests.sql),
+        // comparado con Instagram/Twitter/TikTok.
+        if (verificationRequests.isNotEmpty()) {
+            Text("Solicitudes de verificación", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
+            LazyColumn(modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(max = 260.dp)) {
+                items(verificationRequests, key = { it.id }) { request ->
+                    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+                        Text(request.profileName ?: "Perfil", style = MaterialTheme.typography.labelMedium)
+                        Text(request.message, style = MaterialTheme.typography.bodySmall)
+                        Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                            OutlinedButton(onClick = { viewModel.resolveVerificationRequest(request.id, request.profileId, approve = true) }) {
+                                Text("Verificar")
+                            }
+                            OutlinedButton(
+                                onClick = { viewModel.resolveVerificationRequest(request.id, request.profileId, approve = false) },
+                                modifier = Modifier.padding(start = 8.dp)
+                            ) { Text("Rechazar") }
                         }
                     }
                     HorizontalDivider()

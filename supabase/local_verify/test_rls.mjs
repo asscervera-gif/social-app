@@ -1500,6 +1500,38 @@ async function main() {
   await asSuperuser();
   await db.query(`delete from blocks where blocker_id = $1 and blocked_id = $2`, [u4, u1]);
 
+  // --- verification_requests/admin_set_verified (0080_verification_requests.sql):
+  // verificación real (insignia azul), comparado con Instagram/Twitter/TikTok. ---
+  await asUser(u1);
+  const verifReq = (await db.query(
+    `insert into verification_requests (profile_id, message) values ($1, 'Soy una cuenta real de interés público') returning id`,
+    [u1]
+  )).rows[0];
+
+  await asUser(u2);
+  const verifReqAsStranger = (await db.query(`select id from verification_requests where id = $1`, [verifReq.id])).rows;
+  check('verification_requests_select_own: un tercero real (u2) NO ve la solicitud ajena de u1', verifReqAsStranger.length === 0);
+  await expectFail('admin_set_verified: un usuario normal (u2, no admin) NO puede verificar a nadie', async () => {
+    await db.query(`select admin_set_verified($1, true)`, [u1]);
+  });
+
+  await asUser(u3); // u3 sigue siendo admin desde el bloque de moderación de más arriba
+  const verifReqAsAdmin = (await db.query(`select id from verification_requests where id = $1`, [verifReq.id])).rows;
+  check('verification_requests_select_admin: un admin real (u3) SÍ ve la solicitud de u1', verifReqAsAdmin.length === 1);
+  await expectOk('admin_set_verified: un admin real (u3) SÍ puede verificar a u1', async () => {
+    await db.query(`select admin_set_verified($1, true)`, [u1]);
+  });
+  await expectOk('verification_requests_update_admin: un admin real (u3) SÍ puede aprobar la solicitud real', async () => {
+    await db.query(`update verification_requests set status = 'approved' where id = $1`, [verifReq.id]);
+  });
+
+  await asUser(u1);
+  const verifiedProfile = (await db.query(`select is_verified from profiles where id = $1`, [u1])).rows[0];
+  check('admin_set_verified: is_verified real de u1 queda en true de verdad', verifiedProfile.is_verified === true);
+  await db.query(`update profiles set is_verified = false where id = $1`, [u1]);
+  const stillVerified = (await db.query(`select is_verified from profiles where id = $1`, [u1])).rows[0];
+  check('protect_is_verified: un UPDATE directo del propio u1 NO puede quitarse la verificación real', stillVerified.is_verified === true);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

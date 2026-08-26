@@ -130,6 +130,16 @@ fun AjustesScreen(
     val passwordSuccess by changePassword.successMessage.collectAsState()
     var newPassword by remember { mutableStateOf("") }
 
+    // Verificación real (insignia azul, 0080_verification_requests.sql),
+    // comparado con Instagram/Twitter/TikTok.
+    val verification = remember { VerificationRequestViewModel() }
+    val isVerified by verification.isVerified.collectAsState()
+    val hasOpenVerificationRequest by verification.hasOpenRequest.collectAsState()
+    val verificationError by verification.errorMessage.collectAsState()
+    val verificationSuccess by verification.successMessage.collectAsState()
+    var verificationMessage by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) { verification.load() }
+
     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
         Text("Ajustes", style = MaterialTheme.typography.headlineSmall)
 
@@ -204,6 +214,41 @@ fun AjustesScreen(
             ) {
                 Text(label)
                 Switch(checked = !muted, onCheckedChange = { enabled -> privacy.setCategoryMuted(kinds, !enabled) })
+            }
+        }
+
+        // Verificación real (insignia azul, 0080_verification_requests.sql),
+        // comparado con Instagram/Twitter/TikTok -- las tres dejan
+        // SOLICITAR la verificación; un equipo revisa y aprueba o
+        // rechaza. `is_verified` ya se pintaba de verdad en varias
+        // pantallas, pero no existía ningún camino real para llegar a
+        // `true` salvo escribirlo a mano en la base de datos.
+        Text("Verificación", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 20.dp))
+        verificationError?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 4.dp)) }
+        verificationSuccess?.let { Text(it, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 4.dp)) }
+        when {
+            isVerified -> Text(
+                "Tu cuenta ya está verificada ✔️",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            hasOpenVerificationRequest -> Text(
+                "Tienes una solicitud de verificación pendiente de revisión.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            else -> Column(modifier = Modifier.padding(top = 8.dp)) {
+                OutlinedTextField(
+                    value = verificationMessage,
+                    onValueChange = { verificationMessage = it },
+                    label = { Text("¿Por qué debería verificarse tu cuenta?") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Button(
+                    onClick = { verification.submitRequest(verificationMessage) },
+                    enabled = verificationMessage.isNotBlank(),
+                    modifier = Modifier.padding(top = 8.dp)
+                ) { Text("Solicitar verificación") }
             }
         }
 

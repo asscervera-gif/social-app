@@ -43,6 +43,10 @@ struct AjustesView: View {
     // Palabras silenciadas reales en comentarios (0078_muted_keywords.sql),
     // comparado con Instagram/Twitter.
     @State private var newMutedKeyword = ""
+    // Verificación real (insignia azul, 0080_verification_requests.sql),
+    // comparado con Instagram/Twitter/TikTok.
+    @StateObject private var verification = VerificationRequestViewModel()
+    @State private var verificationMessage = ""
     // Hallazgo real: `reports` ya recibía denuncias reales desde hace
     // muchas pasadas, pero nadie podía leerlas nunca sin una clave
     // privilegiada — `is_admin` (0036_admin_moderation.sql) es una
@@ -103,6 +107,36 @@ struct AjustesView: View {
                 )) {
                     Text(label)
                 }
+            }
+
+            // Verificación real (insignia azul,
+            // 0080_verification_requests.sql), comparado con
+            // Instagram/Twitter/TikTok -- las tres dejan SOLICITAR la
+            // verificación; un equipo revisa y aprueba o rechaza.
+            // `is_verified` ya se pintaba de verdad en varias pantallas,
+            // pero no existía ningún camino real para llegar a `true`
+            // salvo escribirlo a mano en la base de datos.
+            Text("Verificación").font(.headline)
+            if let error = verification.errorMessage {
+                Text(error).font(.caption).foregroundStyle(.red)
+            }
+            if let success = verification.successMessage {
+                Text(success).font(.caption).foregroundStyle(.green)
+            }
+            if verification.isVerified {
+                Text("Tu cuenta ya está verificada ✔️").font(.subheadline)
+            } else if verification.hasOpenRequest {
+                Text("Tienes una solicitud de verificación pendiente de revisión.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                TextField("¿Por qué debería verificarse tu cuenta?", text: $verificationMessage, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                Button("Solicitar verificación") {
+                    Task { await verification.submitRequest(verificationMessage) }
+                }
+                .buttonStyle(.bordered)
+                .disabled(verificationMessage.trimmingCharacters(in: .whitespaces).isEmpty)
             }
 
             // Palabras silenciadas reales en comentarios
@@ -244,6 +278,7 @@ struct AjustesView: View {
             Text("Esto borra tu perfil, publicaciones, mensajes, socials y todos los datos asociados de forma permanente. No se puede deshacer.")
         }
         .task { await privacy.load() }
+        .task { await verification.load() }
         .task {
             guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
             struct IsAdminRow: Decodable { let is_admin: Bool }
