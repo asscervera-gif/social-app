@@ -185,6 +185,16 @@ extension AvisosViewModel.NotificationEntry {
         // Reels (0050_reels.sql) -- mismos iconos que like/comment normales.
         case "reel_like": return "heart.fill"
         case "reel_comment": return "message.fill"
+        // Hallazgo real (0058_group_message_notify.sql): "comment"/
+        // "comment_like"/"reel_comment_like" ya estaban en
+        // notifications_kind_check desde hace varias rondas (0008/0054),
+        // pero NUNCA se añadieron aquí -- caían siempre en el "bell"
+        // genérico aunque el aviso en sí se generara bien. Corregido junto
+        // con "group_message" (nuevo, 0057_group_chats.sql).
+        case "comment": return "message.fill"
+        case "comment_like": return "heart.fill"
+        case "reel_comment_like": return "heart.fill"
+        case "group_message": return "person.2.fill"
         default: return "bell"
         }
     }
@@ -201,6 +211,10 @@ extension AvisosViewModel.NotificationEntry {
         case "message": return "Nuevo mensaje"
         case "reel_like": return "Le gustó tu reel"
         case "reel_comment": return "Comentó tu reel"
+        case "comment": return "Comentó tu publicación"
+        case "comment_like": return "Le gustó tu comentario"
+        case "reel_comment_like": return "Le gustó tu comentario"
+        case "group_message": return "Nuevo mensaje de grupo"
         default: return "Notificación"
         }
     }

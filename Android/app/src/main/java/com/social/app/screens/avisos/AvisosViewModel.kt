@@ -162,6 +162,16 @@ fun NotificationEntry.icon(): String = when (kind) {
     // Reels (0050_reels.sql) -- mismos iconos que like/comment normales.
     "reel_like" -> "❤"
     "reel_comment" -> "💬"
+    // Hallazgo real (0058_group_message_notify.sql): "comment"/
+    // "comment_like"/"reel_comment_like" ya estaban en
+    // notifications_kind_check desde hace varias rondas (0008/0054), pero
+    // NUNCA se añadieron aquí -- caían siempre en el "🔔" genérico aunque
+    // el aviso en sí se generara bien. Corregido junto con "group_message"
+    // (nuevo, 0057_group_chats.sql).
+    "comment" -> "💬"
+    "comment_like" -> "❤"
+    "reel_comment_like" -> "❤"
+    "group_message" -> "👥"
     else -> "🔔"
 }
 
@@ -176,5 +186,9 @@ fun NotificationEntry.title(): String = when (kind) {
     "message" -> "Nuevo mensaje"
     "reel_like" -> "Le gustó tu reel"
     "reel_comment" -> "Comentó tu reel"
+    "comment" -> "Comentó tu publicación"
+    "comment_like" -> "Le gustó tu comentario"
+    "reel_comment_like" -> "Le gustó tu comentario"
+    "group_message" -> "Nuevo mensaje de grupo"
     else -> "Notificación"
 }

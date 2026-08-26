@@ -72,6 +72,12 @@ interface DeviceTokenRow {
 // olvidó esta, así que un push real para esos dos avisos habría caído en
 // el "🔔"/"Notificación" genérico aunque la app ya mostrara el texto
 // correcto -- corregido aquí junto con "message" (nuevo esta pasada).
+// Hallazgo real (0058_group_message_notify.sql): "comment"/"comment_like"/
+// "reel_comment_like" ya estaban en notifications_kind_check desde hace
+// varias rondas (0008/0054), pero NUNCA se añadieron a este switch -- un
+// push real para esos tres tipos caía siempre en "🔔" genérico aunque la
+// base de datos y AvisosViewModel.kt/.swift funcionaran bien. Corregido
+// aquí junto con "group_message" (nuevo, 0057_group_chats.sql).
 function iconFor(kind: string): string {
   switch (kind) {
     case "social": return "👥";
@@ -85,6 +91,10 @@ function iconFor(kind: string): string {
     // Reels (0050_reels.sql) -- mismos iconos que like/comment normales.
     case "reel_like": return "❤";
     case "reel_comment": return "💬";
+    case "comment": return "💬";
+    case "comment_like": return "❤";
+    case "reel_comment_like": return "❤";
+    case "group_message": return "👥";
     default: return "🔔";
   }
 }
@@ -99,6 +109,10 @@ function titleFor(kind: string): string {
     case "compat_accepted": return "Compartió su compatibilidad contigo";
     case "message": return "Nuevo mensaje";
     case "reel_like": return "Le gustó tu reel";
+    case "comment": return "Comentó tu publicación";
+    case "comment_like": return "Le gustó tu comentario";
+    case "reel_comment_like": return "Le gustó tu comentario";
+    case "group_message": return "Nuevo mensaje de grupo";
     case "reel_comment": return "Comentó tu reel";
     default: return "Notificación";
   }

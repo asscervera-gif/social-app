@@ -15,9 +15,15 @@ struct AjustesView: View {
     /// que agrupa cada una -- mismos valores exactos que
     /// AvisosViewModel.swift.icon()/title() y send-push/index.ts.
     /// Equivalente de NOTIFICATION_CATEGORIES (AjustesScreen.kt).
+    // Hallazgo real (0058_group_message_notify.sql): "comment_like"/
+    // "reel_comment_like" (0054_comment_likes.sql, varias rondas atrás)
+    // nunca se añadieron a ninguna categoría -- silenciar "Me gusta" no
+    // silenciaba en realidad el like a un comentario, solo el like a la
+    // publicación entera. "group_message" (0057_group_chats.sql) añadido
+    // a "Mensajes".
     static let notificationCategories: [(String, [String])] = [
-        ("Mensajes", ["message"]),
-        ("Me gusta", ["like", "reel_like"]),
+        ("Mensajes", ["message", "group_message"]),
+        ("Me gusta", ["like", "reel_like", "comment_like", "reel_comment_like"]),
         ("Comentarios", ["comment", "reel_comment"]),
         ("Socials", ["social", "social_accepted"]),
         ("Seguidores", ["follow"]),

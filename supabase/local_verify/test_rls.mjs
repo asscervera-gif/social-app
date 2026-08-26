@@ -960,6 +960,21 @@ async function main() {
   const messagesAsMember = (await db.query(`select body from group_messages where group_chat_id = $1`, [group.id])).rows;
   check('group_messages_select: otro miembro real (u1) SÍ ve el mensaje real de u2', messagesAsMember.length === 1 && messagesAsMember[0].body === 'hola grupo');
 
+  // notify_new_group_message (0058_group_message_notify.sql): el resto
+  // de miembros reales del grupo (u1, el creador) recibe el aviso real
+  // del mensaje de u2 -- quien lo envió (u2) NO se notifica a sí mismo.
+  const groupMessageNotifAsU1 = (await db.query(
+    `select actor_id, payload from notifications where recipient_id = $1 and kind = 'group_message'`, [u1]
+  )).rows;
+  check('notify_new_group_message: el resto de miembros reales (u1) recibe el aviso del mensaje de u2', groupMessageNotifAsU1.length === 1);
+  check('notify_new_group_message: actor_id es quien escribió (u2)', groupMessageNotifAsU1[0]?.actor_id === u2);
+  check('notify_new_group_message: payload trae el group_chat_id real', groupMessageNotifAsU1[0]?.payload?.group_chat_id === group.id);
+  await asUser(u2);
+  const groupMessageNotifAsSender = (await db.query(
+    `select id from notifications where recipient_id = $1 and kind = 'group_message'`, [u2]
+  )).rows;
+  check('notify_new_group_message: quien escribió (u2) NO se notifica a sí mismo', groupMessageNotifAsSender.length === 0);
+
   // Salir del grupo real: mismo hallazgo de Postgres/RLS ya documentado
   // para live_stream_viewers -- group_chat_members_select deja ver la
   // propia fila (por reflexividad del exists de autopertenencia), así que
