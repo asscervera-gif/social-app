@@ -13,9 +13,19 @@ packages:
   # (LiveKit Cloud, frente a self-hosted) para no montar infraestructura
   # propia de streaming en vivo. Requiere iOS 13+ (Package.swift real del
   # SDK), muy por debajo del deployment target real de este proyecto (16.0).
+  #
+  # Hallazgo real de CI (2026-08-26): `from: "2.16.0"` deja que SPM
+  # resuelva cualquier 2.x más nueva, y desde la 2.15.0 el propio
+  # Package.swift del SDK declara `swift-tools-version:6.1` -- el Xcode
+  # 16.2 real de este runner (el más reciente instalado en macos-14 en la
+  # fecha de este build) solo soporta hasta la 6.0, así que la resolución
+  # de paquetes fallaba ANTES de llegar a compilar ni una línea propia
+  # ("contains incompatible tools version"). Fijado a la última versión
+  # real anterior a ese salto (2.14.1, `swift-tools-version:6.0`,
+  # confirmado leyendo su Package.swift real) en vez de un rango abierto.
   LiveKit:
     url: https://github.com/livekit/client-sdk-swift
-    from: "2.16.0"
+    exactVersion: "2.14.1"
 
 targets:
   Social:
