@@ -162,6 +162,24 @@ data class DuelQuestion(
     val options: List<String>
 )
 
+/**
+ * Videollamada/llamada de voz 1:1 real (0079_calls.sql), comparado con
+ * WhatsApp/Messenger/Instagram -- ver CallManager.kt para el hallazgo
+ * completo.
+ */
+@Serializable
+data class Call(
+    val id: String,
+    @SerialName("chat_id") val chatId: String,
+    @SerialName("caller_id") val callerId: String,
+    @SerialName("callee_id") val calleeId: String,
+    val kind: String,
+    @SerialName("room_name") val roomName: String,
+    val status: String,
+    @SerialName("created_at") val createdAt: String = "",
+    @SerialName("ended_at") val endedAt: String? = null
+)
+
 @Serializable
 data class Duel(
     val id: String,

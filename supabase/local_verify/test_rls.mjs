@@ -1451,6 +1451,55 @@ async function main() {
   const reelCommentsAsStranger = (await db.query(`select id from reel_comments where reel_id = $1`, [mutedWordsReel.id])).rows;
   check('reel_comments_select: un tercero real (u4) SÍ ve el comentario de reel con la palabra silenciada de OTRO', reelCommentsAsStranger.length === 1);
 
+  // --- calls (0079_calls.sql): videollamada/llamada de voz 1:1 real
+  // desde un chat, comparado con WhatsApp/Messenger/Instagram. ---
+  await asUser(u1);
+  const call = (await db.query(
+    `insert into calls (chat_id, caller_id, callee_id, kind) values ($1, $2, $3, 'video') returning id, status, room_name`,
+    [chat.id, u1, u2]
+  )).rows[0];
+  check('calls_insert: room_name real autogenerado, no vacío', typeof call.room_name === 'string' && call.room_name.length > 0);
+  check('calls: arranca en \'ringing\' por defecto', call.status === 'ringing');
+
+  await asUser(u4);
+  await expectFail('calls_insert: u4 NO puede crear una llamada real en un chat ajeno (u1<->u2)', async () => {
+    await db.query(`insert into calls (chat_id, caller_id, callee_id, kind) values ($1, $2, $3, 'video')`, [chat.id, u4, u2]);
+  });
+  const callAsStranger = (await db.query(`select id from calls where id = $1`, [call.id])).rows;
+  check('calls_select: un tercero real (u4) NO ve la llamada de otros', callAsStranger.length === 0);
+
+  await asUser(u2);
+  await expectOk('calls_update: el destinatario real (u2) SÍ puede aceptar la llamada', async () => {
+    await db.query(`update calls set status = 'accepted' where id = $1`, [call.id]);
+  });
+  const acceptedAsCallee = (await db.query(`select status from calls where id = $1`, [call.id])).rows[0];
+  check('calls_update: el estado real pasó a \'accepted\' de verdad', acceptedAsCallee.status === 'accepted');
+
+  await asUser(u1);
+  await db.query(`update calls set caller_id = $2, callee_id = $2, chat_id = $2, room_name = 'hackeado' where id = $1`, [call.id, u1]);
+  const afterIdentityAttack = (await db.query(`select caller_id, callee_id, chat_id, room_name from calls where id = $1`, [call.id])).rows[0];
+  check(
+    'protect_call_identity: un UPDATE real NO puede redirigir caller_id/callee_id/chat_id/room_name de una llamada ajena a la identidad',
+    afterIdentityAttack.caller_id === u1 && afterIdentityAttack.callee_id === u2 && afterIdentityAttack.chat_id === chat.id && afterIdentityAttack.room_name === call.room_name
+  );
+
+  await expectOk('calls_update: el emisor real (u1) SÍ puede colgar la llamada', async () => {
+    await db.query(`update calls set status = 'ended', ended_at = now() where id = $1`, [call.id]);
+  });
+  const endedCall = (await db.query(`select status, ended_at from calls where id = $1`, [call.id])).rows[0];
+  check('calls_update: la llamada real queda \'ended\' con ended_at real', endedCall.status === 'ended' && endedCall.ended_at !== null);
+
+  // Bloqueo real: reutiliza el chat real u1<->u4 aún no probado.
+  await asSuperuser();
+  await db.query(`insert into blocks (blocker_id, blocked_id) values ($1, $2)`, [u4, u1]);
+  const chatWithU4 = (await db.query(`insert into chats (user_a_id, user_b_id) values ($1, $2) returning id`, [u1, u4])).rows[0];
+  await asUser(u1);
+  await expectFail('calls_insert: u1 NO puede llamar a u4 real, que le bloqueó', async () => {
+    await db.query(`insert into calls (chat_id, caller_id, callee_id, kind) values ($1, $2, $3, 'audio')`, [chatWithU4.id, u1, u4]);
+  });
+  await asSuperuser();
+  await db.query(`delete from blocks where blocker_id = $1 and blocked_id = $2`, [u4, u1]);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

@@ -14,6 +14,12 @@ struct ChatView: View {
 
     @StateObject private var viewModel: ChatViewModel
     let currentUserID: UUID
+    // Videollamada/llamada de voz 1:1 real (0079_calls.sql), comparado
+    // con WhatsApp/Messenger/Instagram -- global de RootTabView.swift
+    // (una llamada puede llegar en cualquier pestaña), este chat solo la
+    // INICIA. Mismo patrón `@EnvironmentObject` ya usado para
+    // `SafetyManager`.
+    @EnvironmentObject private var callManager: CallManager
 
     init(chatID: UUID, currentUserID: UUID) {
         self._viewModel = StateObject(wrappedValue: ChatViewModel(chatID: chatID, currentUserID: currentUserID))
@@ -55,6 +61,24 @@ struct ChatView: View {
             // app — este es el sitio natural: retar a duelo a la persona
             // con la que ya se está chateando.
             if let opponentID = viewModel.opponentID {
+                // Videollamada/llamada de voz 1:1 real (0079_calls.sql),
+                // comparado con WhatsApp/Messenger/Instagram --
+                // mensajería sin llamada directa desde el propio chat es
+                // la excepción hoy, no la norma.
+                HStack {
+                    Button {
+                        callManager.startCall(chatID: viewModel.chatID, calleeID: opponentID, kind: "audio")
+                    } label: {
+                        Image(systemName: "phone.fill")
+                    }
+                    Button {
+                        callManager.startCall(chatID: viewModel.chatID, calleeID: opponentID, kind: "video")
+                    } label: {
+                        Image(systemName: "video.fill")
+                    }
+                }
+                .padding(.horizontal)
+
                 Button("⚡ Retar a duelo") { showDuel = true }
                     .buttonStyle(.bordered)
                     .padding(.horizontal)

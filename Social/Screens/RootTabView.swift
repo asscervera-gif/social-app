@@ -29,6 +29,15 @@ struct RootTabView: View {
     // Badge de no leídas en Avisos — mismo hallazgo que RootTabView.kt: no
     // había ninguna señal de "hay algo nuevo" sin entrar a mirar.
     @StateObject private var notificationsBadge = NotificationsBadgeViewModel()
+    // Videollamada/llamada de voz 1:1 real (0079_calls.sql), comparado
+    // con WhatsApp/Messenger/Instagram -- global, mismo criterio que
+    // notificationsBadge: una llamada entrante tiene que avisar sin
+    // importar en qué pestaña esté el usuario. Inyectado vía
+    // `.environmentObject` (mismo patrón ya usado para `safety`) para que
+    // ChatView.swift lo lea sin necesitar un parámetro nuevo en cada uno
+    // de sus varios call sites (PerfilView/AvisosView).
+    @StateObject private var callManager = CallManager()
+    @State private var myID: UUID?
 
     enum Tab {
         case home, match, social, avisos, perfil
@@ -73,17 +82,31 @@ struct RootTabView: View {
                     .tag(Tab.perfil)
             }
             .tint(accent.color)
+
+            // Videollamada/llamada de voz 1:1 real (0079_calls.sql),
+            // comparado con WhatsApp/Messenger/Instagram -- overlay real
+            // por encima de cualquier pestaña, no una pantalla más de
+            // ninguna de las cinco: una llamada entrante no debe esperar
+            // a que el usuario navegue a ningún sitio.
+            if let myID {
+                CallOverlayView(callManager: callManager, myID: myID)
+            }
         }
         // nil = seguir el sistema (comportamiento de siempre); .light/.dark
         // fuerzan el modo elegido en Ajustes, mismo criterio que Instagram/
         // Twitter/WhatsApp/TikTok/Facebook.
         .preferredColorScheme(themeMode.colorScheme)
         .environmentObject(safety)
+        .environmentObject(callManager)
         .task {
             AnalyticsManager.track("app_open")
         }
         .task {
             await notificationsBadge.start()
+        }
+        .task {
+            myID = try? await SupabaseManager.shared.client.auth.session.user.id
+            await callManager.start()
         }
         // Hallazgo real: `RootTabView` desaparece por completo al cerrar
         // sesión (AppRootView.swift vuelve a AuthView), pero nada llamaba
@@ -93,6 +116,7 @@ struct RootTabView: View {
         // ChatViewModel en el resto de la app.
         .onDisappear {
             Task { await notificationsBadge.stop() }
+            Task { await callManager.stop() }
         }
         // El closure de un solo parámetro (newValue) es la firma de
         // onChange(of:) compatible con el deployment target real de este

@@ -240,3 +240,30 @@ struct DuelQuestion: Codable {
     let prompt: String
     let options: [String]
 }
+
+/// Videollamada/llamada de voz 1:1 real (0079_calls.sql), comparado con
+/// WhatsApp/Messenger/Instagram -- ver CallManager.swift para el
+/// hallazgo completo.
+struct Call: Codable, Identifiable {
+    let id: UUID
+    let chatID: UUID
+    let callerID: UUID
+    let calleeID: UUID
+    let kind: String
+    let roomName: String
+    var status: String
+    var createdAt: String?
+    var endedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case chatID = "chat_id"
+        case callerID = "caller_id"
+        case calleeID = "callee_id"
+        case kind
+        case roomName = "room_name"
+        case status
+        case createdAt = "created_at"
+        case endedAt = "ended_at"
+    }
+}

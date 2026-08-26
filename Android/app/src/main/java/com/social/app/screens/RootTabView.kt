@@ -5,6 +5,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
@@ -135,6 +136,16 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
     val badgeVm = remember { NotificationsBadgeViewModel() }
     val unreadCount by badgeVm.unreadCount.collectAsState()
     val appContext = LocalContext.current.applicationContext
+    // Videollamada/llamada de voz 1:1 real (0079_calls.sql), comparado
+    // con WhatsApp/Messenger/Instagram -- global, mismo criterio que
+    // badgeVm: una llamada entrante tiene que avisar sin importar en qué
+    // pestaña esté el usuario, no solo dentro de ChatScreen.
+    val callManager = remember { com.social.app.calls.CallManager() }
+    val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
+    DisposableEffect(Unit) {
+        callManager.start()
+        onDispose { callManager.stop() }
+    }
     DisposableEffect(Unit) {
         badgeVm.start(appContext)
         onDispose { badgeVm.stop() }
@@ -152,6 +163,7 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
         onDispose {}
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
@@ -490,7 +502,8 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                             chatId = chatId,
                             currentUserId = currentUserId,
                             onStartDuel = { opponentId -> navController.navigate("duel/$chatId/$opponentId") },
-                            onOpenPost = { postId -> navController.navigate("post/$postId") }
+                            onOpenPost = { postId -> navController.navigate("post/$postId") },
+                            callManager = callManager
                         )
                     }
                 }
@@ -526,5 +539,13 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
             // -- quitado del todo, no sustituido por nada (SafetyManager/
             // ReportSheet no dependen de este overlay para funcionar).
         }
+    }
+    // Videollamada/llamada de voz 1:1 real (0079_calls.sql), comparado
+    // con WhatsApp/Messenger/Instagram -- overlay real por encima de
+    // cualquier pestaña, no una pantalla más del NavHost: una llamada
+    // entrante no debe esperar a que el usuario navegue a ningún sitio.
+    if (myId != null) {
+        com.social.app.calls.CallOverlay(callManager = callManager, myId = myId)
+    }
     }
 }

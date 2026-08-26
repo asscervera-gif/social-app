@@ -19,6 +19,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -62,7 +64,12 @@ fun ChatScreen(
     // PostDetailScreen.kt para el hallazgo completo: antes tocar la vista
     // previa de una publicación compartida solo abría la foto, sin
     // pantalla propia de "post".
-    onOpenPost: (String) -> Unit = {}
+    onOpenPost: (String) -> Unit = {},
+    // Videollamada/llamada de voz 1:1 real (0079_calls.sql), comparado
+    // con WhatsApp/Messenger/Instagram -- `callManager` es el mismo
+    // global de RootTabView.kt (una llamada puede llegar en cualquier
+    // pestaña), este chat solo la INICIA.
+    callManager: com.social.app.calls.CallManager? = null
 ) {
     val viewModel = remember(chatId) { ChatViewModel(chatId) }
     val messages by viewModel.messages.collectAsState()
@@ -128,11 +135,22 @@ fun ChatScreen(
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 style = MaterialTheme.typography.labelMedium
             )
-            IconButton(
-                onClick = { showReportSheet = true },
-                modifier = Modifier.align(Alignment.CenterEnd)
-            ) {
-                Icon(Icons.Filled.Warning, contentDescription = "Denunciar", tint = MaterialTheme.colorScheme.error)
+            Row(modifier = Modifier.align(Alignment.CenterEnd)) {
+                // Videollamada/llamada de voz 1:1 real (0079_calls.sql),
+                // comparado con WhatsApp/Messenger/Instagram -- mensajería
+                // sin llamada directa desde el propio chat es la excepción
+                // hoy, no la norma.
+                opponentId?.let { opponent ->
+                    IconButton(onClick = { callManager?.startCall(chatId, opponent, "audio") }) {
+                        Icon(Icons.Filled.Call, contentDescription = "Llamar")
+                    }
+                    IconButton(onClick = { callManager?.startCall(chatId, opponent, "video") }) {
+                        Icon(Icons.Filled.Videocam, contentDescription = "Videollamada")
+                    }
+                }
+                IconButton(onClick = { showReportSheet = true }) {
+                    Icon(Icons.Filled.Warning, contentDescription = "Denunciar", tint = MaterialTheme.colorScheme.error)
+                }
             }
         }
         val isOpponentOnline by viewModel.isOpponentOnline.collectAsState()
