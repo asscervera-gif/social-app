@@ -112,6 +112,29 @@ struct ChatView: View {
                     }
             }
 
+            // Fijar un mensaje real (propio o ajeno) para que aparezca
+            // destacado arriba del chat, VISIBLE PARA TODOS los
+            // participantes -- a diferencia de starred_messages
+            // (totalmente privado), comparado con WhatsApp/Telegram, ver
+            // 0089_pin_message.sql.
+            if let pinnedMessage = viewModel.messages.first(where: { $0.pinnedAt != nil }) {
+                HStack {
+                    Text("📌")
+                    Text(pinnedMessage.body ?? (pinnedMessage.mediaURL != nil ? "📷 Foto" : pinnedMessage.audioURL != nil ? "🎤 Nota de voz" : "Mensaje fijado"))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer()
+                    Button {
+                        Task { await viewModel.togglePin(pinnedMessage) }
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 6)
+                .background(Color.accentColor.opacity(0.12))
+            }
+
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 8) {
@@ -230,6 +253,13 @@ struct ChatView: View {
                     Button("Denunciar") {
                         reportMessageID = managingMessage.id
                     }
+                }
+                // Fijar un mensaje real (propio o ajeno), VISIBLE PARA
+                // TODOS los participantes -- a diferencia de "Destacar"
+                // (abajo), totalmente privado. Ver
+                // ChatViewModel.togglePin(), 0089_pin_message.sql.
+                Button(managingMessage.pinnedAt != nil ? "Desfijar mensaje" : "Fijar mensaje") {
+                    Task { await viewModel.togglePin(managingMessage) }
                 }
                 Button(viewModel.starredMessageIDs.contains(managingMessage.id) ? "Quitar destacado" : "Destacar") {
                     Task { await viewModel.toggleStar(managingMessage.id) }

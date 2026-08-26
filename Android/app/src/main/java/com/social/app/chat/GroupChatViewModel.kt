@@ -50,7 +50,13 @@ data class GroupMessage(
     @SerialName("shared_post_id") val sharedPostId: String? = null,
     // Reenviar un mensaje real (0072_message_forward.sql), comparado con
     // WhatsApp/Telegram/Messenger.
-    @SerialName("is_forwarded") val isForwarded: Boolean = false
+    @SerialName("is_forwarded") val isForwarded: Boolean = false,
+    // Fijar un mensaje real (propio o ajeno) para que aparezca destacado
+    // arriba del chat, VISIBLE PARA TODOS los miembros -- a diferencia de
+    // starred_messages (totalmente privado), comparado con
+    // WhatsApp/Telegram, ver 0089_pin_message.sql.
+    @SerialName("pinned_at") val pinnedAt: String? = null,
+    @SerialName("pinned_by") val pinnedBy: String? = null
 )
 
 /**
@@ -334,6 +340,48 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
             } catch (e: Exception) {
                 // Restricción unique(user_id, group_message_id): si ya
                 // existía, el estado deseado ya se cumple.
+            }
+        }
+    }
+
+    /** Fijar/desfijar un mensaje de grupo real (propio o ajeno) para que
+     * aparezca destacado arriba del chat, VISIBLE PARA TODOS los miembros
+     * -- a diferencia de toggleStar() (totalmente privado), comparado con
+     * WhatsApp/Telegram, ver 0089_pin_message.sql. El servidor no impone
+     * "solo uno a la vez" -- el propio cliente desfija el anterior antes de
+     * fijar uno nuevo (dos escrituras seguidas), mismo criterio que
+     * ChatViewModel.togglePin() (chat 1:1). */
+    fun togglePin(message: GroupMessage) {
+        val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return
+        val previouslyPinned = _messages.value.firstOrNull { it.pinnedAt != null && it.id != message.id }
+        val nowPinning = message.pinnedAt == null
+        val nowIso = java.time.Instant.now().toString()
+        _messages.update { list ->
+            list.map {
+                when (it.id) {
+                    message.id -> if (nowPinning) it.copy(pinnedAt = nowIso, pinnedBy = userId) else it.copy(pinnedAt = null, pinnedBy = null)
+                    previouslyPinned?.id -> it.copy(pinnedAt = null, pinnedBy = null)
+                    else -> it
+                }
+            }
+        }
+        viewModelScope.launch {
+            try {
+                if (nowPinning && previouslyPinned != null) {
+                    SupabaseManager.client.from("group_messages")
+                        .update({ set("pinned_at", null as String?); set("pinned_by", null as String?) }) { filter { eq("id", previouslyPinned.id) } }
+                }
+                if (nowPinning) {
+                    SupabaseManager.client.from("group_messages")
+                        .update({ set("pinned_at", nowIso); set("pinned_by", userId) }) { filter { eq("id", message.id) } }
+                } else {
+                    SupabaseManager.client.from("group_messages")
+                        .update({ set("pinned_at", null as String?); set("pinned_by", null as String?) }) { filter { eq("id", message.id) } }
+                }
+            } catch (e: Exception) {
+                // No expone _errorMessage propio en este ViewModel para
+                // este tipo de fallo -- mismo criterio silencioso ya usado
+                // en toggleStar() de más arriba.
             }
         }
     }

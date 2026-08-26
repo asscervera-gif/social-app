@@ -155,7 +155,13 @@ data class ChatMessage(
     @SerialName("story_id") val storyId: String? = null,
     // Reenviar un mensaje real (0072_message_forward.sql), comparado con
     // WhatsApp/Telegram/Messenger.
-    @SerialName("is_forwarded") val isForwarded: Boolean = false
+    @SerialName("is_forwarded") val isForwarded: Boolean = false,
+    // Fijar un mensaje real (propio o ajeno) para que aparezca destacado
+    // arriba del chat, VISIBLE PARA TODOS los participantes -- a diferencia
+    // de starred_messages (totalmente privado), comparado con
+    // WhatsApp/Telegram, ver 0089_pin_message.sql.
+    @SerialName("pinned_at") val pinnedAt: String? = null,
+    @SerialName("pinned_by") val pinnedBy: String? = null
 )
 
 /** Hallazgo de integridad corregido (ver duel-ai/index.ts): antes incluía

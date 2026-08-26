@@ -35,6 +35,12 @@ struct GroupMessage: Codable, Identifiable {
     // Reenviar un mensaje real (0072_message_forward.sql), comparado con
     // WhatsApp/Telegram/Messenger.
     var isForwarded: Bool = false
+    // Fijar un mensaje real (propio o ajeno) para que aparezca destacado
+    // arriba del chat, VISIBLE PARA TODOS los miembros -- a diferencia de
+    // starred_messages (totalmente privado), comparado con
+    // WhatsApp/Telegram, ver 0089_pin_message.sql.
+    var pinnedAt: String? = nil
+    var pinnedBy: UUID? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -47,6 +53,8 @@ struct GroupMessage: Codable, Identifiable {
         case editedAt = "edited_at"
         case sharedPostID = "shared_post_id"
         case isForwarded = "is_forwarded"
+        case pinnedAt = "pinned_at"
+        case pinnedBy = "pinned_by"
     }
 }
 
@@ -302,6 +310,72 @@ final class GroupChatViewModel: ObservableObject {
         } catch {
             // Restricción unique(user_id, group_message_id): si ya
             // existía, el estado deseado ya se cumple.
+        }
+    }
+
+    /// Fijar/desfijar un mensaje de grupo real (propio o ajeno) para que
+    /// aparezca destacado arriba del chat, VISIBLE PARA TODOS los
+    /// miembros -- a diferencia de toggleStar() (totalmente privado),
+    /// comparado con WhatsApp/Telegram, ver 0089_pin_message.sql. El
+    /// servidor no impone "solo uno a la vez" -- el propio cliente
+    /// desfija el anterior antes de fijar uno nuevo (dos escrituras
+    /// seguidas), mismo criterio que ChatViewModel.togglePin() (chat
+    /// 1:1). Equivalente de GroupChatViewModel.kt.togglePin(). Dos
+    /// `.update()` seguidos, no uno con ambas columnas mezcladas -- mismo
+    /// motivo de tipos ya documentado más arriba en este archivo.
+    func togglePin(_ message: GroupMessage) async {
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        let previouslyPinnedID = messages.first(where: { $0.pinnedAt != nil && $0.id != message.id })?.id
+        let nowPinning = message.pinnedAt == nil
+        let nowISO = ISO8601DateFormatter().string(from: Date())
+        if let index = messages.firstIndex(where: { $0.id == message.id }) {
+            messages[index].pinnedAt = nowPinning ? nowISO : nil
+            messages[index].pinnedBy = nowPinning ? userID : nil
+        }
+        if let previouslyPinnedID, let index = messages.firstIndex(where: { $0.id == previouslyPinnedID }) {
+            messages[index].pinnedAt = nil
+            messages[index].pinnedBy = nil
+        }
+        let clearedPinnedAt: String? = nil
+        let clearedPinnedBy: UUID? = nil
+        do {
+            if let previouslyPinnedID {
+                try await SupabaseManager.shared.client
+                    .from("group_messages")
+                    .update(["pinned_at": clearedPinnedAt])
+                    .eq("id", value: previouslyPinnedID)
+                    .execute()
+                try await SupabaseManager.shared.client
+                    .from("group_messages")
+                    .update(["pinned_by": clearedPinnedBy])
+                    .eq("id", value: previouslyPinnedID)
+                    .execute()
+            }
+            if nowPinning {
+                try await SupabaseManager.shared.client
+                    .from("group_messages")
+                    .update(["pinned_at": nowISO])
+                    .eq("id", value: message.id)
+                    .execute()
+                try await SupabaseManager.shared.client
+                    .from("group_messages")
+                    .update(["pinned_by": userID])
+                    .eq("id", value: message.id)
+                    .execute()
+            } else {
+                try await SupabaseManager.shared.client
+                    .from("group_messages")
+                    .update(["pinned_at": clearedPinnedAt])
+                    .eq("id", value: message.id)
+                    .execute()
+                try await SupabaseManager.shared.client
+                    .from("group_messages")
+                    .update(["pinned_by": clearedPinnedBy])
+                    .eq("id", value: message.id)
+                    .execute()
+            }
+        } catch {
+            errorMessage = "No se pudo fijar el mensaje."
         }
     }
 

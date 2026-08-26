@@ -247,6 +247,47 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
         }
     }
 
+    /** Fijar/desfijar un mensaje real (propio o ajeno) para que aparezca
+     * destacado arriba del chat, VISIBLE PARA TODOS los participantes -- a
+     * diferencia de toggleStar() (totalmente privado), comparado con
+     * WhatsApp/Telegram, ver 0089_pin_message.sql. El servidor no impone
+     * "solo uno a la vez" -- el propio cliente desfija el anterior antes de
+     * fijar uno nuevo (dos escrituras seguidas), mismo criterio ya usado en
+     * otras rondas de "el cliente orquesta, el servidor solo protege
+     * identidad". */
+    fun togglePin(message: ChatMessage) {
+        val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return
+        val previouslyPinned = _messages.value.firstOrNull { it.pinnedAt != null && it.id != message.id }
+        val nowPinning = message.pinnedAt == null
+        val nowIso = java.time.Instant.now().toString()
+        _messages.update { list ->
+            list.map {
+                when (it.id) {
+                    message.id -> if (nowPinning) it.copy(pinnedAt = nowIso, pinnedBy = userId) else it.copy(pinnedAt = null, pinnedBy = null)
+                    previouslyPinned?.id -> it.copy(pinnedAt = null, pinnedBy = null)
+                    else -> it
+                }
+            }
+        }
+        viewModelScope.launch {
+            try {
+                if (nowPinning && previouslyPinned != null) {
+                    SupabaseManager.client.from("messages")
+                        .update({ set("pinned_at", null as String?); set("pinned_by", null as String?) }) { filter { eq("id", previouslyPinned.id) } }
+                }
+                if (nowPinning) {
+                    SupabaseManager.client.from("messages")
+                        .update({ set("pinned_at", nowIso); set("pinned_by", userId) }) { filter { eq("id", message.id) } }
+                } else {
+                    SupabaseManager.client.from("messages")
+                        .update({ set("pinned_at", null as String?); set("pinned_by", null as String?) }) { filter { eq("id", message.id) } }
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo fijar el mensaje."
+            }
+        }
+    }
+
     @Serializable
     private data class MessageNotifRow(
         val id: String,

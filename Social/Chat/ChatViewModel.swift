@@ -194,6 +194,71 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
+    /// Fijar/desfijar un mensaje real (propio o ajeno) para que aparezca
+    /// destacado arriba del chat, VISIBLE PARA TODOS los participantes --
+    /// a diferencia de toggleStar() (totalmente privado), comparado con
+    /// WhatsApp/Telegram, ver 0089_pin_message.sql. El servidor no impone
+    /// "solo uno a la vez" -- el propio cliente desfija el anterior antes
+    /// de fijar uno nuevo (dos escrituras seguidas), mismo criterio ya
+    /// usado en otras rondas de "el cliente orquesta, el servidor solo
+    /// protege identidad". Equivalente de ChatViewModel.kt.togglePin().
+    /// Dos `.update()` seguidos, no uno con ambas columnas mezcladas --
+    /// mismo motivo de tipos ya documentado en editMessage()/muteChatFor().
+    func togglePin(_ message: ChatMessage) async {
+        let previouslyPinnedID = messages.first(where: { $0.pinnedAt != nil && $0.id != message.id })?.id
+        let nowPinning = message.pinnedAt == nil
+        let nowISO = ISO8601DateFormatter().string(from: Date())
+        if let index = messages.firstIndex(where: { $0.id == message.id }) {
+            messages[index].pinnedAt = nowPinning ? Date() : nil
+            messages[index].pinnedBy = nowPinning ? currentUserID : nil
+        }
+        if let previouslyPinnedID, let index = messages.firstIndex(where: { $0.id == previouslyPinnedID }) {
+            messages[index].pinnedAt = nil
+            messages[index].pinnedBy = nil
+        }
+        let clearedPinnedAt: String? = nil
+        let clearedPinnedBy: UUID? = nil
+        do {
+            if let previouslyPinnedID {
+                try await SupabaseManager.shared.client
+                    .from("messages")
+                    .update(["pinned_at": clearedPinnedAt])
+                    .eq("id", value: previouslyPinnedID)
+                    .execute()
+                try await SupabaseManager.shared.client
+                    .from("messages")
+                    .update(["pinned_by": clearedPinnedBy])
+                    .eq("id", value: previouslyPinnedID)
+                    .execute()
+            }
+            if nowPinning {
+                try await SupabaseManager.shared.client
+                    .from("messages")
+                    .update(["pinned_at": nowISO])
+                    .eq("id", value: message.id)
+                    .execute()
+                try await SupabaseManager.shared.client
+                    .from("messages")
+                    .update(["pinned_by": currentUserID])
+                    .eq("id", value: message.id)
+                    .execute()
+            } else {
+                try await SupabaseManager.shared.client
+                    .from("messages")
+                    .update(["pinned_at": clearedPinnedAt])
+                    .eq("id", value: message.id)
+                    .execute()
+                try await SupabaseManager.shared.client
+                    .from("messages")
+                    .update(["pinned_by": clearedPinnedBy])
+                    .eq("id", value: message.id)
+                    .execute()
+            }
+        } catch {
+            errorMessage = "No se pudo fijar el mensaje."
+        }
+    }
+
     /// Hallazgo real, el hueco de mensajería más grande de la sesión:
     /// ningún mensaje nuevo generaba nunca un aviso -- ver
     /// 0047_message_notify_mute.sql. Sin esto, el badge de Avisos

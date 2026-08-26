@@ -1201,6 +1201,23 @@ async function main() {
   // silenciar" de u1 de más arriba. ---
   await asUser(u1);
   const groupMsgToEdit = (await db.query(`select id from group_messages where group_chat_id = $1 and body = 'mensaje tras silenciar'`, [group.id])).rows[0];
+
+  // Nota de robustez de pruebas (no de producción), mismo hallazgo real ya
+  // documentado en 0044_chats_hide.sql: hasta aquí, TODOS los mensajes de
+  // grupo de este archivo fueron INSERT, nunca UPDATE -- `protect_group_
+  // message_identity()` no se había invocado ni una sola vez todavía, y
+  // 0089_pin_message.sql la redefinió con `create or replace function`,
+  // añadiendo sus primeras llamadas reales a `auth.uid()`. En el arnés
+  // local (PGlite, sin USAGE real en el esquema auth) el primer intento de
+  // evaluarla bajo un rol no-superusuario falla con "permission denied for
+  // schema auth" si nadie la había "calentado" antes bajo un rol con
+  // bypass total (confirmado con una reproducción aislada). Un UPDATE de
+  // superusuario antes (no-op real, mismo body) la ejercita una vez sin
+  // depender del orden real de miembros que sigue después.
+  await asSuperuser();
+  await db.query(`update group_messages set body = body where id = $1`, [groupMsgToEdit.id]);
+  await asUser(u1);
+
   await expectOk('group_messages_update_own: el remitente real (u1) SÍ puede editar su propio mensaje', async () => {
     await db.query(`update group_messages set body = 'mensaje corregido', edited_at = now() where id = $1`, [groupMsgToEdit.id]);
   });
@@ -1691,6 +1708,101 @@ async function main() {
   await expectFail('starred_messages_insert_own: u3 real, que NO es miembro del grupo, NO puede destacar un mensaje de grupo ajeno', async () => {
     await db.query(`insert into starred_messages (user_id, group_message_id) values ($1, $2)`, [u3, groupMessageToStar.id]);
   });
+
+  // --- messages.pinned_at/pinned_by / messages_update_pin
+  // (0089_pin_message.sql): fijar un mensaje real (propio o ajeno) para
+  // que aparezca destacado arriba del chat, VISIBLE PARA TODOS los
+  // participantes -- a diferencia de starred_messages (arriba), totalmente
+  // privado. Reutiliza `chat` (u1<->u2). ---
+  await asUser(u1);
+  const messageToPin = (await db.query(
+    `insert into messages (chat_id, sender_id, body) values ($1, $2, 'mensaje real para fijar') returning id`, [chat.id, u1]
+  )).rows[0];
+
+  await expectOk('messages_update_pin: el remitente real (u1) SÍ puede fijar su propio mensaje', async () => {
+    await db.query(`update messages set pinned_at = now(), pinned_by = $1 where id = $2`, [u1, messageToPin.id]);
+  });
+  const pinnedByU1 = (await db.query(`select pinned_at, pinned_by from messages where id = $1`, [messageToPin.id])).rows[0];
+  check('messages_update_pin: pinned_at/pinned_by reales quedaron guardados', pinnedByU1.pinned_at !== null && pinnedByU1.pinned_by === u1);
+
+  await asUser(u2);
+  await expectOk('messages_update_pin: el OTRO participante real (u2), que no es el remitente, también SÍ puede fijar (mismo criterio que WhatsApp/Telegram)', async () => {
+    await db.query(`update messages set pinned_at = now(), pinned_by = $1 where id = $2`, [u2, messageToPin.id]);
+  });
+  const pinnedByU2 = (await db.query(`select pinned_by from messages where id = $1`, [messageToPin.id])).rows[0];
+  check('messages_update_pin: pinned_by real pasó a ser u2, quien de verdad pidió el cambio', pinnedByU2.pinned_by === u2);
+
+  await db.query(`update messages set pinned_at = now(), pinned_by = $1 where id = $2`, [u1, messageToPin.id]);
+  const pinnedBySpoofAttempt = (await db.query(`select pinned_by from messages where id = $1`, [messageToPin.id])).rows[0];
+  check('protect_message_columns: u2 NO puede fijar el mensaje haciéndose pasar por u1 en pinned_by (revertido en silencio, no lanza)', pinnedBySpoofAttempt.pinned_by === u2);
+
+  await db.query(`update messages set pinned_at = now(), pinned_by = $1, body = 'body colado vía fijado' where id = $2`, [u2, messageToPin.id]);
+  const pinBodySmuggleAttempt = (await db.query(`select body from messages where id = $1`, [messageToPin.id])).rows[0];
+  check('protect_message_columns: u2 (no es el remitente) NO puede colar un cambio de body aprovechando messages_update_pin', pinBodySmuggleAttempt.body === 'mensaje real para fijar');
+
+  // Mismo hallazgo real ya documentado varias veces en este archivo: un
+  // UPDATE gobernado solo por USING que no encuentra fila propia no lanza
+  // excepción, solo afecta 0 filas -- se comprueba el estado real, no con
+  // expectFail.
+  await asUser(u4);
+  await db.query(`update messages set pinned_at = now(), pinned_by = $1 where id = $2`, [u4, messageToPin.id]);
+  // messages_select también exige ser participante real del chat -- u4 no
+  // vería ni la propia fila para comprobarlo, hace falta releer como u1.
+  await asUser(u1);
+  const pinAsStranger = (await db.query(`select pinned_by from messages where id = $1`, [messageToPin.id])).rows[0];
+  check('messages_update_pin: u4 real, que NO participa en el chat, NO puede fijar un mensaje ajeno (0 filas afectadas, no un error)', pinAsStranger.pinned_by === u2);
+
+  await asUser(u1);
+  await expectOk('messages_update_pin: cualquier participante real (u1) también puede desfijarlo', async () => {
+    await db.query(`update messages set pinned_at = null, pinned_by = null where id = $1`, [messageToPin.id]);
+  });
+  const unpinnedMessage = (await db.query(`select pinned_at, pinned_by from messages where id = $1`, [messageToPin.id])).rows[0];
+  check('messages_update_pin: el mensaje real queda desfijado de verdad', unpinnedMessage.pinned_at === null && unpinnedMessage.pinned_by === null);
+
+  // Mismo espejo real para un mensaje de GRUPO -- reutiliza `starGroupId`
+  // (u1 creador, u2 miembro, u3 NO es miembro) de más arriba.
+  await asUser(u1);
+  const groupMessageToPin = (await db.query(
+    `insert into group_messages (group_chat_id, sender_id, body) values ($1, $2, 'mensaje de grupo real para fijar') returning id`, [starGroupId, u1]
+  )).rows[0];
+
+  // Nota de robustez de pruebas (no de producción), mismo hallazgo real ya
+  // documentado más arriba para group_messages_update_own: esta es la
+  // primera vez que este mensaje concreto pasa por un UPDATE bajo un rol
+  // no-superusuario tras la redefinición de protect_group_message_identity
+  // tras 0089 -- se calienta una vez bajo un rol con bypass total.
+  await asSuperuser();
+  await db.query(`update group_messages set body = body where id = $1`, [groupMessageToPin.id]);
+
+  await asUser(u2);
+  await expectOk('group_messages_update_pin: un miembro real (u2), que no es el remitente, SÍ puede fijar el mensaje de grupo', async () => {
+    await db.query(`update group_messages set pinned_at = now(), pinned_by = $1 where id = $2`, [u2, groupMessageToPin.id]);
+  });
+  const groupPinnedByU2 = (await db.query(`select pinned_at, pinned_by from group_messages where id = $1`, [groupMessageToPin.id])).rows[0];
+  check('group_messages_update_pin: pinned_at/pinned_by reales quedaron guardados', groupPinnedByU2.pinned_at !== null && groupPinnedByU2.pinned_by === u2);
+
+  await db.query(`update group_messages set pinned_by = $1 where id = $2`, [u1, groupMessageToPin.id]);
+  const groupPinSpoofAttempt = (await db.query(`select pinned_by from group_messages where id = $1`, [groupMessageToPin.id])).rows[0];
+  check('protect_group_message_identity: u2 NO puede fijar el mensaje de grupo haciéndose pasar por u1 en pinned_by (revertido en silencio, no lanza)', groupPinSpoofAttempt.pinned_by === u2);
+
+  await db.query(`update group_messages set body = 'body de grupo colado vía fijado' where id = $1`, [groupMessageToPin.id]);
+  const groupPinBodySmuggleAttempt = (await db.query(`select body from group_messages where id = $1`, [groupMessageToPin.id])).rows[0];
+  check('protect_group_message_identity: u2 (no es el remitente) NO puede colar un cambio de body aprovechando group_messages_update_pin', groupPinBodySmuggleAttempt.body === 'mensaje de grupo real para fijar');
+
+  await asUser(u3);
+  await db.query(`update group_messages set pinned_at = now(), pinned_by = $1 where id = $2`, [u3, groupMessageToPin.id]);
+  // group_messages_select también exige ser miembro real del grupo -- u3
+  // no vería ni la propia fila para comprobarlo, hace falta releer como u1.
+  await asUser(u1);
+  const groupPinAsStranger = (await db.query(`select pinned_by from group_messages where id = $1`, [groupMessageToPin.id])).rows[0];
+  check('group_messages_update_pin: u3 real, que NO es miembro del grupo, NO puede fijar un mensaje de grupo ajeno (0 filas afectadas, no un error)', groupPinAsStranger.pinned_by === u2);
+
+  await asUser(u1);
+  await expectOk('group_messages_update_pin: el remitente real (u1) también puede desfijarlo', async () => {
+    await db.query(`update group_messages set pinned_at = null, pinned_by = null where id = $1`, [groupMessageToPin.id]);
+  });
+  const groupUnpinnedMessage = (await db.query(`select pinned_at, pinned_by from group_messages where id = $1`, [groupMessageToPin.id])).rows[0];
+  check('group_messages_update_pin: el mensaje de grupo real queda desfijado de verdad', groupUnpinnedMessage.pinned_at === null && groupUnpinnedMessage.pinned_by === null);
 
   // --- calls (0079_calls.sql): videollamada/llamada de voz 1:1 real
   // desde un chat, comparado con WhatsApp/Messenger/Instagram. ---

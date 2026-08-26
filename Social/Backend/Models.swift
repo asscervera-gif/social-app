@@ -209,6 +209,12 @@ struct ChatMessage: Codable, Identifiable {
     // Reenviar un mensaje real (0072_message_forward.sql), comparado con
     // WhatsApp/Telegram/Messenger.
     var isForwarded: Bool = false
+    // Fijar un mensaje real (propio o ajeno) para que aparezca destacado
+    // arriba del chat, VISIBLE PARA TODOS los participantes -- a
+    // diferencia de starred_messages (totalmente privado), comparado con
+    // WhatsApp/Telegram, ver 0089_pin_message.sql.
+    var pinnedAt: Date? = nil
+    var pinnedBy: UUID? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -223,6 +229,8 @@ struct ChatMessage: Codable, Identifiable {
         case sharedPostID = "shared_post_id"
         case storyID = "story_id"
         case isForwarded = "is_forwarded"
+        case pinnedAt = "pinned_at"
+        case pinnedBy = "pinned_by"
     }
 }
 

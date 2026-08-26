@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -175,6 +176,36 @@ fun GroupChatScreen(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+            // Fijar un mensaje de grupo real (propio o ajeno) para que
+            // aparezca destacado arriba del chat, VISIBLE PARA TODOS los
+            // miembros -- a diferencia de starred_messages (totalmente
+            // privado), comparado con WhatsApp/Telegram, ver
+            // 0089_pin_message.sql.
+            val pinnedMessage = messages.firstOrNull { it.pinnedAt != null }
+            pinnedMessage?.let { pinned ->
+                androidx.compose.material3.Surface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("📌", modifier = Modifier.padding(end = 8.dp))
+                        Text(
+                            pinned.body ?: if (pinned.mediaUrl != null) "📷 Foto" else if (pinned.audioUrl != null) "🎤 Nota de voz" else "Mensaje fijado",
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        IconButton(onClick = { viewModel.togglePin(pinned) }) {
+                            Icon(Icons.Filled.Close, contentDescription = "Desfijar")
+                        }
+                    }
+                }
             }
             LazyColumn(
                 state = listState,
@@ -454,6 +485,14 @@ fun GroupChatScreen(
             },
             dismissButton = {
                 Row {
+                    // Fijar un mensaje de grupo real (propio o ajeno),
+                    // VISIBLE PARA TODOS los miembros -- a diferencia de
+                    // "Destacar" (arriba), totalmente privado. Ver
+                    // GroupChatViewModel.togglePin(), 0089_pin_message.sql.
+                    TextButton(onClick = {
+                        viewModel.togglePin(message)
+                        managingMessage = null
+                    }) { Text(if (message.pinnedAt != null) "Desfijar mensaje" else "Fijar mensaje") }
                     TextButton(onClick = {
                         viewModel.toggleStar(message.id)
                         managingMessage = null
