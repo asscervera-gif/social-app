@@ -30,7 +30,8 @@ class PrivacySettingsViewModel : ViewModel() {
     private data class PrivacyRow(
         @SerialName("compat_public") val compatPublic: Boolean,
         @SerialName("location_public") val locationPublic: Boolean,
-        @SerialName("muted_push_kinds") val mutedPushKinds: List<String> = emptyList()
+        @SerialName("muted_push_kinds") val mutedPushKinds: List<String> = emptyList(),
+        @SerialName("muted_keywords") val mutedKeywords: List<String> = emptyList()
     )
 
     private val _compatPublic = MutableStateFlow(false)
@@ -48,6 +49,14 @@ class PrivacySettingsViewModel : ViewModel() {
     private val _mutedKinds = MutableStateFlow<Set<String>>(emptySet())
     val mutedKinds: StateFlow<Set<String>> = _mutedKinds.asStateFlow()
 
+    // Palabras silenciadas reales en comentarios (0078_muted_keywords.sql),
+    // comparado con Instagram/Twitter -- oculta automáticamente cualquier
+    // comentario propio (post o reel) que contenga una de estas palabras,
+    // sin bloquear a nadie: el comentario sigue existiendo de verdad para
+    // todos los demás, incluido quien lo escribió.
+    private val _mutedKeywords = MutableStateFlow<List<String>>(emptyList())
+    val mutedKeywords: StateFlow<List<String>> = _mutedKeywords.asStateFlow()
+
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
@@ -56,13 +65,46 @@ class PrivacySettingsViewModel : ViewModel() {
             try {
                 val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
                 val row = SupabaseManager.client.from("profiles")
-                    .select(columns = Columns.raw("compat_public,location_public,muted_push_kinds")) { filter { eq("id", userId) } }
+                    .select(columns = Columns.raw("compat_public,location_public,muted_push_kinds,muted_keywords")) { filter { eq("id", userId) } }
                     .decodeSingle<PrivacyRow>()
                 _compatPublic.value = row.compatPublic
                 _locationPublic.value = row.locationPublic
                 _mutedKinds.value = row.mutedPushKinds.toSet()
+                _mutedKeywords.value = row.mutedKeywords
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo cargar la privacidad."
+            }
+        }
+    }
+
+    fun addMutedKeyword(word: String) {
+        val normalized = word.trim().lowercase()
+        if (normalized.isEmpty() || normalized in _mutedKeywords.value) return
+        val previous = _mutedKeywords.value
+        _mutedKeywords.value = previous + normalized
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                SupabaseManager.client.from("profiles")
+                    .update({ set("muted_keywords", _mutedKeywords.value) }) { filter { eq("id", userId) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo guardar la palabra silenciada."
+                _mutedKeywords.value = previous
+            }
+        }
+    }
+
+    fun removeMutedKeyword(word: String) {
+        val previous = _mutedKeywords.value
+        _mutedKeywords.value = previous - word
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                SupabaseManager.client.from("profiles")
+                    .update({ set("muted_keywords", _mutedKeywords.value) }) { filter { eq("id", userId) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo quitar la palabra silenciada."
+                _mutedKeywords.value = previous
             }
         }
     }

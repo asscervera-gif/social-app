@@ -40,6 +40,9 @@ struct AjustesView: View {
     // en ninguna plataforma (ver PrivacySettingsViewModel.swift).
     @StateObject private var privacy = PrivacySettingsViewModel()
     @State private var showConfirm = false
+    // Palabras silenciadas reales en comentarios (0078_muted_keywords.sql),
+    // comparado con Instagram/Twitter.
+    @State private var newMutedKeyword = ""
     // Hallazgo real: `reports` ya recibía denuncias reales desde hace
     // muchas pasadas, pero nadie podía leerlas nunca sin una clave
     // privilegiada — `is_admin` (0036_admin_moderation.sql) es una
@@ -99,6 +102,37 @@ struct AjustesView: View {
                     set: { enabled in privacy.setCategoryMuted(kinds, muted: !enabled) }
                 )) {
                     Text(label)
+                }
+            }
+
+            // Palabras silenciadas reales en comentarios
+            // (0078_muted_keywords.sql), comparado con Instagram/Twitter
+            // -- oculta automáticamente cualquier comentario propio
+            // (post o reel) que contenga una de estas palabras, sin
+            // bloquear a nadie: el comentario sigue existiendo de verdad
+            // para todos los demás, incluido quien lo escribió.
+            Text("Palabras silenciadas").font(.headline)
+            Text("Oculta comentarios que contengan estas palabras, solo para ti.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                TextField("nueva palabra", text: $newMutedKeyword)
+                    .textFieldStyle(.roundedBorder)
+                    .textInputAutocapitalization(.never)
+                Button("Añadir") {
+                    privacy.addMutedKeyword(newMutedKeyword)
+                    newMutedKeyword = ""
+                }
+                .disabled(newMutedKeyword.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            ForEach(privacy.mutedKeywords, id: \.self) { word in
+                HStack {
+                    Text(word)
+                    Spacer()
+                    Button("Quitar", role: .destructive) {
+                        privacy.removeMutedKeyword(word)
+                    }
+                    .font(.caption)
                 }
             }
 

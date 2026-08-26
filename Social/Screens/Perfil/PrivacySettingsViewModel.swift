@@ -57,12 +57,20 @@ final class PrivacySettingsViewModel: ObservableObject {
     // el servidor (send-push/index.ts, 0052_notification_prefs.sql), no
     // solo en el cliente.
     @Published var mutedKinds: Set<String> = []
+    // Palabras silenciadas reales en comentarios (0078_muted_keywords.sql),
+    // comparado con Instagram/Twitter -- oculta automáticamente cualquier
+    // comentario propio (post o reel) que contenga una de estas palabras,
+    // sin bloquear a nadie: el comentario sigue existiendo de verdad para
+    // todos los demás, incluido quien lo escribió. Equivalente de
+    // PrivacySettingsViewModel.kt.mutedKeywords.
+    @Published var mutedKeywords: [String] = []
     @Published var errorMessage: String?
 
     private struct PrivacyRow: Decodable {
         let compat_public: Bool
         let location_public: Bool
         let muted_push_kinds: [String]
+        let muted_keywords: [String]
     }
 
     func load() async {
@@ -70,7 +78,7 @@ final class PrivacySettingsViewModel: ObservableObject {
         do {
             let row: PrivacyRow = try await SupabaseManager.shared.client
                 .from("profiles")
-                .select("compat_public,location_public,muted_push_kinds")
+                .select("compat_public,location_public,muted_push_kinds,muted_keywords")
                 .eq("id", value: userID)
                 .single()
                 .execute()
@@ -78,8 +86,49 @@ final class PrivacySettingsViewModel: ObservableObject {
             compatPublic = row.compat_public
             locationPublic = row.location_public
             mutedKinds = Set(row.muted_push_kinds)
+            mutedKeywords = row.muted_keywords
         } catch {
             errorMessage = "No se pudo cargar la privacidad."
+        }
+    }
+
+    func addMutedKeyword(_ word: String) {
+        let normalized = word.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty, !mutedKeywords.contains(normalized) else { return }
+        let previous = mutedKeywords
+        mutedKeywords.append(normalized)
+        Task {
+            guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+            struct KeywordsUpdate: Encodable { let muted_keywords: [String] }
+            do {
+                try await SupabaseManager.shared.client
+                    .from("profiles")
+                    .update(KeywordsUpdate(muted_keywords: mutedKeywords))
+                    .eq("id", value: userID)
+                    .execute()
+            } catch {
+                errorMessage = "No se pudo guardar la palabra silenciada."
+                mutedKeywords = previous
+            }
+        }
+    }
+
+    func removeMutedKeyword(_ word: String) {
+        let previous = mutedKeywords
+        mutedKeywords.removeAll { $0 == word }
+        Task {
+            guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+            struct KeywordsUpdate: Encodable { let muted_keywords: [String] }
+            do {
+                try await SupabaseManager.shared.client
+                    .from("profiles")
+                    .update(KeywordsUpdate(muted_keywords: mutedKeywords))
+                    .eq("id", value: userID)
+                    .execute()
+            } catch {
+                errorMessage = "No se pudo quitar la palabra silenciada."
+                mutedKeywords = previous
+            }
         }
     }
 

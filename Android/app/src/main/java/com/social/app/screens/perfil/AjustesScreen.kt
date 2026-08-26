@@ -207,6 +207,48 @@ fun AjustesScreen(
             }
         }
 
+        // Palabras silenciadas reales en comentarios
+        // (0078_muted_keywords.sql), comparado con Instagram/Twitter --
+        // oculta automáticamente cualquier comentario propio (post o
+        // reel) que contenga una de estas palabras, sin bloquear a
+        // nadie: el comentario sigue existiendo de verdad para todos los
+        // demás, incluido quien lo escribió.
+        Text("Palabras silenciadas", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 20.dp))
+        Text(
+            "Oculta comentarios que contengan estas palabras, solo para ti.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        val mutedKeywords by privacy.mutedKeywords.collectAsState()
+        var newKeyword by remember { mutableStateOf("") }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = newKeyword,
+                onValueChange = { newKeyword = it },
+                placeholder = { Text("nueva palabra") },
+                singleLine = true,
+                modifier = Modifier.weight(1f)
+            )
+            Button(
+                onClick = { privacy.addMutedKeyword(newKeyword); newKeyword = "" },
+                enabled = newKeyword.isNotBlank(),
+                modifier = Modifier.padding(start = 8.dp)
+            ) { Text("Añadir") }
+        }
+        mutedKeywords.forEach { word ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(word)
+                androidx.compose.material3.TextButton(onClick = { privacy.removeMutedKeyword(word) }) { Text("Quitar") }
+            }
+        }
+
         Text("Privacidad", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 20.dp))
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),

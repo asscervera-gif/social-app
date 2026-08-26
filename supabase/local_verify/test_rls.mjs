@@ -1407,6 +1407,50 @@ async function main() {
     await db.query(`update profiles set website_url = $2 where id = $1`, [u1, 'https://ejemplo.com/' + 'a'.repeat(200)]);
   });
 
+  // --- profiles.muted_keywords (0078_muted_keywords.sql): palabras
+  // silenciadas reales en comentarios, comparado con Instagram/Twitter --
+  // el comentario SIGUE existiendo de verdad para todos los demás,
+  // incluido quien lo escribió; solo desaparece para el dueño de la
+  // publicación que activó su propio filtro. ---
+  await asUser(u1);
+  await db.query(`update profiles set muted_keywords = array['spam'] where id = $1`, [u1]);
+  const mutedWordsPost = (await db.query(
+    `insert into posts (author_id, caption) values ($1, 'otra publicación real') returning id`, [u1]
+  )).rows[0];
+
+  await asUser(u2);
+  const spamComment = (await db.query(
+    `insert into comments (post_id, author_id, body) values ($1, $2, 'esto es spam de verdad') returning id`, [mutedWordsPost.id, u2]
+  )).rows[0];
+  const cleanComment = (await db.query(
+    `insert into comments (post_id, author_id, body) values ($1, $2, 'qué buena foto') returning id`, [mutedWordsPost.id, u2]
+  )).rows[0];
+  const bothAsCommenter = (await db.query(`select id from comments where post_id = $1`, [mutedWordsPost.id])).rows;
+  check('comments_select: quien escribió el comentario real con la palabra silenciada SIGUE viéndolo (u2)', bothAsCommenter.length === 2);
+
+  await asUser(u1);
+  const visibleToOwner = (await db.query(`select id from comments where post_id = $1`, [mutedWordsPost.id])).rows.map(r => r.id);
+  check('comments_select: el dueño real (u1) NO ve el comentario con su propia palabra silenciada', !visibleToOwner.includes(spamComment.id));
+  check('comments_select: el dueño real (u1) SÍ sigue viendo el comentario sin ninguna palabra silenciada', visibleToOwner.includes(cleanComment.id));
+
+  await asUser(u4);
+  const visibleToStranger = (await db.query(`select id from comments where post_id = $1`, [mutedWordsPost.id])).rows;
+  check('comments_select: un tercero real (u4) SÍ ve el comentario con la palabra silenciada de OTRO (el filtro solo aplica al dueño)', visibleToStranger.length === 2);
+
+  // Mismo espejo real en reel_comments.
+  await asUser(u1);
+  const mutedWordsReel = (await db.query(
+    `insert into reels (author_id, video_url) values ($1, 'v2.mp4') returning id`, [u1]
+  )).rows[0];
+  await asUser(u2);
+  await db.query(`insert into reel_comments (reel_id, author_id, body) values ($1, $2, 'puro spam')`, [mutedWordsReel.id, u2]);
+  await asUser(u1);
+  const reelCommentsAsOwner = (await db.query(`select id from reel_comments where reel_id = $1`, [mutedWordsReel.id])).rows;
+  check('reel_comments_select: el dueño real (u1) NO ve el comentario de reel con su propia palabra silenciada', reelCommentsAsOwner.length === 0);
+  await asUser(u4);
+  const reelCommentsAsStranger = (await db.query(`select id from reel_comments where reel_id = $1`, [mutedWordsReel.id])).rows;
+  check('reel_comments_select: un tercero real (u4) SÍ ve el comentario de reel con la palabra silenciada de OTRO', reelCommentsAsStranger.length === 1);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado
