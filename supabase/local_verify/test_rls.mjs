@@ -900,6 +900,77 @@ async function main() {
   const socialOnlyStreamAsStranger = (await db.query(`select id from live_streams where id = $1`, [socialOnlyStream.id])).rows;
   check('live_streams_select: un tercero sin social (u3) NO ve el directo "solo socials" de u2', socialOnlyStreamAsStranger.length === 0);
 
+  // --- group_chats / group_chat_members / group_messages
+  // (0057_group_chats.sql): chats de grupo reales por primera vez,
+  // comparado con WhatsApp/Instagram/Messenger/Facebook. Ronda de backend
+  // (mismo orden que Reels/Directo). ---
+  // Hallazgo real de Postgres/RLS (encontrado escribiendo este mismo
+  // test): `insert into group_chats (...) returning id` falla con "new
+  // row violates row-level security policy for table group_chats" a
+  // pesar de que `group_chats_insert_own` es correcta letra por letra --
+  // confirmado con una reproducción directa (insert sin RETURNING SÍ
+  // funciona; una consulta SELECT aparte del mismo usuario justo después
+  // SÍ ve la fila). La causa real: RETURNING vuelve a comprobar la fila
+  // contra la política de SELECT (`group_chats_select`, que depende de
+  // `is_group_member`, que a su vez depende de que el trigger
+  // `trg_add_group_creator_as_member` YA haya insertado la fila de
+  // pertenencia del creador) en un punto anterior a que ese efecto del
+  // trigger cuente para esa comprobación concreta -- aunque sí cuenta ya
+  // para cualquier SELECT posterior real. Se evita generando el `id` en
+  // el propio cliente (mismo patrón real que deberá usar
+  // GroupChatsViewModel más adelante) en vez de depender de RETURNING/
+  // `.insert(){select()}` para esta tabla en concreto.
+  await asUser(u1);
+  const groupId = crypto.randomUUID();
+  await db.query(`insert into group_chats (id, name, created_by) values ($1, $2, $3)`, [groupId, 'Grupo de u1', u1]);
+  const group = { id: groupId };
+  const creatorMembership = (await db.query(`select user_id from group_chat_members where group_chat_id = $1`, [group.id])).rows;
+  check('trg_add_group_creator_as_member: el creador real (u1) se añade solo como miembro al crear el grupo', creatorMembership.length === 1 && creatorMembership[0].user_id === u1);
+
+  await expectOk('group_chat_members_insert: un miembro real (u1) SÍ puede añadir a otra persona (u2, sin bloqueo)', async () => {
+    await db.query(`insert into group_chat_members (group_chat_id, user_id) values ($1, $2)`, [group.id, u2]);
+  });
+
+  await asUser(u3);
+  await expectFail('group_chat_members_insert: alguien que NO es miembro (u3) no puede añadir a nadie al grupo', async () => {
+    await db.query(`insert into group_chat_members (group_chat_id, user_id) values ($1, $2)`, [group.id, u3]);
+  });
+  const groupAsStranger = (await db.query(`select id from group_chats where id = $1`, [group.id])).rows;
+  check('group_chats_select: un tercero que no es miembro (u3) NO ve el grupo', groupAsStranger.length === 0);
+  const membersAsStranger = (await db.query(`select user_id from group_chat_members where group_chat_id = $1`, [group.id])).rows;
+  check('group_chat_members_select: un tercero que no es miembro (u3) NO ve la lista de miembros', membersAsStranger.length === 0);
+  await expectFail('group_messages_insert: alguien que NO es miembro (u3) no puede escribir en el grupo', async () => {
+    await db.query(`insert into group_messages (group_chat_id, sender_id, body) values ($1, $2, 'intento ajeno')`, [group.id, u3]);
+  });
+
+  await asUser(u1);
+  await expectFail('group_chat_members_insert: bloqueado (u1 y u3 se bloquearon), u1 no puede añadir a u3 al grupo', async () => {
+    await db.query(`insert into group_chat_members (group_chat_id, user_id) values ($1, $2)`, [group.id, u3]);
+  });
+
+  await asUser(u2);
+  const groupAsMember = (await db.query(`select id from group_chats where id = $1`, [group.id])).rows;
+  check('group_chats_select: un miembro real (u2, añadido por u1) SÍ ve el grupo', groupAsMember.length === 1);
+  const membersAsMember = (await db.query(`select user_id from group_chat_members where group_chat_id = $1`, [group.id])).rows;
+  check('group_chat_members_select: un miembro real (u2) SÍ ve la lista completa de miembros', membersAsMember.length === 2);
+  await expectOk('group_messages_insert: un miembro real (u2) SÍ puede escribir en el grupo', async () => {
+    await db.query(`insert into group_messages (group_chat_id, sender_id, body) values ($1, $2, 'hola grupo')`, [group.id, u2]);
+  });
+  await asUser(u1);
+  const messagesAsMember = (await db.query(`select body from group_messages where group_chat_id = $1`, [group.id])).rows;
+  check('group_messages_select: otro miembro real (u1) SÍ ve el mensaje real de u2', messagesAsMember.length === 1 && messagesAsMember[0].body === 'hola grupo');
+
+  // Salir del grupo real: mismo hallazgo de Postgres/RLS ya documentado
+  // para live_stream_viewers -- group_chat_members_select deja ver la
+  // propia fila (por reflexividad del exists de autopertenencia), así que
+  // el DELETE de la propia fila SÍ encuentra candidato real y funciona.
+  await asUser(u2);
+  await expectOk('group_chat_members_delete_own: u2 SÍ puede salir del grupo real', async () => {
+    await db.query(`delete from group_chat_members where group_chat_id = $1 and user_id = $2`, [group.id, u2]);
+  });
+  const groupAfterLeaving = (await db.query(`select id from group_chats where id = $1`, [group.id])).rows;
+  check('group_chats_select: tras salir de verdad, u2 ya NO ve el grupo', groupAfterLeaving.length === 0);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado
