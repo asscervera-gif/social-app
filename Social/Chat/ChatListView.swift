@@ -12,6 +12,13 @@ import SwiftUI
 struct ChatListView: View {
     @StateObject private var viewModel = ChatListViewModel()
     let onOpenChat: (UUID) -> Void
+    // Silenciar con una duración real elegida (8 horas / 1 semana /
+    // siempre), comparado con WhatsApp/Telegram -- ver
+    // ChatListViewModel.muteChatFor(), 0082_mute_until.sql. Un
+    // `.swipeActions` solo admite botones simples, no un menú -- se guarda
+    // el id de la fila objetivo y se muestra un `.confirmationDialog`
+    // aparte, en vez de silenciar directo al deslizar.
+    @State private var muteTargetID: UUID?
 
     var body: some View {
         List {
@@ -79,7 +86,11 @@ struct ChatListView: View {
                         viewModel.hideChat(entry)
                     }
                     Button(entry.isMutedForMe ? "Activar" : "Silenciar") {
-                        viewModel.toggleMute(entry)
+                        if entry.isMutedForMe {
+                            viewModel.unmuteChat(entry)
+                        } else {
+                            muteTargetID = entry.id
+                        }
                     }
                     .tint(.gray)
                     // Fijar un chat arriba de la lista, comparado con
@@ -93,6 +104,26 @@ struct ChatListView: View {
             }
         }
         .navigationTitle("Tus chats")
+        .confirmationDialog(
+            "Silenciar durante…",
+            isPresented: Binding(get: { muteTargetID != nil }, set: { if !$0 { muteTargetID = nil } })
+        ) {
+            if let entry = viewModel.chats.first(where: { $0.id == muteTargetID }) {
+                Button("8 horas") {
+                    viewModel.muteChatFor(entry, until: Date().addingTimeInterval(8 * 3600))
+                    muteTargetID = nil
+                }
+                Button("1 semana") {
+                    viewModel.muteChatFor(entry, until: Date().addingTimeInterval(7 * 24 * 3600))
+                    muteTargetID = nil
+                }
+                Button("Siempre") {
+                    viewModel.muteChatFor(entry, until: nil)
+                    muteTargetID = nil
+                }
+                Button("Cancelar", role: .cancel) { muteTargetID = nil }
+            }
+        }
         .task {
             await viewModel.start()
         }

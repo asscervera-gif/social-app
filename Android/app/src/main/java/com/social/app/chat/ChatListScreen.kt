@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -24,7 +26,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -140,8 +144,31 @@ fun ChatListScreen(viewModel: ChatListViewModel = viewModel(), onOpenChat: (Stri
                     androidx.compose.material3.IconButton(onClick = { viewModel.togglePin(entry) }) {
                         Text(if (entry.isPinnedForMe) "📌" else "📍")
                     }
-                    androidx.compose.material3.IconButton(onClick = { viewModel.toggleMute(entry) }) {
-                        Text(if (entry.isMutedForMe) "🔕" else "🔔")
+                    // Silenciar con una duración real elegida (8 horas / 1
+                    // semana / siempre), comparado con WhatsApp/Telegram --
+                    // antes solo existía un interruptor sin expiración (ver
+                    // ChatListViewModel.muteChatFor(), 0082_mute_until.sql).
+                    var showMuteMenu by remember { mutableStateOf(false) }
+                    Box {
+                        androidx.compose.material3.IconButton(onClick = {
+                            if (entry.isMutedForMe) viewModel.unmuteChat(entry) else showMuteMenu = true
+                        }) {
+                            Text(if (entry.isMutedForMe) "🔕" else "🔔")
+                        }
+                        DropdownMenu(expanded = showMuteMenu, onDismissRequest = { showMuteMenu = false }) {
+                            DropdownMenuItem(text = { Text("8 horas") }, onClick = {
+                                showMuteMenu = false
+                                viewModel.muteChatFor(entry, java.time.Instant.now().plusSeconds(8 * 3600))
+                            })
+                            DropdownMenuItem(text = { Text("1 semana") }, onClick = {
+                                showMuteMenu = false
+                                viewModel.muteChatFor(entry, java.time.Instant.now().plusSeconds(7 * 24 * 3600))
+                            })
+                            DropdownMenuItem(text = { Text("Siempre") }, onClick = {
+                                showMuteMenu = false
+                                viewModel.muteChatFor(entry, null)
+                            })
+                        }
                     }
                 }
                 HorizontalDivider()

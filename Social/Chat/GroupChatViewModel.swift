@@ -276,7 +276,8 @@ final class GroupChatViewModel: ObservableObject {
     /// que el servidor decida (0 filas afectadas y sin error si no eres el
     /// creador, mismo comportamiento ya confirmado en test_rls.mjs).
     /// Diccionario con solo la columna a cambiar (mismo patrón ya usado en
-    /// ChatViewModel.swift.markMessagesRead()/toggleMute() etc.), no un
+    /// ChatViewModel.swift.markMessagesRead()/ChatListViewModel.swift.muteChatFor()
+    /// etc.), no un
     /// struct con campos opcionales -- evita el riesgo real de que un
     /// campo no tocado se codifique como `null` y borre la foto/nombre.
     func renameGroup(_ newName: String) async {

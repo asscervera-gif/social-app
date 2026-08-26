@@ -111,32 +111,69 @@ final class GroupChatsViewModel: ObservableObject {
         }
     }
 
-    /// Silenciar/activar un grupo real, comparado con WhatsApp/Instagram/
-    /// Messenger -- mismo patrón (optimista + revertir con load() si
-    /// falla) ya usado en ChatListViewModel.swift.toggleMute() para el
-    /// chat 1:1.
-    func toggleMute(_ group: GroupChat) async {
-        let newValue = !group.isMutedForMe
+    /// Silenciar un grupo real con una duración real elegida (8 horas / 1
+    /// semana / siempre), comparado con WhatsApp/Telegram -- antes era un
+    /// simple interruptor sin expiración (ver 0082_mute_until.sql, columna
+    /// `group_chat_members.muted_until`, nil = para siempre). Mismo patrón
+    /// (optimista + revertir con load() si falla) ya usado en
+    /// ChatListViewModel.swift.muteChatFor() para el chat 1:1. Dos
+    /// `.update()` seguidos por el mismo motivo de tipos ya documentado
+    /// allí. Equivalente de GroupChatsViewModel.kt.muteGroupFor().
+    func muteGroupFor(_ group: GroupChat, until: Date?) async {
         if let index = groups.firstIndex(where: { $0.id == group.id }) {
-            groups[index].isMutedForMe = newValue
+            groups[index].isMutedForMe = true
         }
+        let untilString: String? = until.map { ISO8601DateFormatter().string(from: $0) }
         guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
         do {
             try await SupabaseManager.shared.client
                 .from("group_chat_members")
-                .update(["muted": newValue])
+                .update(["muted": true])
+                .eq("group_chat_id", value: group.id)
+                .eq("user_id", value: userID)
+                .execute()
+            try await SupabaseManager.shared.client
+                .from("group_chat_members")
+                .update(["muted_until": untilString])
                 .eq("group_chat_id", value: group.id)
                 .eq("user_id", value: userID)
                 .execute()
         } catch {
-            errorMessage = "No se pudo cambiar el silencio del grupo."
+            errorMessage = "No se pudo silenciar el grupo."
+            await load()
+        }
+    }
+
+    /// Activar (quitar el silencio) de un grupo real -- limpia también la
+    /// fecha de expiración para no dejar estado colgado.
+    func unmuteGroup(_ group: GroupChat) async {
+        if let index = groups.firstIndex(where: { $0.id == group.id }) {
+            groups[index].isMutedForMe = false
+        }
+        let untilString: String? = nil
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        do {
+            try await SupabaseManager.shared.client
+                .from("group_chat_members")
+                .update(["muted": false])
+                .eq("group_chat_id", value: group.id)
+                .eq("user_id", value: userID)
+                .execute()
+            try await SupabaseManager.shared.client
+                .from("group_chat_members")
+                .update(["muted_until": untilString])
+                .eq("group_chat_id", value: group.id)
+                .eq("user_id", value: userID)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo activar el grupo."
             await load()
         }
     }
 
     /// Fijar/desfijar un grupo real arriba de la lista, comparado con
     /// WhatsApp/Telegram/Messenger -- mismo patrón (optimista + revertir
-    /// con load() si falla) ya usado en toggleMute(). A diferencia de
+    /// con load() si falla) ya usado en muteGroupFor(). A diferencia de
     /// ocultar, un grupo fijado NO se desfija solo al llegar un mensaje.
     /// Equivalente de GroupChatsViewModel.kt.togglePin().
     func togglePin(_ group: GroupChat) async {

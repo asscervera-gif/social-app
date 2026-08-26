@@ -23,6 +23,12 @@ struct GroupChatsListView: View {
     // estado aparte en su lugar.
     @State private var selectedGroup: GroupChat?
     @State private var showOpenedGroup = false
+    // Silenciar con una duración real elegida (8 horas / 1 semana /
+    // siempre), comparado con WhatsApp/Telegram -- ver
+    // GroupChatsViewModel.muteGroupFor(), 0082_mute_until.sql. Mismo
+    // patrón que ChatListView.swift: un `.swipeActions` solo admite
+    // botones simples, no un menú.
+    @State private var muteTargetID: UUID?
 
     var body: some View {
         List {
@@ -83,7 +89,11 @@ struct GroupChatsListView: View {
                         Task { await viewModel.hideGroup(group) }
                     }
                     Button(group.isMutedForMe ? "Activar" : "Silenciar") {
-                        Task { await viewModel.toggleMute(group) }
+                        if group.isMutedForMe {
+                            Task { await viewModel.unmuteGroup(group) }
+                        } else {
+                            muteTargetID = group.id
+                        }
                     }
                     .tint(.gray)
                     // Fijar un chat de grupo arriba de la lista, comparado
@@ -97,6 +107,26 @@ struct GroupChatsListView: View {
             }
         }
         .navigationTitle("Grupos")
+        .confirmationDialog(
+            "Silenciar durante…",
+            isPresented: Binding(get: { muteTargetID != nil }, set: { if !$0 { muteTargetID = nil } })
+        ) {
+            if let group = viewModel.groups.first(where: { $0.id == muteTargetID }) {
+                Button("8 horas") {
+                    Task { await viewModel.muteGroupFor(group, until: Date().addingTimeInterval(8 * 3600)) }
+                    muteTargetID = nil
+                }
+                Button("1 semana") {
+                    Task { await viewModel.muteGroupFor(group, until: Date().addingTimeInterval(7 * 24 * 3600)) }
+                    muteTargetID = nil
+                }
+                Button("Siempre") {
+                    Task { await viewModel.muteGroupFor(group, until: nil) }
+                    muteTargetID = nil
+                }
+                Button("Cancelar", role: .cancel) { muteTargetID = nil }
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {

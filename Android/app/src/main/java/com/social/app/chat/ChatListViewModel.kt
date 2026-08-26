@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import java.time.Instant
 
 data class ChatListEntry(
     val chat: Chat,
@@ -87,6 +88,16 @@ private data class ChatRow(
     @SerialName("muted_by_b") val mutedByB: Boolean = false,
     @SerialName("pinned_by_a") val pinnedByA: Boolean = false,
     @SerialName("pinned_by_b") val pinnedByB: Boolean = false
+    // muted_until_a/b (0082_mute_until.sql) deliberadamente NO se decodifican
+    // aquí: esta app nunca convierte una fecha real que llega del servidor
+    // en un objeto de fecha para compararla contra "ahora" en cliente (ver
+    // Profile.createdAt) -- el formato exacto de timestamptz que devuelve
+    // PostgREST no está verificado contra un proyecto real en este entorno.
+    // La expiración real solo importa para decidir si se manda o no el
+    // aviso, y esa comparación ya la hace el propio servidor
+    // (notify_new_message, 0082) -- el icono de silenciado del cliente
+    // sigue reflejando el flag en bruto, mismo criterio ya usado antes de
+    // esta ronda.
 )
 
 /**
@@ -265,24 +276,52 @@ class ChatListViewModel : ViewModel() {
         }
     }
 
-    /** Silenciar/activar -- solo afecta a MI copia (columna
-     * muted_by_a/muted_by_b según corresponda), nunca a la de la otra
-     * persona (protect_chat_muted_flags, 0047_message_notify_mute.sql, lo
-     * garantiza también del lado del servidor). A diferencia de ocultar,
-     * silenciado no se deshace solo al llegar un mensaje -- deshacerlo
-     * automáticamente contradiría el propósito de la función. */
-    fun toggleMute(entry: ChatListEntry) {
-        val newValue = !entry.isMutedForMe
+    /** Silenciar con una duración real elegida por la persona (8 horas / 1
+     * semana / siempre), comparado con WhatsApp/Telegram -- antes era un
+     * simple interruptor sin expiración (ver 0082_mute_until.sql). `until`
+     * en null significa "para siempre", mismo criterio que
+     * `profiles.banned_until`. Solo afecta a MI copia (columnas
+     * muted_by_a/muted_until_a o muted_by_b/muted_until_b según
+     * corresponda), nunca a la de la otra persona
+     * (protect_chat_muted_flags lo garantiza también del lado del
+     * servidor). */
+    fun muteChatFor(entry: ChatListEntry, until: Instant?) {
         _chats.update { list ->
-            list.map { if (it.chat.id == entry.chat.id) it.copy(isMutedForMe = newValue) else it }
+            list.map { if (it.chat.id == entry.chat.id) it.copy(isMutedForMe = true) else it }
         }
         viewModelScope.launch {
             try {
-                val column = if (entry.iAmUserA) "muted_by_a" else "muted_by_b"
+                val mutedColumn = if (entry.iAmUserA) "muted_by_a" else "muted_by_b"
+                val untilColumn = if (entry.iAmUserA) "muted_until_a" else "muted_until_b"
                 SupabaseManager.client.from("chats")
-                    .update({ set(column, newValue) }) { filter { eq("id", entry.chat.id) } }
+                    .update({
+                        set(mutedColumn, true)
+                        set(untilColumn, until?.toString())
+                    }) { filter { eq("id", entry.chat.id) } }
             } catch (e: Exception) {
-                _errorMessage.value = "No se pudo cambiar el silencio de la conversación."
+                _errorMessage.value = "No se pudo silenciar la conversación."
+                load()
+            }
+        }
+    }
+
+    /** Activar (quitar el silencio) -- limpia también la fecha de
+     * expiración para no dejar estado colgado. */
+    fun unmuteChat(entry: ChatListEntry) {
+        _chats.update { list ->
+            list.map { if (it.chat.id == entry.chat.id) it.copy(isMutedForMe = false) else it }
+        }
+        viewModelScope.launch {
+            try {
+                val mutedColumn = if (entry.iAmUserA) "muted_by_a" else "muted_by_b"
+                val untilColumn = if (entry.iAmUserA) "muted_until_a" else "muted_until_b"
+                SupabaseManager.client.from("chats")
+                    .update({
+                        set(mutedColumn, false)
+                        set(untilColumn, null as String?)
+                    }) { filter { eq("id", entry.chat.id) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo activar la conversación."
                 load()
             }
         }

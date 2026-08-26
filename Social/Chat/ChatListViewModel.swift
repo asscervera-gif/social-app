@@ -231,40 +231,78 @@ final class ChatListViewModel: ObservableObject {
         }
     }
 
-    /// Silenciar/activar -- solo afecta a MI copia (columna
-    /// muted_by_a/muted_by_b según corresponda), nunca a la de la otra
-    /// persona (protect_chat_muted_flags, 0047_message_notify_mute.sql,
-    /// lo garantiza también del lado del servidor). A diferencia de
-    /// ocultar, silenciado no se deshace solo al llegar un mensaje --
-    /// deshacerlo automáticamente contradiría el propósito de la función.
-    /// Equivalente de ChatListViewModel.kt.toggleMute().
-    func toggleMute(_ entry: ChatListEntry) {
-        let newValue = !entry.isMutedForMe
+    /// Silenciar con una duración real elegida (8 horas / 1 semana /
+    /// siempre), comparado con WhatsApp/Telegram -- antes era un simple
+    /// interruptor sin expiración (ver 0082_mute_until.sql). `until` en
+    /// nil significa "para siempre", mismo criterio que
+    /// `profiles.banned_until`. Solo afecta a MI copia (columnas
+    /// muted_by_a/muted_until_a o muted_by_b/muted_until_b según
+    /// corresponda), nunca a la de la otra persona
+    /// (protect_chat_muted_flags lo garantiza también del lado del
+    /// servidor). Dos `.update()` seguidos, no uno con ambas columnas
+    /// mezcladas -- un diccionario de Swift necesita un tipo de valor
+    /// homogéneo (Bool por un lado, String? por otro), mismo motivo por
+    /// el que el resto de esta pantalla nunca mezcla tipos en un solo
+    /// `.update()`. Equivalente de ChatListViewModel.kt.muteChatFor().
+    func muteChatFor(_ entry: ChatListEntry, until: Date?) {
         if let index = chats.firstIndex(where: { $0.id == entry.id }) {
             chats[index] = ChatListEntry(
                 id: entry.id, chat: entry.chat, otherName: entry.otherName,
                 otherAvatarConfig: entry.otherAvatarConfig, lastMessage: entry.lastMessage,
-                lastActivity: entry.lastActivity, iAmUserA: entry.iAmUserA, isMutedForMe: newValue,
+                lastActivity: entry.lastActivity, iAmUserA: entry.iAmUserA, isMutedForMe: true,
                 hasUnread: entry.hasUnread, isPinnedForMe: entry.isPinnedForMe
             )
         }
+        let untilString: String? = until.map { ISO8601DateFormatter().string(from: $0) }
+        let mutedColumn = entry.iAmUserA ? "muted_by_a" : "muted_by_b"
+        let untilColumn = entry.iAmUserA ? "muted_until_a" : "muted_until_b"
         Task {
             do {
-                if entry.iAmUserA {
-                    try await SupabaseManager.shared.client
-                        .from("chats")
-                        .update(["muted_by_a": newValue])
-                        .eq("id", value: entry.chat.id)
-                        .execute()
-                } else {
-                    try await SupabaseManager.shared.client
-                        .from("chats")
-                        .update(["muted_by_b": newValue])
-                        .eq("id", value: entry.chat.id)
-                        .execute()
-                }
+                try await SupabaseManager.shared.client
+                    .from("chats")
+                    .update([mutedColumn: true])
+                    .eq("id", value: entry.chat.id)
+                    .execute()
+                try await SupabaseManager.shared.client
+                    .from("chats")
+                    .update([untilColumn: untilString])
+                    .eq("id", value: entry.chat.id)
+                    .execute()
             } catch {
-                errorMessage = "No se pudo cambiar el silencio de la conversación."
+                errorMessage = "No se pudo silenciar la conversación."
+                await load()
+            }
+        }
+    }
+
+    /// Activar (quitar el silencio) -- limpia también la fecha de
+    /// expiración para no dejar estado colgado.
+    func unmuteChat(_ entry: ChatListEntry) {
+        if let index = chats.firstIndex(where: { $0.id == entry.id }) {
+            chats[index] = ChatListEntry(
+                id: entry.id, chat: entry.chat, otherName: entry.otherName,
+                otherAvatarConfig: entry.otherAvatarConfig, lastMessage: entry.lastMessage,
+                lastActivity: entry.lastActivity, iAmUserA: entry.iAmUserA, isMutedForMe: false,
+                hasUnread: entry.hasUnread, isPinnedForMe: entry.isPinnedForMe
+            )
+        }
+        let mutedColumn = entry.iAmUserA ? "muted_by_a" : "muted_by_b"
+        let untilColumn = entry.iAmUserA ? "muted_until_a" : "muted_until_b"
+        let untilString: String? = nil
+        Task {
+            do {
+                try await SupabaseManager.shared.client
+                    .from("chats")
+                    .update([mutedColumn: false])
+                    .eq("id", value: entry.chat.id)
+                    .execute()
+                try await SupabaseManager.shared.client
+                    .from("chats")
+                    .update([untilColumn: untilString])
+                    .eq("id", value: entry.chat.id)
+                    .execute()
+            } catch {
+                errorMessage = "No se pudo activar la conversación."
                 await load()
             }
         }

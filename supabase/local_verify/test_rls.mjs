@@ -611,6 +611,34 @@ async function main() {
   )).rows;
   check('notify_new_message: silenciado por u2, el segundo mensaje NO genera un aviso nuevo (sigue habiendo solo 1)', messageNotifAfterMute.length === 1);
 
+  // --- muted_until_a/b (0082_mute_until.sql): silenciar temporalmente
+  // con expiración real, comparado con WhatsApp/Telegram -- mismo
+  // criterio que profiles.banned_until: null = para siempre, una fecha
+  // real ya pasada deja de contar como silenciado sin que nadie tenga
+  // que revertir el flag a mano. u2 sigue con muted_by_b = true desde el
+  // bloque de arriba. ---
+  await asUser(u2);
+  await db.query(`update chats set muted_until_a = now() where id = $1`, [chat.id]);
+  await asSuperuser();
+  const stillNotMutedUntilA = (await db.query(`select muted_until_a from chats where id = $1`, [chat.id])).rows[0];
+  check('protect_chat_muted_flags: u2 NO puede tocar la fecha de expiración real de u1 (revertido en silencio, no lanza)', stillNotMutedUntilA.muted_until_a === null);
+
+  await asUser(u2);
+  await db.query(`update chats set muted_until_b = now() - interval '1 hour' where id = $1`, [chat.id]);
+  await asUser(u1);
+  await db.query(`insert into messages (chat_id, sender_id, body) values ($1, $2, 'silencio real ya caducado')`, [chat.id, u1]);
+  await asUser(u2);
+  const notifAfterExpiredMute = (await db.query(`select 1 from notifications where recipient_id = $1 and kind = 'message'`, [u2])).rows;
+  check('notify_new_message: un silencio real ya caducado (muted_until_b en el pasado) SÍ vuelve a generar aviso', notifAfterExpiredMute.length === 2);
+
+  await asUser(u2);
+  await db.query(`update chats set muted_until_b = now() + interval '1 hour' where id = $1`, [chat.id]);
+  await asUser(u1);
+  await db.query(`insert into messages (chat_id, sender_id, body) values ($1, $2, 'silencio real todavía vigente')`, [chat.id, u1]);
+  await asUser(u2);
+  const notifStillMuted = (await db.query(`select 1 from notifications where recipient_id = $1 and kind = 'message'`, [u2])).rows;
+  check('notify_new_message: un silencio real todavía vigente (muted_until_b en el futuro) SIGUE sin generar aviso', notifStillMuted.length === 2);
+
   // --- messages_update_own / protect_message_columns (0049): un mensaje
   // mal escrito solo se podía borrar entero, nunca corregir -- comparado
   // con WhatsApp/Telegram/Messenger. De paso, hallazgo de seguridad real
@@ -1125,16 +1153,53 @@ async function main() {
   // u1 escribe un mensaje nuevo con u2 ya silenciado -- u2 NO debe recibir
   // aviso esta vez (a diferencia del mensaje "hola grupo" de más arriba,
   // de antes de silenciar, que sí generó aviso real para u1).
+  //
+  // Hallazgo real de robustez del propio arnés de pruebas, encontrado
+  // escribiendo las pruebas de 0082_mute_until.sql: esta comprobación
+  // seguía autenticada como u1 al leer las notificaciones de u2 --
+  // `notifications_select` (0002_rls.sql) exige `recipient_id =
+  // auth.uid()`, así que la consulta siempre devolvía 0 filas por RLS,
+  // acertara o no el trigger real. "Pasaba" sin comprobar nada de
+  // verdad, mismo tipo de bug (no de RLS ni del trigger en sí, del
+  // propio test) que el ya documentado en la ronda de "archivar
+  // publicaciones" con u3/admin. Al arreglar la autenticación salió
+  // además el recuento real correcto: u2 YA tenía 1 aviso real de
+  // 'group_message' de antes de silenciarse (la nota de voz real de u1,
+  // "nota.m4a", de la prueba `group_messages_has_content` bastante más
+  // arriba, cuando u2 todavía no estaba silenciado) -- 0, no 1, era la
+  // cifra equivocada.
   await asUser(u1);
   await db.query(`insert into group_messages (group_chat_id, sender_id, body) values ($1, $2, 'mensaje tras silenciar')`, [group.id, u1]);
+  await asUser(u2);
   const groupMessageNotifAsMutedU2 = (await db.query(`select id from notifications where recipient_id = $1 and kind = 'group_message'`, [u2])).rows;
-  check('notify_new_group_message: u2 (silenciado) NO recibe aviso del mensaje nuevo de u1', groupMessageNotifAsMutedU2.length === 0);
+  check('notify_new_group_message: u2 (silenciado) NO recibe un aviso NUEVO del mensaje de u1 (sigue habiendo solo el previo a silenciarse)', groupMessageNotifAsMutedU2.length === 1);
+
+  // --- group_chat_members.muted_until (0082_mute_until.sql): mismo
+  // criterio real que chats.muted_until_a/b -- u2 sigue con muted = true
+  // desde el bloque de arriba. Mismo cuidado real de más arriba:
+  // `asUser(u2)` antes de cada lectura real de sus propias
+  // notificaciones. ---
+  await asUser(u2);
+  await db.query(`update group_chat_members set muted_until = now() - interval '1 hour' where group_chat_id = $1 and user_id = $2`, [group.id, u2]);
+  await asUser(u1);
+  await db.query(`insert into group_messages (group_chat_id, sender_id, body) values ($1, $2, 'silencio de grupo real ya caducado')`, [group.id, u1]);
+  await asUser(u2);
+  const groupNotifAfterExpiredMute = (await db.query(`select id from notifications where recipient_id = $1 and kind = 'group_message'`, [u2])).rows;
+  check('notify_new_group_message: un silencio de grupo real ya caducado (muted_until en el pasado) SÍ vuelve a generar aviso', groupNotifAfterExpiredMute.length === 2);
+
+  await db.query(`update group_chat_members set muted_until = now() + interval '1 hour' where group_chat_id = $1 and user_id = $2`, [group.id, u2]);
+  await asUser(u1);
+  await db.query(`insert into group_messages (group_chat_id, sender_id, body) values ($1, $2, 'silencio de grupo real todavía vigente')`, [group.id, u1]);
+  await asUser(u2);
+  const groupNotifStillMuted = (await db.query(`select id from notifications where recipient_id = $1 and kind = 'group_message'`, [u2])).rows;
+  check('notify_new_group_message: un silencio de grupo real todavía vigente (muted_until en el futuro) SIGUE sin generar aviso', groupNotifStillMuted.length === 2);
 
   // --- group_messages.edited_at / group_messages_update_own /
   // group_messages_delete_own (0065_group_messages_edit_delete.sql):
   // editar y borrar el propio mensaje en un grupo, comparado con
   // WhatsApp/Telegram/Messenger. Reutiliza el mensaje real "mensaje tras
-  // silenciar" de u1 de más arriba. Contexto ya asUser(u1). ---
+  // silenciar" de u1 de más arriba. ---
+  await asUser(u1);
   const groupMsgToEdit = (await db.query(`select id from group_messages where group_chat_id = $1 and body = 'mensaje tras silenciar'`, [group.id])).rows[0];
   await expectOk('group_messages_update_own: el remitente real (u1) SÍ puede editar su propio mensaje', async () => {
     await db.query(`update group_messages set body = 'mensaje corregido', edited_at = now() where id = $1`, [groupMsgToEdit.id]);

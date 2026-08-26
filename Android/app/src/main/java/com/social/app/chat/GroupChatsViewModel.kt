@@ -116,20 +116,45 @@ class GroupChatsViewModel : ViewModel() {
         val pinned: Boolean = false
     )
 
-    /** Silenciar/activar un grupo real, comparado con WhatsApp/Instagram/
-     * Messenger -- mismo patrón (optimista + revertir con load() si falla)
-     * ya usado en ChatListViewModel.kt.toggleMute() para el chat 1:1. */
-    fun toggleMute(group: GroupChat) {
-        val newValue = !group.isMutedForMe
-        _groups.update { list -> list.map { if (it.id == group.id) it.copy(isMutedForMe = newValue) else it } }
+    /** Silenciar un grupo real con una duración real elegida (8 horas / 1
+     * semana / siempre), comparado con WhatsApp/Telegram -- antes era un
+     * simple interruptor sin expiración (ver 0082_mute_until.sql, columna
+     * `group_chat_members.muted_until`, null = para siempre). Mismo patrón
+     * (optimista + revertir con load() si falla) ya usado en
+     * ChatListViewModel.kt.muteChatFor() para el chat 1:1. */
+    fun muteGroupFor(group: GroupChat, until: java.time.Instant?) {
+        _groups.update { list -> list.map { if (it.id == group.id) it.copy(isMutedForMe = true) else it } }
         viewModelScope.launch {
             try {
                 val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
-                SupabaseManager.client.from("group_chat_members").update({ set("muted", newValue) }) {
+                SupabaseManager.client.from("group_chat_members").update({
+                    set("muted", true)
+                    set("muted_until", until?.toString())
+                }) {
                     filter { eq("group_chat_id", group.id); eq("user_id", userId) }
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "No se pudo cambiar el silencio del grupo."
+                _errorMessage.value = "No se pudo silenciar el grupo."
+                load()
+            }
+        }
+    }
+
+    /** Activar (quitar el silencio) de un grupo real -- limpia también la
+     * fecha de expiración para no dejar estado colgado. */
+    fun unmuteGroup(group: GroupChat) {
+        _groups.update { list -> list.map { if (it.id == group.id) it.copy(isMutedForMe = false) else it } }
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                SupabaseManager.client.from("group_chat_members").update({
+                    set("muted", false)
+                    set("muted_until", null as String?)
+                }) {
+                    filter { eq("group_chat_id", group.id); eq("user_id", userId) }
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo activar el grupo."
                 load()
             }
         }
