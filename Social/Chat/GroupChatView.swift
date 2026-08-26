@@ -30,6 +30,12 @@ struct GroupChatView: View {
     // Messenger/Facebook -- mismo patrón exacto que ChatView.swift (1:1).
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var fullScreenURL: URL?
+    // Editar/borrar un mensaje ya enviado en un grupo real
+    // (0065_group_messages_edit_delete.sql), comparado con WhatsApp/
+    // Telegram/Messenger -- mismo menú real que ChatView.swift (chat 1:1).
+    @State private var managingMessage: GroupMessage?
+    @State private var editingMessage: GroupMessage?
+    @State private var editedMessageText = ""
 
     init(groupChatID: UUID, groupName: String) {
         self._viewModel = StateObject(wrappedValue: GroupChatViewModel(groupChatID: groupChatID))
@@ -67,7 +73,8 @@ struct GroupChatView: View {
                                 onToggleReaction: { emoji in
                                     Task { await viewModel.toggleReaction(groupMessageID: message.id, emoji: emoji) }
                                 },
-                                onOpenFullScreen: { url in fullScreenURL = url }
+                                onOpenFullScreen: { url in fullScreenURL = url },
+                                onManage: { managingMessage = message }
                             )
                             .id(message.id)
                         }
@@ -168,6 +175,53 @@ struct GroupChatView: View {
         )) {
             if let fullScreenURL {
                 FullScreenImageView(url: fullScreenURL, onDismiss: { self.fullScreenURL = nil })
+            }
+        }
+        // Editar/borrar un mensaje ya enviado en un grupo real
+        // (0065_group_messages_edit_delete.sql), comparado con WhatsApp/
+        // Telegram/Messenger -- mismo menú real que ChatView.swift (1:1).
+        .confirmationDialog(
+            "Mensaje",
+            isPresented: Binding(
+                get: { managingMessage != nil },
+                set: { if !$0 { managingMessage = nil } }
+            ),
+            titleVisibility: .hidden
+        ) {
+            if let managingMessage {
+                Button("Editar") {
+                    editingMessage = managingMessage
+                    editedMessageText = managingMessage.body ?? ""
+                }
+                Button("Borrar", role: .destructive) {
+                    Task { await viewModel.deleteMessage(managingMessage.id) }
+                }
+                Button("Cancelar", role: .cancel) {}
+            }
+        }
+        .sheet(item: $editingMessage) { message in
+            NavigationStack {
+                Form {
+                    TextField("Mensaje", text: $editedMessageText, axis: .vertical)
+                    Text("\(editedMessageText.count)/2000")
+                        .font(.caption2)
+                        .foregroundStyle(editedMessageText.count > 2000 ? .red : .secondary)
+                }
+                .navigationTitle("Editar mensaje")
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Guardar") {
+                            Task {
+                                await viewModel.editMessage(message.id, newBody: editedMessageText)
+                                editingMessage = nil
+                            }
+                        }
+                        .disabled(editedMessageText.isEmpty || editedMessageText.count > 2000)
+                    }
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancelar") { editingMessage = nil }
+                    }
+                }
             }
         }
     }
@@ -287,6 +341,11 @@ private struct GroupMessageBubble: View {
     let readCount: Int
     let onToggleReaction: (String) -> Void
     var onOpenFullScreen: (URL) -> Void = { _ in }
+    // Editar/borrar un mensaje ya enviado en un grupo real
+    // (0065_group_messages_edit_delete.sql), comparado con WhatsApp/
+    // Telegram/Messenger -- mismo criterio que MessageBubble
+    // (ChatView.swift, chat 1:1): mantener pulsado el propio mensaje.
+    var onManage: () -> Void = {}
 
     @State private var showPicker = false
     private let reactionEmojis = ["❤", "😂", "😮", "😢", "👍"]
@@ -324,6 +383,7 @@ private struct GroupMessageBubble: View {
                     .background(isMine ? Color.blue.opacity(0.15) : Color(.systemGray5))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .onTapGesture { showPicker.toggle() }
+                    .onLongPressGesture { if isMine { onManage() } }
             }
             if !reactions.isEmpty {
                 HStack(spacing: 4) {
@@ -348,6 +408,15 @@ private struct GroupMessageBubble: View {
                         }
                     }
                 }
+            }
+            // Editar un mensaje ya enviado en un grupo real
+            // (0065_group_messages_edit_delete.sql), comparado con
+            // WhatsApp/Telegram/Messenger -- mismo aviso visual que
+            // ChatView.swift (chat 1:1).
+            if message.editedAt != nil {
+                Text("Editado")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
             // "Visto por" real (0061_group_message_reads.sql), comparado
             // con WhatsApp/Messenger -- solo en los propios mensajes,

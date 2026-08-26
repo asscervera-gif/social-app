@@ -1122,6 +1122,46 @@ async function main() {
   const groupMessageNotifAsMutedU2 = (await db.query(`select id from notifications where recipient_id = $1 and kind = 'group_message'`, [u2])).rows;
   check('notify_new_group_message: u2 (silenciado) NO recibe aviso del mensaje nuevo de u1', groupMessageNotifAsMutedU2.length === 0);
 
+  // --- group_messages.edited_at / group_messages_update_own /
+  // group_messages_delete_own (0065_group_messages_edit_delete.sql):
+  // editar y borrar el propio mensaje en un grupo, comparado con
+  // WhatsApp/Telegram/Messenger. Reutiliza el mensaje real "mensaje tras
+  // silenciar" de u1 de más arriba. Contexto ya asUser(u1). ---
+  const groupMsgToEdit = (await db.query(`select id from group_messages where group_chat_id = $1 and body = 'mensaje tras silenciar'`, [group.id])).rows[0];
+  await expectOk('group_messages_update_own: el remitente real (u1) SÍ puede editar su propio mensaje', async () => {
+    await db.query(`update group_messages set body = 'mensaje corregido', edited_at = now() where id = $1`, [groupMsgToEdit.id]);
+  });
+  const editedGroupMsg = (await db.query(`select body, edited_at from group_messages where id = $1`, [groupMsgToEdit.id])).rows[0];
+  check('group_messages_update_own: el body y edited_at reales quedaron guardados', editedGroupMsg.body === 'mensaje corregido' && editedGroupMsg.edited_at !== null);
+
+  // Hallazgo real de RLS, encontrado escribiendo esta misma migración:
+  // `with check (sender_id = auth.uid())` certifica que el NUEVO
+  // sender_id sigue siendo el propio remitente, pero no dice nada sobre
+  // `group_chat_id` -- sin `trg_protect_group_message_identity`, u1
+  // podría "trasladar" su propio mensaje a un grupo donde ni siquiera es
+  // miembro, esquivando la comprobación real que sí protege el INSERT.
+  const fakeOtherGroupIdForMessage = crypto.randomUUID();
+  await db.query(`update group_messages set group_chat_id = $1 where id = $2`, [fakeOtherGroupIdForMessage, groupMsgToEdit.id]);
+  const messageAfterIdentityAttempt = (await db.query(`select group_chat_id from group_messages where id = $1`, [groupMsgToEdit.id])).rows[0];
+  check('trg_protect_group_message_identity: u1 no puede trasladar su propio mensaje a otro group_chat_id', messageAfterIdentityAttempt?.group_chat_id === group.id);
+
+  // Mismo hallazgo ya confirmado con group_chats_update_own: un
+  // UPDATE/DELETE gobernado solo por USING que no encuentra fila propia
+  // no lanza excepción, solo afecta 0 filas -- se comprueba el estado
+  // real, no con expectFail.
+  await asUser(u2);
+  await db.query(`update group_messages set body = 'intento ajeno' where id = $1`, [groupMsgToEdit.id]);
+  await db.query(`delete from group_messages where id = $1`, [groupMsgToEdit.id]);
+  const messageAfterStrangerAttempts = (await db.query(`select body from group_messages where id = $1`, [groupMsgToEdit.id])).rows[0];
+  check('group_messages_update_own/delete_own: un miembro real que NO es el remitente (u2) no puede editar ni borrar el mensaje de u1', messageAfterStrangerAttempts?.body === 'mensaje corregido');
+
+  await asUser(u1);
+  await expectOk('group_messages_delete_own: el remitente real (u1) SÍ puede borrar su propio mensaje', async () => {
+    await db.query(`delete from group_messages where id = $1`, [groupMsgToEdit.id]);
+  });
+  const messageAfterOwnDelete = (await db.query(`select id from group_messages where id = $1`, [groupMsgToEdit.id])).rows;
+  check('group_messages_delete_own: el mensaje real ya no existe tras borrarlo', messageAfterOwnDelete.length === 0);
+
   // Salir del grupo real: mismo hallazgo de Postgres/RLS ya documentado
   // para live_stream_viewers -- group_chat_members_select deja ver la
   // propia fila (por reflexividad del exists de autopertenencia), así que

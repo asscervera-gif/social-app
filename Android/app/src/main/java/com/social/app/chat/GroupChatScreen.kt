@@ -1,7 +1,9 @@
 package com.social.app.chat
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,7 +52,7 @@ import kotlinx.coroutines.launch
  * (0062_group_message_audio.sql) y fotos (media_url, ya en el esquema
  * desde 0057_group_chats.sql) reales.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) {
     val viewModel = remember(groupChatId) { GroupChatViewModel(groupChatId) }
@@ -71,6 +73,12 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
     val groupChat by viewModel.groupChat.collectAsState()
     var draft by remember { mutableStateOf("") }
     var showMembers by remember { mutableStateOf(false) }
+    // Editar/borrar un mensaje ya enviado en un grupo real
+    // (0065_group_messages_edit_delete.sql), comparado con WhatsApp/
+    // Telegram/Messenger -- mismo menú real que ChatScreen.kt (chat 1:1).
+    var managingMessage by remember { mutableStateOf<GroupMessage?>(null) }
+    var editingMessage by remember { mutableStateOf<GroupMessage?>(null) }
+    var editedMessageText by remember { mutableStateOf("") }
     val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
     val listState = rememberLazyListState()
 
@@ -177,7 +185,10 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
                                         if (isMine) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                                         else MaterialTheme.colorScheme.surfaceVariant
                                     )
-                                    .clickable { showPicker = !showPicker }
+                                    .combinedClickable(
+                                        onClick = { showPicker = !showPicker },
+                                        onLongClick = { if (isMine) managingMessage = message }
+                                    )
                                     .padding(horizontal = 12.dp, vertical = 8.dp)
                             )
                         }
@@ -209,6 +220,17 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
                                     )
                                 }
                             }
+                        }
+                        // Editar un mensaje ya enviado en un grupo real
+                        // (0065_group_messages_edit_delete.sql), comparado
+                        // con WhatsApp/Telegram/Messenger -- mismo aviso
+                        // visual que ChatScreen.kt (chat 1:1).
+                        if (message.editedAt != null) {
+                            Text(
+                                "Editado",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                         // "Visto por" real (0061_group_message_reads.sql),
                         // comparado con WhatsApp/Messenger -- solo en los
@@ -305,6 +327,65 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
             onLeave = {
                 showMembers = false
                 viewModel.leaveGroup(onBack)
+            }
+        )
+    }
+
+    // Editar/borrar un mensaje ya enviado en un grupo real
+    // (0065_group_messages_edit_delete.sql), comparado con WhatsApp/
+    // Telegram/Messenger -- mismo menú real que ChatScreen.kt (chat 1:1).
+    managingMessage?.let { message ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { managingMessage = null },
+            title = { Text("Mensaje") },
+            text = {},
+            confirmButton = {
+                TextButton(onClick = {
+                    editingMessage = message
+                    editedMessageText = message.body ?: ""
+                    managingMessage = null
+                }) { Text("Editar") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = {
+                        viewModel.deleteMessage(message.id)
+                        managingMessage = null
+                    }) { Text("Borrar") }
+                    TextButton(onClick = { managingMessage = null }) { Text("Cancelar") }
+                }
+            }
+        )
+    }
+    editingMessage?.let { message ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { editingMessage = null },
+            title = { Text("Editar mensaje") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = editedMessageText,
+                        onValueChange = { editedMessageText = it },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        "${editedMessageText.length}/2000",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (editedMessageText.length > 2000) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.editMessage(message.id, editedMessageText)
+                        editingMessage = null
+                    },
+                    enabled = editedMessageText.isNotEmpty() && editedMessageText.length <= 2000
+                ) { Text("Guardar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingMessage = null }) { Text("Cancelar") }
             }
         )
     }

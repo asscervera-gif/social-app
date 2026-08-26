@@ -24,6 +24,10 @@ struct GroupMessage: Codable, Identifiable {
     // ChatMessage.audioURL (chat 1:1, 0019_message_audio.sql).
     var audioURL: String?
     var createdAt: String
+    // Editar un mensaje ya enviado en un grupo (0065_group_messages_edit_delete.sql),
+    // comparado con WhatsApp/Telegram/Messenger -- mismo campo separado
+    // que ChatMessage.editedAt (chat 1:1, 0049_messages_edit.sql).
+    var editedAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -33,6 +37,7 @@ struct GroupMessage: Codable, Identifiable {
         case mediaURL = "media_url"
         case audioURL = "audio_url"
         case createdAt = "created_at"
+        case editedAt = "edited_at"
     }
 }
 
@@ -294,6 +299,14 @@ final class GroupChatViewModel: ObservableObject {
             InsertAction.self, schema: "public", table: "group_messages",
             filter: "group_chat_id=eq.\(groupChatID.uuidString)"
         )
+        // Editar un mensaje ya enviado en un grupo real
+        // (0065_group_messages_edit_delete.sql), comparado con WhatsApp/
+        // Telegram/Messenger -- mismo patrón exacto que ChatViewModel.swift
+        // (chat 1:1): cualquier UPDATE de la fila reemplaza la copia local.
+        let messageUpdates = ch.postgresChange(
+            UpdateAction.self, schema: "public", table: "group_messages",
+            filter: "group_chat_id=eq.\(groupChatID.uuidString)"
+        )
         // Reacciones en vivo -- inserciones y borrados de otros miembros
         // del grupo, sin tener que recargar. Mismo patrón exacto que
         // ChatViewModel.swift (chat 1:1).
@@ -324,6 +337,15 @@ final class GroupChatViewModel: ObservableObject {
                         // abrir el hilo.
                         await markUnreadAsRead()
                     }
+                }
+            }
+        }
+
+        Task {
+            for await change in messageUpdates {
+                if let updated = try? change.decodeRecord(as: GroupMessage.self, decoder: JSONDecoder()),
+                   let index = messages.firstIndex(where: { $0.id == updated.id }) {
+                    messages[index] = updated
                 }
             }
         }
@@ -403,6 +425,46 @@ final class GroupChatViewModel: ObservableObject {
                     typingMemberIDs.remove(senderID)
                 }
             }
+        }
+    }
+
+    /// Borrar el propio mensaje en un grupo real
+    /// (0065_group_messages_edit_delete.sql), comparado con WhatsApp/
+    /// Telegram/Messenger -- "borrar para todos", mismo criterio simple
+    /// que ChatViewModel.swift.deleteMessage() (chat 1:1).
+    func deleteMessage(_ messageID: UUID) async {
+        messages.removeAll { $0.id == messageID }
+        do {
+            try await SupabaseManager.shared.client
+                .from("group_messages")
+                .delete()
+                .eq("id", value: messageID)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo borrar el mensaje."
+        }
+    }
+
+    /// Editar un mensaje ya enviado en un grupo real
+    /// (0065_group_messages_edit_delete.sql), comparado con WhatsApp/
+    /// Telegram/Messenger -- mismo límite de 2000 caracteres y sin ventana
+    /// de tiempo límite, mismo criterio que ChatViewModel.swift.editMessage()
+    /// (chat 1:1).
+    func editMessage(_ messageID: UUID, newBody: String) async {
+        guard !newBody.isEmpty, newBody.count <= 2000 else { return }
+        let nowISO = ISO8601DateFormatter().string(from: Date())
+        if let index = messages.firstIndex(where: { $0.id == messageID }) {
+            messages[index].body = newBody
+            messages[index].editedAt = nowISO
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("group_messages")
+                .update(["body": newBody, "edited_at": nowISO])
+                .eq("id", value: messageID)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo editar el mensaje."
         }
     }
 

@@ -39,7 +39,11 @@ data class GroupMessage(
     // WhatsApp/Messenger/Telegram -- mismo campo separado que
     // ChatMessage.audioUrl (chat 1:1, 0019_message_audio.sql).
     @SerialName("audio_url") val audioUrl: String? = null,
-    @SerialName("created_at") val createdAt: String = ""
+    @SerialName("created_at") val createdAt: String = "",
+    // Editar un mensaje ya enviado en un grupo (0065_group_messages_edit_delete.sql),
+    // comparado con WhatsApp/Telegram/Messenger -- mismo campo separado
+    // que ChatMessage.editedAt (chat 1:1, 0049_messages_edit.sql).
+    @SerialName("edited_at") val editedAt: String? = null
 )
 
 /**
@@ -135,7 +139,7 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
             _isLoading.value = true
             try {
                 _messages.value = SupabaseManager.client.from("group_messages")
-                    .select(columns = Columns.raw("id,group_chat_id,sender_id,body,media_url,audio_url,created_at")) {
+                    .select(columns = Columns.raw("id,group_chat_id,sender_id,body,media_url,audio_url,created_at,edited_at")) {
                         filter { eq("group_chat_id", groupChatId) }
                         order("created_at", Order.ASCENDING)
                     }
@@ -344,6 +348,18 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
             }
         }.launchIn(viewModelScope)
 
+        // Editar un mensaje ya enviado en un grupo real
+        // (0065_group_messages_edit_delete.sql), comparado con WhatsApp/
+        // Telegram/Messenger -- mismo patrón exacto que ChatViewModel.kt
+        // (chat 1:1): cualquier UPDATE de la fila reemplaza la copia local.
+        ch.postgresChangeFlow<PostgresAction.Update>(schema = "public") {
+            table = "group_messages"
+            filter("group_chat_id", io.github.jan.supabase.postgrest.query.filter.FilterOperator.EQ, groupChatId)
+        }.onEach { update ->
+            val updated = Json.decodeFromJsonElement(GroupMessage.serializer(), update.record)
+            _messages.update { list -> list.map { if (it.id == updated.id) updated else it } }
+        }.launchIn(viewModelScope)
+
         // "Visto por" en vivo -- otro miembro marcando como leído uno de
         // mis mensajes, sin tener que recargar.
         ch.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
@@ -433,6 +449,42 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
         @SerialName("media_url") val mediaUrl: String? = null,
         @SerialName("audio_url") val audioUrl: String? = null
     )
+
+    /** Borrar el propio mensaje en un grupo real
+     * (0065_group_messages_edit_delete.sql), comparado con WhatsApp/
+     * Telegram/Messenger -- "borrar para todos", mismo criterio simple
+     * que ChatViewModel.kt.deleteMessage() (chat 1:1). */
+    fun deleteMessage(messageId: String) {
+        _messages.update { list -> list.filter { it.id != messageId } }
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("group_messages").delete { filter { eq("id", messageId) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo borrar el mensaje."
+            }
+        }
+    }
+
+    /** Editar un mensaje ya enviado en un grupo real
+     * (0065_group_messages_edit_delete.sql), comparado con WhatsApp/
+     * Telegram/Messenger -- mismo límite de 2000 caracteres y sin ventana
+     * de tiempo límite, mismo criterio que ChatViewModel.kt.editMessage()
+     * (chat 1:1). */
+    fun editMessage(messageId: String, newBody: String) {
+        if (newBody.isEmpty() || newBody.length > 2000) return
+        val nowIso = java.time.Instant.now().toString()
+        _messages.update { list ->
+            list.map { if (it.id == messageId) it.copy(body = newBody, editedAt = nowIso) else it }
+        }
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("group_messages")
+                    .update({ set("body", newBody); set("edited_at", nowIso) }) { filter { eq("id", messageId) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo editar el mensaje."
+            }
+        }
+    }
 
     fun sendMessage(text: String) {
         if (text.isBlank()) return
