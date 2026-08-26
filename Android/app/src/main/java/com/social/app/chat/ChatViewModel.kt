@@ -41,6 +41,41 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
 
+    // Enviar una publicación a un chat real (0069_message_shared_post.sql),
+    // comparado con Instagram/TikTok/Twitter/Snapchat -- vista previa real
+    // (miniatura + caption + autor) de la publicación compartida en un
+    // mensaje, cargada por lotes a partir de los shared_post_id presentes
+    // en los mensajes ya cargados, mismo patrón que loadMembers() en
+    // GroupChatViewModel.kt.
+    private val _sharedPosts = MutableStateFlow<Map<String, com.social.app.backend.model.Post>>(emptyMap())
+    val sharedPosts: StateFlow<Map<String, com.social.app.backend.model.Post>> = _sharedPosts.asStateFlow()
+
+    private val _sharedPostAuthors = MutableStateFlow<Map<String, com.social.app.backend.model.Profile>>(emptyMap())
+    val sharedPostAuthors: StateFlow<Map<String, com.social.app.backend.model.Profile>> = _sharedPostAuthors.asStateFlow()
+
+    private suspend fun loadSharedPosts(messages: List<ChatMessage>) {
+        val postIds = messages.mapNotNull { it.sharedPostId }.filter { it !in _sharedPosts.value }.distinct()
+        if (postIds.isEmpty()) return
+        try {
+            val posts = SupabaseManager.client.from("posts")
+                .select { filter { isIn("id", postIds) } }
+                .decodeList<com.social.app.backend.model.Post>()
+            _sharedPosts.update { it + posts.associateBy { post -> post.id } }
+            val authorIds = posts.map { it.authorId }.distinct()
+            if (authorIds.isNotEmpty()) {
+                val authors = SupabaseManager.client.from("profiles")
+                    .select(columns = Columns.raw("id,display_name,avatar_url,avatar_config")) {
+                        filter { isIn("id", authorIds) }
+                    }
+                    .decodeList<com.social.app.backend.model.Profile>()
+                _sharedPostAuthors.update { it + authors.associateBy { author -> author.id } }
+            }
+        } catch (e: Exception) {
+            // Sin bloquear el resto del chat si falla -- el mensaje sigue
+            // mostrándose, solo sin la vista previa real de la publicación.
+        }
+    }
+
     private val _compatibility = MutableStateFlow(50)
     val compatibility: StateFlow<Int> = _compatibility.asStateFlow()
 
@@ -273,6 +308,7 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
                 .decodeList<ChatMessage>()
             _hasMoreHistory.value = recent.size >= 100
             _messages.value = recent.reversed()
+            loadSharedPosts(_messages.value)
 
             val chat = SupabaseManager.client.from("chats")
                 .select { filter { eq("id", chatId) } }
@@ -314,6 +350,7 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
                     .decodeList<ChatMessage>()
                 _hasMoreHistory.value = older.size >= olderPageSize
                 _messages.value = older.reversed() + _messages.value
+                loadSharedPosts(older)
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudieron cargar mensajes anteriores."
             } finally {
@@ -417,6 +454,7 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
         }.onEach { insert ->
             val message = Json.decodeFromJsonElement(ChatMessage.serializer(), insert.record)
             _messages.update { it + message }
+            loadSharedPosts(listOf(message))
         }.launchIn(viewModelScope)
 
         ch.postgresChangeFlow<PostgresAction.Update>(schema = "public") {

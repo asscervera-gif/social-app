@@ -171,6 +171,9 @@ struct ChatMessage: Codable, Identifiable {
     // mal escrito solo se podía borrar entero, nunca corregir -- ver
     // 0049_messages_edit.sql/ChatViewModel.editMessage().
     var editedAt: Date?
+    // Enviar una publicación a un chat real (0069_message_shared_post.sql),
+    // comparado con Instagram/TikTok/Twitter/Snapchat.
+    var sharedPostID: UUID?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -182,6 +185,7 @@ struct ChatMessage: Codable, Identifiable {
         case readAt = "read_at"
         case audioURL = "audio_url"
         case editedAt = "edited_at"
+        case sharedPostID = "shared_post_id"
     }
 }
 

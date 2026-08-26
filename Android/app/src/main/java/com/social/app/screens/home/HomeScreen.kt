@@ -333,6 +333,11 @@ private fun PostCard(
     // forma de tocar una imagen para verla a tamaño completo, solo el
     // recorte fijo de la miniatura.
     var fullScreenUrl by remember { mutableStateOf<String?>(null) }
+    // Enviar una publicación a un chat real (0069_message_shared_post.sql),
+    // comparado con Instagram/TikTok/Twitter/Snapchat -- antes el icono ➤
+    // solo abría el share sheet nativo del sistema, sin ninguna forma de
+    // mandarla como mensaje real dentro de la propia app.
+    var showSendSheet by remember { mutableStateOf(false) }
     val myId = com.social.app.backend.SupabaseManager.client.auth.currentUserOrNull()?.id
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp)) {
@@ -427,18 +432,15 @@ private fun PostCard(
                 Text("💬 ${post.commentCount}", modifier = Modifier.clickable(onClick = onOpenComments))
                 Text(
                     "➤",
-                    modifier = Modifier.clickable {
-                        // Icono antes puramente decorativo — mismo patrón que
-                        // "guardar" antes de esta pasada. Usa el share sheet
-                        // nativo de Android en vez de infraestructura propia
-                        // (no hace falta tabla ni backend para "compartir").
-                        val text = post.caption?.let { "Mira esto en SOCIAL: $it" } ?: "Mira esto en SOCIAL"
-                        val intent = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, text)
-                        }
-                        context.startActivity(Intent.createChooser(intent, "Compartir publicación"))
-                    }
+                    // Hallazgo real, comparado con Instagram/TikTok/Twitter/
+                    // Snapchat: en las cuatro apps, este icono abre un
+                    // selector interno de a quién enviar (un chat, un
+                    // grupo) -- el mecanismo de distribución más usado,
+                    // más que el share sheet externo. Antes solo abría el
+                    // share sheet nativo (ver onShareExternal más abajo,
+                    // que conserva ese mismo comportamiento como opción
+                    // secundaria).
+                    modifier = Modifier.clickable { showSendSheet = true }
                 )
                 Text(if (isSaved) "🔖" else "📑", modifier = Modifier.clickable(onClick = onToggleSave))
                 Text("⋯", modifier = Modifier.clickable { showReport = true })
@@ -461,5 +463,19 @@ private fun PostCard(
     }
     fullScreenUrl?.let { url ->
         com.social.app.util.FullScreenImageViewer(url = url, onDismiss = { fullScreenUrl = null })
+    }
+    if (showSendSheet) {
+        com.social.app.chat.SendPostSheet(
+            postId = post.id,
+            onShareExternal = {
+                val text = post.caption?.let { "Mira esto en SOCIAL: $it" } ?: "Mira esto en SOCIAL"
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, text)
+                }
+                context.startActivity(Intent.createChooser(intent, "Compartir publicación"))
+            },
+            onDismiss = { showSendSheet = false }
+        )
     }
 }

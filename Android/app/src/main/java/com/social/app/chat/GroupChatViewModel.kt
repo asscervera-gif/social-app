@@ -43,7 +43,11 @@ data class GroupMessage(
     // Editar un mensaje ya enviado en un grupo (0065_group_messages_edit_delete.sql),
     // comparado con WhatsApp/Telegram/Messenger -- mismo campo separado
     // que ChatMessage.editedAt (chat 1:1, 0049_messages_edit.sql).
-    @SerialName("edited_at") val editedAt: String? = null
+    @SerialName("edited_at") val editedAt: String? = null,
+    // Enviar una publicación a un chat de grupo real
+    // (0069_message_shared_post.sql), comparado con Instagram/TikTok/
+    // Twitter/Snapchat.
+    @SerialName("shared_post_id") val sharedPostId: String? = null
 )
 
 /**
@@ -61,6 +65,40 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
 
     private val _members = MutableStateFlow<List<Profile>>(emptyList())
     val members: StateFlow<List<Profile>> = _members.asStateFlow()
+
+    // Enviar una publicación a un chat de grupo real
+    // (0069_message_shared_post.sql), comparado con Instagram/TikTok/
+    // Twitter/Snapchat -- vista previa real (miniatura + caption + autor)
+    // de la publicación compartida, mismo patrón exacto que
+    // ChatViewModel.kt.loadSharedPosts() (chat 1:1).
+    private val _sharedPosts = MutableStateFlow<Map<String, com.social.app.backend.model.Post>>(emptyMap())
+    val sharedPosts: StateFlow<Map<String, com.social.app.backend.model.Post>> = _sharedPosts.asStateFlow()
+
+    private val _sharedPostAuthors = MutableStateFlow<Map<String, Profile>>(emptyMap())
+    val sharedPostAuthors: StateFlow<Map<String, Profile>> = _sharedPostAuthors.asStateFlow()
+
+    private suspend fun loadSharedPosts(messages: List<GroupMessage>) {
+        val postIds = messages.mapNotNull { it.sharedPostId }.filter { it !in _sharedPosts.value }.distinct()
+        if (postIds.isEmpty()) return
+        try {
+            val posts = SupabaseManager.client.from("posts")
+                .select { filter { isIn("id", postIds) } }
+                .decodeList<com.social.app.backend.model.Post>()
+            _sharedPosts.update { it + posts.associateBy { post -> post.id } }
+            val authorIds = posts.map { it.authorId }.distinct()
+            if (authorIds.isNotEmpty()) {
+                val authors = SupabaseManager.client.from("profiles")
+                    .select(columns = Columns.raw("id,display_name,avatar_url,avatar_config")) {
+                        filter { isIn("id", authorIds) }
+                    }
+                    .decodeList<Profile>()
+                _sharedPostAuthors.update { it + authors.associateBy { author -> author.id } }
+            }
+        } catch (e: Exception) {
+            // Sin bloquear el resto del hilo si falla -- el mensaje sigue
+            // mostrándose, solo sin la vista previa real de la publicación.
+        }
+    }
 
     // Nombre editable y foto de grupo real (0063_group_chat_photo.sql),
     // comparado con WhatsApp/Messenger/Telegram -- `group_chats_update_own`
@@ -139,7 +177,7 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
             _isLoading.value = true
             try {
                 _messages.value = SupabaseManager.client.from("group_messages")
-                    .select(columns = Columns.raw("id,group_chat_id,sender_id,body,media_url,audio_url,created_at,edited_at")) {
+                    .select(columns = Columns.raw("id,group_chat_id,sender_id,body,media_url,audio_url,created_at,edited_at,shared_post_id")) {
                         filter { eq("group_chat_id", groupChatId) }
                         order("created_at", Order.ASCENDING)
                     }
@@ -148,6 +186,7 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
                 loadMembers()
                 loadReactions()
                 loadReads()
+                loadSharedPosts(_messages.value)
                 markUnreadAsRead()
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudieron cargar los mensajes: ${e.message}"
@@ -342,6 +381,7 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
             val message = Json.decodeFromJsonElement(GroupMessage.serializer(), insert.record)
             if (_messages.value.none { it.id == message.id }) {
                 _messages.update { it + message }
+                loadSharedPosts(listOf(message))
                 // El chat sigue abierto -- un mensaje que llega en vivo se
                 // marca leído igual que uno cargado al abrir el hilo.
                 markUnreadAsRead()

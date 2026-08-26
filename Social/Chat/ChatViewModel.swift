@@ -41,6 +41,36 @@ final class ChatViewModel: ObservableObject {
         let emoji: String
     }
 
+    // Enviar una publicación a un chat real (0069_message_shared_post.sql),
+    // comparado con Instagram/TikTok/Twitter/Snapchat -- vista previa real
+    // (miniatura + caption + autor) de la publicación compartida en un
+    // mensaje, cargada por lotes a partir de los sharedPostID presentes en
+    // los mensajes ya cargados, mismo patrón que loadReactions().
+    @Published var sharedPosts: [UUID: Post] = [:]
+    @Published var sharedPostAuthors: [UUID: Profile] = [:]
+
+    private func loadSharedPosts(_ messages: [ChatMessage]) async {
+        let postIDs = Array(Set(messages.compactMap { $0.sharedPostID }.filter { sharedPosts[$0] == nil }))
+        guard !postIDs.isEmpty else { return }
+        guard let posts: [Post] = try? await SupabaseManager.shared.client
+            .from("posts")
+            .select()
+            .in("id", values: postIDs)
+            .execute()
+            .value else { return }
+        for post in posts { sharedPosts[post.id] = post }
+        let authorIDs = Array(Set(posts.map { $0.authorID }))
+        guard !authorIDs.isEmpty else { return }
+        if let authors: [Profile] = try? await SupabaseManager.shared.client
+            .from("profiles")
+            .select()
+            .in("id", values: authorIDs)
+            .execute()
+            .value {
+            for author in authors { sharedPostAuthors[author.id] = author }
+        }
+    }
+
     private var channel: RealtimeChannelV2?
 
     // "Escribiendo..." — comparado con WhatsApp/Instagram DM, no había
@@ -229,6 +259,7 @@ final class ChatViewModel: ObservableObject {
                 .value
             hasMoreHistory = recent.count >= 100
             messages = Array(recent.reversed())
+            await loadSharedPosts(messages)
 
             let chat: Chat = try await client
                 .from("chats")
@@ -266,6 +297,7 @@ final class ChatViewModel: ObservableObject {
                 .value
             hasMoreHistory = older.count >= olderPageSize
             messages = older.reversed() + messages
+            await loadSharedPosts(older)
         } catch {
             errorMessage = "No se pudieron cargar mensajes anteriores."
         }
@@ -332,6 +364,7 @@ final class ChatViewModel: ObservableObject {
             for await change in messageInserts {
                 if let message = try? change.decodeRecord(as: ChatMessage.self, decoder: JSONDecoder()) {
                     messages.append(message)
+                    await loadSharedPosts([message])
                 }
             }
         }

@@ -310,6 +310,11 @@ private struct PostCard: View {
     @State private var showReport = false
     @State private var myID: UUID?
     @State private var fullScreenURL: URL?
+    // Enviar una publicación a un chat real (0069_message_shared_post.sql),
+    // comparado con Instagram/TikTok/Twitter/Snapchat -- antes el icono ➤
+    // solo abría el share sheet nativo del sistema (ShareLink), sin
+    // ninguna forma de mandarla como mensaje real dentro de la propia app.
+    @State private var showSendSheet = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -429,10 +434,16 @@ private struct PostCard: View {
                     Label("\(post.commentCount)", systemImage: "bubble.right")
                 }
                 Spacer()
-                // Icono antes puramente decorativo — usa ShareLink nativo
-                // (iOS 16+, coincide con el deploymentTarget del proyecto),
-                // no hace falta infraestructura propia para "compartir".
-                ShareLink(item: post.caption.map { "Mira esto en SOCIAL: \($0)" } ?? "Mira esto en SOCIAL") {
+                // Hallazgo real, comparado con Instagram/TikTok/Twitter/
+                // Snapchat: en las cuatro apps, este icono abre un
+                // selector interno de a quién enviar (un chat, un grupo)
+                // -- el mecanismo de distribución más usado, más que el
+                // share sheet externo. Antes solo abría ShareLink (share
+                // sheet nativo), que ahora vive dentro del propio
+                // selector como opción secundaria (SendPostView.swift).
+                Button {
+                    showSendSheet = true
+                } label: {
                     Image(systemName: "paperplane")
                 }
                 Button(action: onToggleSave) {
@@ -457,6 +468,13 @@ private struct PostCard: View {
                 // referencia real (0045_reports_content_reference.sql).
                 ReportSheet(userID: myID, reportedID: post.authorID, postID: post.id)
             }
+        }
+        .sheet(isPresented: $showSendSheet) {
+            SendPostView(
+                postID: post.id,
+                shareText: post.caption.map { "Mira esto en SOCIAL: \($0)" } ?? "Mira esto en SOCIAL",
+                onDismiss: { showSendSheet = false }
+            )
         }
         // Mismo patrón Binding(get:set:) ya usado en HomeView.swift para
         // un URL? no Identifiable.

@@ -28,6 +28,10 @@ struct GroupMessage: Codable, Identifiable {
     // comparado con WhatsApp/Telegram/Messenger -- mismo campo separado
     // que ChatMessage.editedAt (chat 1:1, 0049_messages_edit.sql).
     var editedAt: String?
+    // Enviar una publicación a un chat de grupo real
+    // (0069_message_shared_post.sql), comparado con Instagram/TikTok/
+    // Twitter/Snapchat.
+    var sharedPostID: UUID?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -38,6 +42,7 @@ struct GroupMessage: Codable, Identifiable {
         case audioURL = "audio_url"
         case createdAt = "created_at"
         case editedAt = "edited_at"
+        case sharedPostID = "shared_post_id"
     }
 }
 
@@ -54,6 +59,35 @@ final class GroupChatViewModel: ObservableObject {
     // (0057_group_chats.sql) ya dejaba al creador renombrar/poner foto,
     // pero ningún cliente lo llamaba nunca ni cargaba esta fila.
     @Published var groupChat: GroupChat?
+
+    // Enviar una publicación a un chat de grupo real
+    // (0069_message_shared_post.sql), comparado con Instagram/TikTok/
+    // Twitter/Snapchat -- mismo patrón exacto que ChatViewModel.swift
+    // (chat 1:1).
+    @Published var sharedPosts: [UUID: Post] = [:]
+    @Published var sharedPostAuthors: [UUID: Profile] = [:]
+
+    private func loadSharedPosts(_ messages: [GroupMessage]) async {
+        let postIDs = Array(Set(messages.compactMap { $0.sharedPostID }.filter { sharedPosts[$0] == nil }))
+        guard !postIDs.isEmpty else { return }
+        guard let posts: [Post] = try? await SupabaseManager.shared.client
+            .from("posts")
+            .select()
+            .in("id", values: postIDs)
+            .execute()
+            .value else { return }
+        for post in posts { sharedPosts[post.id] = post }
+        let authorIDs = Array(Set(posts.map { $0.authorID }))
+        guard !authorIDs.isEmpty else { return }
+        if let authors: [Profile] = try? await SupabaseManager.shared.client
+            .from("profiles")
+            .select()
+            .in("id", values: authorIDs)
+            .execute()
+            .value {
+            for author in authors { sharedPostAuthors[author.id] = author }
+        }
+    }
 
     // Reacciones a mensajes de grupo (0060_group_message_reactions.sql),
     // comparado con WhatsApp/Messenger/Instagram -- mismo patrón exacto
@@ -108,6 +142,7 @@ final class GroupChatViewModel: ObservableObject {
             await loadMembers()
             await loadReactions()
             await loadReads()
+            await loadSharedPosts(messages)
             await markUnreadAsRead()
         } catch {
             errorMessage = "No se pudieron cargar los mensajes: \(error.localizedDescription)"
@@ -332,6 +367,7 @@ final class GroupChatViewModel: ObservableObject {
                 if let message = try? change.decodeRecord(as: GroupMessage.self, decoder: JSONDecoder()) {
                     if !messages.contains(where: { $0.id == message.id }) {
                         messages.append(message)
+                        await loadSharedPosts([message])
                         // El chat sigue abierto -- un mensaje que llega en
                         // vivo se marca leído igual que uno cargado al
                         // abrir el hilo.

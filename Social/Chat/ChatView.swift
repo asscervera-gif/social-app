@@ -100,6 +100,10 @@ struct ChatView: View {
                                 isMine: message.senderID == currentUserID,
                                 currentUserID: currentUserID,
                                 reactions: viewModel.reactions[message.id] ?? [],
+                                sharedPost: message.sharedPostID.flatMap { viewModel.sharedPosts[$0] },
+                                sharedPostAuthor: message.sharedPostID
+                                    .flatMap { viewModel.sharedPosts[$0] }
+                                    .flatMap { viewModel.sharedPostAuthors[$0.authorID] },
                                 onToggleReaction: { emoji in
                                     Task { await viewModel.toggleReaction(messageID: message.id, emoji: emoji) }
                                 },
@@ -319,6 +323,10 @@ private struct MessageBubble: View {
     let isMine: Bool
     let currentUserID: UUID
     let reactions: [ChatViewModel.MessageReaction]
+    // Enviar una publicación a un chat real (0069_message_shared_post.sql),
+    // comparado con Instagram/TikTok/Twitter/Snapchat.
+    var sharedPost: Post? = nil
+    var sharedPostAuthor: Profile? = nil
     let onToggleReaction: (String) -> Void
     // Hallazgo real, comparado con WhatsApp/Telegram/Messenger: mantener
     // pulsado un mensaje propio borraba al instante sin confirmación --
@@ -342,7 +350,33 @@ private struct MessageBubble: View {
             HStack {
                 if isMine { Spacer() }
                 Group {
-                    if let mediaURL = message.mediaURL, let url = URL(string: mediaURL) {
+                    // Enviar una publicación a un chat real
+                    // (0069_message_shared_post.sql), comparado con
+                    // Instagram/TikTok/Twitter/Snapchat -- vista previa
+                    // real (miniatura + caption + autor), toque abre la
+                    // foto a tamaño completo (reutiliza el visor ya
+                    // compartido, sin pantalla propia de "post" todavía --
+                    // hueco menor documentado, no fingido).
+                    if message.sharedPostID != nil {
+                        VStack(alignment: .leading, spacing: 4) {
+                            if let mediaURLString = sharedPost?.mediaURL, let url = URL(string: mediaURLString) {
+                                AsyncImage(url: url) { image in
+                                    image.resizable().scaledToFill()
+                                } placeholder: {
+                                    ProgressView()
+                                }
+                                .frame(width: 200, height: 200)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .onTapGesture { fullScreenURL = url }
+                            }
+                            Text("Publicación de \(sharedPostAuthor?.displayName ?? "…")")
+                                .font(.caption2)
+                            if let caption = sharedPost?.caption {
+                                Text(caption).font(.footnote)
+                            }
+                        }
+                        .padding(8)
+                    } else if let mediaURL = message.mediaURL, let url = URL(string: mediaURL) {
                         AsyncImage(url: url) { image in
                             image.resizable().scaledToFill()
                         } placeholder: {

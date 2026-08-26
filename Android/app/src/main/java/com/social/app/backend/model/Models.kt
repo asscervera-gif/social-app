@@ -130,7 +130,10 @@ data class ChatMessage(
     // Hallazgo real, comparado con WhatsApp/Telegram/Messenger: un mensaje
     // mal escrito solo se podía borrar entero, nunca corregir -- ver
     // 0049_messages_edit.sql/ChatViewModel.editMessage().
-    @SerialName("edited_at") val editedAt: String? = null
+    @SerialName("edited_at") val editedAt: String? = null,
+    // Enviar una publicación a un chat real (0069_message_shared_post.sql),
+    // comparado con Instagram/TikTok/Twitter/Snapchat.
+    @SerialName("shared_post_id") val sharedPostId: String? = null
 )
 
 /** Hallazgo de integridad corregido (ver duel-ai/index.ts): antes incluía

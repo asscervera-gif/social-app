@@ -76,6 +76,10 @@ struct GroupChatView: View {
                                 currentUserID: myID,
                                 reactions: viewModel.reactions[message.id] ?? [],
                                 readCount: (viewModel.reads[message.id] ?? []).filter { $0 != myID }.count,
+                                sharedPost: message.sharedPostID.flatMap { viewModel.sharedPosts[$0] },
+                                sharedPostAuthor: message.sharedPostID
+                                    .flatMap { viewModel.sharedPosts[$0] }
+                                    .flatMap { viewModel.sharedPostAuthors[$0.authorID] },
                                 onToggleReaction: { emoji in
                                     Task { await viewModel.toggleReaction(groupMessageID: message.id, emoji: emoji) }
                                 },
@@ -370,6 +374,11 @@ private struct GroupMessageBubble: View {
     let currentUserID: UUID?
     let reactions: [GroupChatViewModel.GroupMessageReaction]
     let readCount: Int
+    // Enviar una publicación a un chat de grupo real
+    // (0069_message_shared_post.sql), comparado con Instagram/TikTok/
+    // Twitter/Snapchat.
+    var sharedPost: Post? = nil
+    var sharedPostAuthor: Profile? = nil
     let onToggleReaction: (String) -> Void
     var onOpenFullScreen: (URL) -> Void = { _ in }
     // Editar/borrar un mensaje ya enviado en un grupo real
@@ -392,7 +401,30 @@ private struct GroupMessageBubble: View {
             // Nota de voz real (0062_group_message_audio.sql), comparado
             // con WhatsApp/Messenger/Telegram -- mismo reproductor nativo
             // que ChatView.swift (1:1).
-            if let audioURLString = message.audioURL, let audioURL = URL(string: audioURLString) {
+            if message.sharedPostID != nil {
+                // Enviar una publicación a un chat de grupo real
+                // (0069_message_shared_post.sql), comparado con
+                // Instagram/TikTok/Twitter/Snapchat -- mismo patrón exacto
+                // que ChatView.swift (chat 1:1).
+                VStack(alignment: .leading, spacing: 4) {
+                    if let mediaURLString = sharedPost?.mediaURL, let url = URL(string: mediaURLString) {
+                        AsyncImage(url: url) { image in
+                            image.resizable().scaledToFill()
+                        } placeholder: {
+                            ProgressView()
+                        }
+                        .frame(width: 200, height: 200)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .onTapGesture { onOpenFullScreen(url) }
+                    }
+                    Text("Publicación de \(sharedPostAuthor?.displayName ?? "…")")
+                        .font(.caption2)
+                    if let caption = sharedPost?.caption {
+                        Text(caption).font(.footnote)
+                    }
+                }
+                .padding(8)
+            } else if let audioURLString = message.audioURL, let audioURL = URL(string: audioURLString) {
                 GroupAudioMessageBubble(url: audioURL, isMine: isMine)
                     .onTapGesture { showPicker.toggle() }
             } else if let mediaURLString = message.mediaURL, let mediaURL = URL(string: mediaURLString) {

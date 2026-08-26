@@ -67,6 +67,11 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
     // diferencia del chat 1:1).
     val onlineMemberIds by viewModel.onlineMemberIds.collectAsState()
     val typingMemberIds by viewModel.typingMemberIds.collectAsState()
+    // Enviar una publicación a un chat de grupo real
+    // (0069_message_shared_post.sql), comparado con Instagram/TikTok/
+    // Twitter/Snapchat.
+    val sharedPosts by viewModel.sharedPosts.collectAsState()
+    val sharedPostAuthors by viewModel.sharedPostAuthors.collectAsState()
     // Nombre editable y foto de grupo real, comparado con WhatsApp/
     // Messenger/Telegram -- ver GroupChatViewModel.kt para el hallazgo
     // completo (RLS ya existía desde 0057, solo faltaba cliente).
@@ -166,7 +171,31 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
                         // mismo reproductor nativo que ChatScreen.kt (1:1).
                         val audioUrl = message.audioUrl
                         val mediaUrl = message.mediaUrl
-                        if (audioUrl != null) {
+                        // Enviar una publicación a un chat de grupo real
+                        // (0069_message_shared_post.sql), comparado con
+                        // Instagram/TikTok/Twitter/Snapchat -- mismo patrón
+                        // exacto que ChatScreen.kt (chat 1:1).
+                        if (message.sharedPostId != null) {
+                            val sharedPost = sharedPosts[message.sharedPostId]
+                            val sharedAuthor = sharedPost?.let { sharedPostAuthors[it.authorId] }
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                if (sharedPost?.mediaUrl != null) {
+                                    androidx.compose.foundation.Image(
+                                        painter = coil.compose.rememberAsyncImagePainter(sharedPost.mediaUrl),
+                                        contentDescription = null,
+                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                        modifier = Modifier.size(200.dp).clip(RoundedCornerShape(10.dp))
+                                            .clickable { fullScreenImageUrl = sharedPost.mediaUrl }
+                                    )
+                                }
+                                Text(
+                                    "Publicación de ${sharedAuthor?.displayName ?: "…"}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                                sharedPost?.caption?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                            }
+                        } else if (audioUrl != null) {
                             GroupAudioMessageBubble(url = audioUrl, isMine = isMine)
                         } else if (mediaUrl != null) {
                             // Fotos reales en un chat de grupo, comparado

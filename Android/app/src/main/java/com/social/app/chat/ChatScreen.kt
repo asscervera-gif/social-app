@@ -56,6 +56,10 @@ import coil.compose.rememberAsyncImagePainter
 fun ChatScreen(chatId: String, currentUserId: String, onStartDuel: (opponentId: String) -> Unit = {}) {
     val viewModel = remember(chatId) { ChatViewModel(chatId) }
     val messages by viewModel.messages.collectAsState()
+    // Enviar una publicación a un chat real (0069_message_shared_post.sql),
+    // comparado con Instagram/TikTok/Twitter/Snapchat.
+    val sharedPosts by viewModel.sharedPosts.collectAsState()
+    val sharedPostAuthors by viewModel.sharedPostAuthors.collectAsState()
     val reactions by viewModel.reactions.collectAsState()
     val compatibility by viewModel.compatibility.collectAsState()
     val opponentId by viewModel.opponentId.collectAsState()
@@ -207,9 +211,34 @@ fun ChatScreen(chatId: String, currentUserId: String, onStartDuel: (opponentId: 
                             onLongClick = { if (isMine) managingMessage = message else reportMessageId = message.id }
                         )
                     ) {
-                        // Hallazgo real: el chat solo soportaba texto — ver
-                        // 0016_message_media.sql / ChatViewModel.sendPhoto.
-                        if (message.mediaUrl != null) {
+                        // Enviar una publicación a un chat real
+                        // (0069_message_shared_post.sql), comparado con
+                        // Instagram/TikTok/Twitter/Snapchat -- vista previa
+                        // real (miniatura + caption + autor), toque abre la
+                        // foto a tamaño completo (reutiliza el visor ya
+                        // compartido, sin pantalla propia de "post" todavía
+                        // -- hueco menor documentado, no fingido).
+                        if (message.sharedPostId != null) {
+                            val sharedPost = sharedPosts[message.sharedPostId]
+                            val sharedAuthor = sharedPost?.let { sharedPostAuthors[it.authorId] }
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                if (sharedPost?.mediaUrl != null) {
+                                    Image(
+                                        painter = rememberAsyncImagePainter(sharedPost.mediaUrl),
+                                        contentDescription = null,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.size(200.dp).clip(RoundedCornerShape(10.dp))
+                                            .clickable { fullScreenImageUrl = sharedPost.mediaUrl }
+                                    )
+                                }
+                                Text(
+                                    "Publicación de ${sharedAuthor?.displayName ?: "…"}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                                sharedPost?.caption?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                            }
+                        } else if (message.mediaUrl != null) {
                             Image(
                                 painter = rememberAsyncImagePainter(message.mediaUrl),
                                 contentDescription = null,

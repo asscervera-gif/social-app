@@ -1227,6 +1227,23 @@ async function main() {
   const hiddenAfterNewMessage = (await db.query(`select hidden from group_chat_members where group_chat_id = $1 and user_id = $2`, [group.id, u1])).rows[0];
   check('unhide_group_on_new_message: un mensaje nuevo real restaura la visibilidad -- mismo criterio que unhide_chat_on_new_message (0044) para el 1:1', hiddenAfterNewMessage.hidden === false);
 
+  // --- messages.shared_post_id / group_messages.shared_post_id
+  // (0069_message_shared_post.sql): enviar una publicación a un chat
+  // real, comparado con Instagram/TikTok/Twitter/Snapchat. Contexto ya
+  // asUser(u1). ---
+  const postToShare = (await db.query(
+    `insert into posts (author_id, caption) values ($1, 'post real para compartir') returning id`, [u1]
+  )).rows[0];
+  await expectOk('messages_has_content: un mensaje SOLO con shared_post_id (sin body/media/audio) SÍ se puede insertar en el chat 1:1', async () => {
+    await db.query(`insert into messages (chat_id, sender_id, shared_post_id) values ($1, $2, $3)`, [chat.id, u1, postToShare.id]);
+  });
+  await expectOk('group_messages_has_content: un mensaje SOLO con shared_post_id SÍ se puede insertar en un grupo', async () => {
+    await db.query(`insert into group_messages (group_chat_id, sender_id, shared_post_id) values ($1, $2, $3)`, [group.id, u1, postToShare.id]);
+  });
+  await asUser(u2);
+  const sharedPostInChatAsRecipient = (await db.query(`select shared_post_id from messages where chat_id = $1 and shared_post_id = $2`, [chat.id, postToShare.id])).rows;
+  check('messages_select: el destinatario real (u2) SÍ ve el mensaje con la publicación compartida', sharedPostInChatAsRecipient.length === 1);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado
