@@ -5,8 +5,9 @@
 //  Hilo de un chat de grupo real, comparado con WhatsApp/Instagram/
 //  Messenger/Facebook -- ver GroupChatViewModel.swift para el hallazgo
 //  completo. Mismo patrón visual que ChatView.swift (1:1). Reacciones
-//  reales (0060_group_message_reactions.sql) -- voz/read-receipts siguen
-//  pendientes, hueco real documentado. Equivalente de GroupChatScreen.kt.
+//  (0060_group_message_reactions.sql) y "visto por"
+//  (0061_group_message_reads.sql) reales -- voz sigue pendiente, hueco
+//  real documentado. Equivalente de GroupChatScreen.kt.
 //
 
 import SwiftUI
@@ -41,6 +42,7 @@ struct GroupChatView: View {
                                 isMine: isMine,
                                 currentUserID: myID,
                                 reactions: viewModel.reactions[message.id] ?? [],
+                                readCount: (viewModel.reads[message.id] ?? []).filter { $0 != myID }.count,
                                 onToggleReaction: { emoji in
                                     Task { await viewModel.toggleReaction(groupMessageID: message.id, emoji: emoji) }
                                 }
@@ -148,6 +150,7 @@ private struct GroupMessageBubble: View {
     let isMine: Bool
     let currentUserID: UUID?
     let reactions: [GroupChatViewModel.GroupMessageReaction]
+    let readCount: Int
     let onToggleReaction: (String) -> Void
 
     @State private var showPicker = false
@@ -189,6 +192,15 @@ private struct GroupMessageBubble: View {
                         }
                     }
                 }
+            }
+            // "Visto por" real (0061_group_message_reads.sql), comparado
+            // con WhatsApp/Messenger -- solo en los propios mensajes,
+            // igual que esas apps solo muestran el recibo de lectura de
+            // lo que TÚ enviaste.
+            if isMine && readCount > 0 {
+                Text("Visto por \(readCount)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: isMine ? .trailing : .leading)

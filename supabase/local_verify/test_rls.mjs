@@ -1028,6 +1028,26 @@ async function main() {
     await db.query(`delete from group_message_reactions where group_message_id = $1 and user_id = $2`, [groupMsg.id, u1]);
   });
 
+  // --- group_message_reads (0061_group_message_reads.sql): "visto por"
+  // en chats de grupo, comparado con WhatsApp/Messenger. Reutiliza
+  // `groupMsg` (mensaje real de u2, "hola grupo"). ---
+  await expectOk('group_message_reads_insert_own: un miembro real (u1) SÍ puede marcar como leído un mensaje AJENO (de u2)', async () => {
+    await asUser(u1);
+    await db.query(`insert into group_message_reads (group_message_id, group_chat_id, user_id) values ($1, $2, $3)`, [groupMsg.id, group.id, u1]);
+  });
+  await asUser(u2);
+  await expectFail('group_message_reads_insert_own: quien escribió (u2) NO puede marcar como leído su PROPIO mensaje', async () => {
+    await db.query(`insert into group_message_reads (group_message_id, group_chat_id, user_id) values ($1, $2, $3)`, [groupMsg.id, group.id, u2]);
+  });
+  const groupReadsAsMember = (await db.query(`select user_id from group_message_reads where group_message_id = $1`, [groupMsg.id])).rows;
+  check('group_message_reads_select: otro miembro real (u2) SÍ ve que u1 leyó el mensaje', groupReadsAsMember.length === 1 && groupReadsAsMember[0].user_id === u1);
+  await asUser(u3);
+  await expectFail('group_message_reads_insert_own: alguien que NO es miembro (u3) no puede marcar nada como leído', async () => {
+    await db.query(`insert into group_message_reads (group_message_id, group_chat_id, user_id) values ($1, $2, $3)`, [groupMsg.id, group.id, u3]);
+  });
+  const groupReadsAsStranger = (await db.query(`select id from group_message_reads where group_message_id = $1`, [groupMsg.id])).rows;
+  check('group_message_reads_select: alguien que NO es miembro (u3) NO ve los recibos de lectura', groupReadsAsStranger.length === 0);
+
   // Salir del grupo real: mismo hallazgo de Postgres/RLS ya documentado
   // para live_stream_viewers -- group_chat_members_select deja ver la
   // propia fila (por reflexividad del exists de autopertenencia), así que

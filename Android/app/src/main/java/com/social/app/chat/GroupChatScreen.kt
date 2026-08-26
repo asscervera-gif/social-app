@@ -42,9 +42,10 @@ import kotlinx.coroutines.launch
 /**
  * Hilo de un chat de grupo real, comparado con WhatsApp/Instagram/
  * Messenger/Facebook -- ver GroupChatViewModel.kt para el hallazgo
- * completo. Mismo patrón visual que ChatScreen.kt (1:1). Reacciones reales
- * (0060_group_message_reactions.sql) -- voz/read-receipts siguen
- * pendientes, hueco real documentado.
+ * completo. Mismo patrón visual que ChatScreen.kt (1:1). Reacciones
+ * (0060_group_message_reactions.sql) y "visto por"
+ * (0061_group_message_reads.sql) reales -- voz sigue pendiente, hueco
+ * real documentado.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,6 +54,7 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
     val messages by viewModel.messages.collectAsState()
     val members by viewModel.members.collectAsState()
     val reactions by viewModel.reactions.collectAsState()
+    val reads by viewModel.reads.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     var draft by remember { mutableStateOf("") }
     var showMembers by remember { mutableStateOf(false) }
@@ -137,6 +139,21 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
                                         }
                                     )
                                 }
+                            }
+                        }
+                        // "Visto por" real (0061_group_message_reads.sql),
+                        // comparado con WhatsApp/Messenger -- solo en los
+                        // propios mensajes, igual que esas apps solo
+                        // muestran el recibo de lectura de lo que TÚ enviaste.
+                        if (isMine) {
+                            val readCount = reads[message.id]?.count { it != myId } ?: 0
+                            if (readCount > 0) {
+                                Text(
+                                    "Visto por $readCount",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
                             }
                         }
                     }

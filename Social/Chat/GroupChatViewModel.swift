@@ -3,10 +3,10 @@
 //  Social
 //
 //  Hilo de un chat de grupo real -- mismo patrón que ChatViewModel.swift
-//  (1:1). Reacciones reales (0060_group_message_reactions.sql) -- voz/
-//  read-receipts siguen pendientes, hueco real documentado. Mensajes en
-//  vivo vía Realtime, mismo mecanismo ya usado en el chat 1:1. Equivalente
-//  de GroupChatViewModel.kt.
+//  (1:1). Reacciones (0060_group_message_reactions.sql) y "visto por"
+//  (0061_group_message_reads.sql) reales -- voz sigue pendiente, hueco
+//  real documentado. Mensajes en vivo vía Realtime, mismo mecanismo ya
+//  usado en el chat 1:1. Equivalente de GroupChatViewModel.kt.
 //
 
 import Foundation
@@ -50,6 +50,17 @@ final class GroupChatViewModel: ObservableObject {
         let emoji: String
     }
 
+    // "Visto por" real (0061_group_message_reads.sql), comparado con
+    // WhatsApp/Messenger -- mapa de group_message_id a la lista de
+    // user_id que lo han leído (nunca incluye al propio autor, RLS lo
+    // impide desde el servidor).
+    @Published var reads: [UUID: [UUID]] = [:]
+
+    private struct ReadRow: Codable {
+        let group_message_id: UUID
+        let user_id: UUID
+    }
+
     private var channel: RealtimeChannelV2?
 
     init(groupChatID: UUID) {
@@ -67,10 +78,55 @@ final class GroupChatViewModel: ObservableObject {
                 .value
             await loadMembers()
             await loadReactions()
+            await loadReads()
+            await markUnreadAsRead()
         } catch {
             errorMessage = "No se pudieron cargar los mensajes: \(error.localizedDescription)"
         }
         await subscribeToRealtime()
+    }
+
+    private func loadReads() async {
+        do {
+            let rows: [ReadRow] = try await SupabaseManager.shared.client
+                .from("group_message_reads")
+                .select("group_message_id,user_id")
+                .eq("group_chat_id", value: groupChatID)
+                .execute()
+                .value
+            reads = Dictionary(grouping: rows, by: { $0.group_message_id }).mapValues { group in group.map { $0.user_id } }
+        } catch {
+            // Sin bloquear el resto del hilo si falla.
+        }
+    }
+
+    private struct NewRead: Encodable {
+        let group_message_id: UUID
+        let group_chat_id: UUID
+        let user_id: UUID
+    }
+
+    /// Marca como leídos todos los mensajes AJENOS todavía no leídos por
+    /// mí -- RLS (`group_message_reads_insert_own`) ya impide marcar el
+    /// propio. Equivalente de GroupChatViewModel.kt.markUnreadAsRead().
+    private func markUnreadAsRead() async {
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        let alreadyRead = Set(reads.filter { $0.value.contains(userID) }.keys)
+        let toMark = messages.filter { $0.senderID != userID && !alreadyRead.contains($0.id) }
+        guard !toMark.isEmpty else { return }
+        do {
+            let rows = toMark.map { NewRead(group_message_id: $0.id, group_chat_id: groupChatID, user_id: userID) }
+            try await SupabaseManager.shared.client
+                .from("group_message_reads")
+                .insert(rows)
+                .execute()
+            for message in toMark {
+                reads[message.id, default: []].append(userID)
+            }
+        } catch {
+            // Best-effort -- un recibo de lectura que falla no debe
+            // interrumpir la lectura del chat.
+        }
     }
 
     private func loadReactions() async {
@@ -162,6 +218,12 @@ final class GroupChatViewModel: ObservableObject {
             DeleteAction.self, schema: "public", table: "group_message_reactions",
             filter: "group_chat_id=eq.\(groupChatID.uuidString)"
         )
+        // "Visto por" en vivo -- otro miembro marcando como leído uno de
+        // mis mensajes, sin tener que recargar.
+        let readInserts = ch.postgresChange(
+            InsertAction.self, schema: "public", table: "group_message_reads",
+            filter: "group_chat_id=eq.\(groupChatID.uuidString)"
+        )
         channel = ch
         await ch.subscribe()
 
@@ -170,6 +232,20 @@ final class GroupChatViewModel: ObservableObject {
                 if let message = try? change.decodeRecord(as: GroupMessage.self, decoder: JSONDecoder()) {
                     if !messages.contains(where: { $0.id == message.id }) {
                         messages.append(message)
+                        // El chat sigue abierto -- un mensaje que llega en
+                        // vivo se marca leído igual que uno cargado al
+                        // abrir el hilo.
+                        await markUnreadAsRead()
+                    }
+                }
+            }
+        }
+
+        Task {
+            for await change in readInserts {
+                if let read = try? change.decodeRecord(as: ReadRow.self, decoder: JSONDecoder()) {
+                    if !(reads[read.group_message_id]?.contains(read.user_id) ?? false) {
+                        reads[read.group_message_id, default: []].append(read.user_id)
                     }
                 }
             }
