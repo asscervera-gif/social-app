@@ -76,6 +76,36 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
         }
     }
 
+    // Responder a una historia real (0071_message_story_reply.sql),
+    // comparado con Instagram/WhatsApp Status/Snapchat -- vista previa real
+    // (miniatura) de la historia respondida en un mensaje, cargada por
+    // lotes, mismo patrón exacto que loadSharedPosts() de arriba. Sin
+    // autor propio: en un chat 1:1, la historia referenciada es siempre de
+    // uno de los dos participantes ya conocidos (mío o del otro), así que
+    // el texto de la burbuja ("Respondiste"/"Respondió a tu historia") se
+    // decide comparando message.senderId con myId, sin otra consulta.
+    private val _storyPreviews = MutableStateFlow<Map<String, StoryPreview>>(emptyMap())
+    val storyPreviews: StateFlow<Map<String, StoryPreview>> = _storyPreviews.asStateFlow()
+
+    @Serializable
+    data class StoryPreview(val id: String, @SerialName("media_url") val mediaUrl: String)
+
+    private suspend fun loadStoryPreviews(messages: List<ChatMessage>) {
+        val storyIds = messages.mapNotNull { it.storyId }.filter { it !in _storyPreviews.value }.distinct()
+        if (storyIds.isEmpty()) return
+        try {
+            val stories = SupabaseManager.client.from("stories")
+                .select(columns = Columns.raw("id,media_url")) { filter { isIn("id", storyIds) } }
+                .decodeList<StoryPreview>()
+            _storyPreviews.update { it + stories.associateBy { story -> story.id } }
+        } catch (e: Exception) {
+            // Historia real ya caducada/borrada (stories_select filtra
+            // expires_at > now(), 0002_rls.sql) -- comportamiento CORRECTO
+            // y esperado, no un fallo: el mensaje sigue mostrándose, solo
+            // sin la vista previa de la historia ya no disponible.
+        }
+    }
+
     private val _compatibility = MutableStateFlow(50)
     val compatibility: StateFlow<Int> = _compatibility.asStateFlow()
 
@@ -309,6 +339,7 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
             _hasMoreHistory.value = recent.size >= 100
             _messages.value = recent.reversed()
             loadSharedPosts(_messages.value)
+            loadStoryPreviews(_messages.value)
 
             val chat = SupabaseManager.client.from("chats")
                 .select { filter { eq("id", chatId) } }
@@ -351,6 +382,7 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
                 _hasMoreHistory.value = older.size >= olderPageSize
                 _messages.value = older.reversed() + _messages.value
                 loadSharedPosts(older)
+                loadStoryPreviews(older)
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudieron cargar mensajes anteriores."
             } finally {
@@ -455,6 +487,7 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
             val message = Json.decodeFromJsonElement(ChatMessage.serializer(), insert.record)
             _messages.update { it + message }
             loadSharedPosts(listOf(message))
+            loadStoryPreviews(listOf(message))
         }.launchIn(viewModelScope)
 
         ch.postgresChangeFlow<PostgresAction.Update>(schema = "public") {

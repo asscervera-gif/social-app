@@ -88,6 +88,11 @@ private struct StoryViewer: View {
     @State private var viewers: [StoriesViewModel.StoryViewer] = []
     @State private var showViewers = false
     @State private var progress: CGFloat = 0
+    // Responder a una historia real (0071_message_story_reply.sql),
+    // comparado con Instagram/WhatsApp Status/Snapchat.
+    @State private var replyText = ""
+    @FocusState private var isReplyFocused: Bool
+    @StateObject private var socialLinks = SocialLinkManager()
 
     private func goNext() {
         if index < group.stories.count - 1 {
@@ -156,6 +161,44 @@ private struct StoryViewer: View {
                         }
                     }
                     .padding()
+                } else {
+                    // Responder a una historia real
+                    // (0071_message_story_reply.sql), comparado con
+                    // Instagram/WhatsApp Status/Snapchat -- solo tiene
+                    // sentido sobre la historia de OTRA persona, nunca la
+                    // propia (para eso ya está "quién vio tu historia").
+                    VStack {
+                        Spacer()
+                        HStack(spacing: 8) {
+                            ZStack(alignment: .leading) {
+                                if replyText.isEmpty {
+                                    Text("Responder a la historia…")
+                                        .foregroundStyle(.white.opacity(0.6))
+                                }
+                                TextField("", text: $replyText)
+                                    .foregroundStyle(.white)
+                                    .focused($isReplyFocused)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(Color.white.opacity(0.15))
+                            .clipShape(Capsule())
+                            if !replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                Button {
+                                    let text = replyText
+                                    replyText = ""
+                                    Task {
+                                        guard let myID,
+                                              let chatID = await socialLinks.getOrCreateChat(myID, story.author_id) else { return }
+                                        _ = await viewModel.sendReply(chatID: chatID, storyID: story.id, text: text)
+                                    }
+                                } label: {
+                                    Text("➤").foregroundStyle(.white)
+                                }
+                            }
+                        }
+                        .padding()
+                    }
                 }
             }
         }
@@ -172,11 +215,26 @@ private struct StoryViewer: View {
         // Status (SOCIAL_APP.html usaba 4s para su maqueta estática). Si
         // el usuario avanza a mano antes de que termine, `.task(id:)`
         // cancela esta tarea al cambiar `index` -- no se dispara un
-        // avance doble.
+        // avance doble. Hallazgo real, comparado con Instagram/WhatsApp
+        // Status/Snapchat: las tres apps PAUSAN el avance automático
+        // mientras se escribe una respuesta -- un avance por pasos de
+        // 50ms (en vez de un solo `withAnimation` de 5s) deja comprobar
+        // `isReplyFocused` en cada paso y simplemente no acumular tiempo
+        // mientras el teclado está activo, mismo criterio que
+        // StoriesBar.kt (Android).
         .task(id: index) {
             progress = 0
-            withAnimation(.linear(duration: 5)) { progress = 1 }
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            let totalMs = 5000
+            let stepMs = 50
+            var elapsedMs = 0
+            while elapsedMs < totalMs {
+                try? await Task.sleep(nanoseconds: UInt64(stepMs) * 1_000_000)
+                if Task.isCancelled { return }
+                if !isReplyFocused {
+                    elapsedMs += stepMs
+                    withAnimation(.linear(duration: 0.05)) { progress = min(1, CGFloat(elapsedMs) / CGFloat(totalMs)) }
+                }
+            }
             if !Task.isCancelled { goNext() }
         }
         .sheet(isPresented: $showViewers) {

@@ -175,4 +175,31 @@ class StoriesViewModel : ViewModel() {
             }
         }
     }
+
+    @Serializable
+    private data class NewStoryReply(
+        @SerialName("chat_id") val chatId: String,
+        @SerialName("sender_id") val senderId: String,
+        val body: String,
+        @SerialName("story_id") val storyId: String
+    )
+
+    /** Responder a una historia real (0071_message_story_reply.sql),
+     * comparado con Instagram/WhatsApp Status/Snapchat -- manda la
+     * respuesta como un mensaje directo real a quien publicó la historia.
+     * `chatId` ya resuelto por el llamador (StoriesBar.kt, vía
+     * `SocialLinkManager.getOrCreateChat`, el mismo usado para "Enviar
+     * mensaje" desde un aviso) -- esta función solo inserta el mensaje. */
+    suspend fun sendReply(chatId: String, storyId: String, text: String): Boolean {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty() || trimmed.length > 2000) return false
+        val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return false
+        return try {
+            SupabaseManager.client.from("messages").insert(NewStoryReply(chatId, userId, trimmed, storyId))
+            com.social.app.backend.AnalyticsManager.track("story_replied")
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
 }

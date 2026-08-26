@@ -155,4 +155,33 @@ final class StoriesViewModel: ObservableObject {
             errorMessage = "No se pudo subir la historia."
         }
     }
+
+    /// Responder a una historia real (0071_message_story_reply.sql),
+    /// comparado con Instagram/WhatsApp Status/Snapchat -- manda la
+    /// respuesta como un mensaje directo real a quien publicó la
+    /// historia. `chatID` ya resuelto por el llamador (StoriesBar.swift,
+    /// vía `SocialLinkManager.getOrCreateChat`, el mismo usado para
+    /// "Enviar mensaje" desde un aviso) -- esta función solo inserta el
+    /// mensaje. Equivalente de StoriesViewModel.kt.sendReply().
+    func sendReply(chatID: UUID, storyID: UUID, text: String) async -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 2000 else { return false }
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return false }
+        struct NewStoryReply: Encodable {
+            let chat_id: UUID
+            let sender_id: UUID
+            let body: String
+            let story_id: UUID
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("messages")
+                .insert(NewStoryReply(chat_id: chatID, sender_id: userID, body: trimmed, story_id: storyID))
+                .execute()
+            AnalyticsManager.track("story_replied")
+            return true
+        } catch {
+            return false
+        }
+    }
 }

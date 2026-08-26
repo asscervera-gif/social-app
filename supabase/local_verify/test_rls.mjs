@@ -1252,6 +1252,18 @@ async function main() {
   const sharedPostInChatAsRecipient = (await db.query(`select shared_post_id from messages where chat_id = $1 and shared_post_id = $2`, [chat.id, postToShare.id])).rows;
   check('messages_select: el destinatario real (u2) SÍ ve el mensaje con la publicación compartida', sharedPostInChatAsRecipient.length === 1);
 
+  // --- messages.story_id (0071_message_story_reply.sql): responder a una
+  // historia real, comparado con Instagram/WhatsApp Status/Snapchat.
+  // Reutiliza `story` (historia real de u3, de la sección de story_views
+  // de más arriba) solo como referencia real de FK -- no importa de quién
+  // sea para esta prueba de columna/constraint. Contexto ya asUser(u2). ---
+  await expectOk('messages_has_content: un mensaje SOLO con story_id (sin body/media/audio) SÍ se puede insertar', async () => {
+    await db.query(`insert into messages (chat_id, sender_id, story_id) values ($1, $2, $3)`, [chat.id, u2, story.id]);
+  });
+  await asUser(u1);
+  const storyReplyAsRecipient = (await db.query(`select story_id from messages where chat_id = $1 and story_id = $2`, [chat.id, story.id])).rows;
+  check('messages_select: el destinatario real (u1) SÍ ve el mensaje con la respuesta a la historia', storyReplyAsRecipient.length === 1);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

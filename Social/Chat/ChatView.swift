@@ -104,6 +104,7 @@ struct ChatView: View {
                                 sharedPostAuthor: message.sharedPostID
                                     .flatMap { viewModel.sharedPosts[$0] }
                                     .flatMap { viewModel.sharedPostAuthors[$0.authorID] },
+                                storyPreview: message.storyID.flatMap { viewModel.storyPreviews[$0] },
                                 onToggleReaction: { emoji in
                                     Task { await viewModel.toggleReaction(messageID: message.id, emoji: emoji) }
                                 },
@@ -327,6 +328,9 @@ private struct MessageBubble: View {
     // comparado con Instagram/TikTok/Twitter/Snapchat.
     var sharedPost: Post? = nil
     var sharedPostAuthor: Profile? = nil
+    // Responder a una historia real (0071_message_story_reply.sql),
+    // comparado con Instagram/WhatsApp Status/Snapchat.
+    var storyPreview: ChatViewModel.StoryPreview? = nil
     let onToggleReaction: (String) -> Void
     // Hallazgo real, comparado con WhatsApp/Telegram/Messenger: mantener
     // pulsado un mensaje propio borraba al instante sin confirmación --
@@ -357,7 +361,34 @@ private struct MessageBubble: View {
                     // publicación completa real (PostDetailView.swift),
                     // mismo criterio que Instagram/Messenger: antes solo
                     // abría la foto a tamaño completo.
-                    if let sharedPostID = message.sharedPostID {
+                    if message.storyID != nil {
+                        // Responder a una historia real
+                        // (0071_message_story_reply.sql), comparado con
+                        // Instagram/WhatsApp Status/Snapchat --
+                        // "Historia ya no disponible" si expiró/se borró
+                        // (stories_select filtra expires_at,
+                        // comportamiento correcto, no un fallo).
+                        VStack(alignment: .leading, spacing: 4) {
+                            if let mediaURLString = storyPreview?.media_url, let url = URL(string: mediaURLString) {
+                                AsyncImage(url: url) { image in
+                                    image.resizable().scaledToFill()
+                                } placeholder: {
+                                    ProgressView()
+                                }
+                                .frame(width: 120, height: 120)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                            Text(isMine ? "Respondiste a una historia" : "Respondió a tu historia")
+                                .font(.caption2)
+                            if storyPreview == nil {
+                                Text("Historia ya no disponible").font(.caption2)
+                            }
+                            if let body = message.body {
+                                Text(body).font(.footnote)
+                            }
+                        }
+                        .padding(8)
+                    } else if let sharedPostID = message.sharedPostID {
                         NavigationLink {
                             PostDetailView(postID: sharedPostID)
                         } label: {

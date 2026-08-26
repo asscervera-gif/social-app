@@ -70,6 +70,9 @@ fun ChatScreen(
     // comparado con Instagram/TikTok/Twitter/Snapchat.
     val sharedPosts by viewModel.sharedPosts.collectAsState()
     val sharedPostAuthors by viewModel.sharedPostAuthors.collectAsState()
+    // Responder a una historia real (0071_message_story_reply.sql),
+    // comparado con Instagram/WhatsApp Status/Snapchat.
+    val storyPreviews by viewModel.storyPreviews.collectAsState()
     val reactions by viewModel.reactions.collectAsState()
     val compatibility by viewModel.compatibility.collectAsState()
     val opponentId by viewModel.opponentId.collectAsState()
@@ -228,7 +231,33 @@ fun ChatScreen(
                         // publicación completa real (PostDetailScreen.kt),
                         // mismo criterio que Instagram/Messenger: antes
                         // solo abría la foto a tamaño completo.
-                        if (message.sharedPostId != null) {
+                        if (message.storyId != null) {
+                            // Responder a una historia real
+                            // (0071_message_story_reply.sql), comparado
+                            // con Instagram/WhatsApp Status/Snapchat --
+                            // "Historia ya no disponible" si expiró/se
+                            // borró (stories_select filtra expires_at,
+                            // comportamiento correcto, no un fallo).
+                            val storyPreview = storyPreviews[message.storyId]
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                if (storyPreview != null) {
+                                    Image(
+                                        painter = rememberAsyncImagePainter(storyPreview.mediaUrl),
+                                        contentDescription = null,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.size(120.dp).clip(RoundedCornerShape(10.dp))
+                                    )
+                                }
+                                Text(
+                                    if (isMine) "Respondiste a una historia" else "Respondió a tu historia",
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                                if (storyPreview == null) {
+                                    Text("Historia ya no disponible", style = MaterialTheme.typography.labelSmall)
+                                }
+                                message.body?.let { Text(it, modifier = Modifier.padding(top = 4.dp)) }
+                            }
+                        } else if (message.sharedPostId != null) {
                             val sharedPostId = message.sharedPostId
                             val sharedPost = sharedPosts[sharedPostId]
                             val sharedAuthor = sharedPost?.let { sharedPostAuthors[it.authorId] }

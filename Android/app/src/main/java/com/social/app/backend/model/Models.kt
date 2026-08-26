@@ -133,7 +133,10 @@ data class ChatMessage(
     @SerialName("edited_at") val editedAt: String? = null,
     // Enviar una publicación a un chat real (0069_message_shared_post.sql),
     // comparado con Instagram/TikTok/Twitter/Snapchat.
-    @SerialName("shared_post_id") val sharedPostId: String? = null
+    @SerialName("shared_post_id") val sharedPostId: String? = null,
+    // Responder a una historia real (0071_message_story_reply.sql),
+    // comparado con Instagram/WhatsApp Status/Snapchat.
+    @SerialName("story_id") val storyId: String? = null
 )
 
 /** Hallazgo de integridad corregido (ver duel-ai/index.ts): antes incluía

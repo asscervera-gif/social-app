@@ -174,6 +174,9 @@ struct ChatMessage: Codable, Identifiable {
     // Enviar una publicación a un chat real (0069_message_shared_post.sql),
     // comparado con Instagram/TikTok/Twitter/Snapchat.
     var sharedPostID: UUID?
+    // Responder a una historia real (0071_message_story_reply.sql),
+    // comparado con Instagram/WhatsApp Status/Snapchat.
+    var storyID: UUID?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -186,6 +189,7 @@ struct ChatMessage: Codable, Identifiable {
         case audioURL = "audio_url"
         case editedAt = "edited_at"
         case sharedPostID = "shared_post_id"
+        case storyID = "story_id"
     }
 }
 
