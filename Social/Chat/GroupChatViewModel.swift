@@ -148,6 +148,7 @@ final class GroupChatViewModel: ObservableObject {
             await loadReads()
             await loadSharedPosts(messages)
             await markUnreadAsRead()
+            await loadStarred()
         } catch {
             errorMessage = "No se pudieron cargar los mensajes: \(error.localizedDescription)"
         }
@@ -210,6 +211,70 @@ final class GroupChatViewModel: ObservableObject {
             reactions = Dictionary(grouping: rows, by: { $0.group_message_id })
         } catch {
             // Sin bloquear el resto del hilo si falla.
+        }
+    }
+
+    // Mensajes destacados reales, comparado con WhatsApp
+    // (0087_starred_messages.sql) -- totalmente privado, sobre CUALQUIER
+    // mensaje de grupo (propio o ajeno). Equivalente de
+    // GroupChatViewModel.kt.starredMessageIds.
+    @Published var starredMessageIDs: Set<UUID> = []
+
+    private func loadStarred() async {
+        struct StarredGroupIDRow: Decodable { let group_message_id: UUID }
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        // `starred_messages` no desnormaliza group_chat_id (a diferencia
+        // de group_message_reactions) -- filtro por user_id + `in` sobre
+        // los group_message_id ya cargados, mismo criterio que
+        // GroupChatViewModel.kt.loadStarred().
+        let groupMessageIDs = messages.map { $0.id }
+        guard !groupMessageIDs.isEmpty else { return }
+        if let rows: [StarredGroupIDRow] = try? await SupabaseManager.shared.client
+            .from("starred_messages")
+            .select("group_message_id")
+            .eq("user_id", value: userID)
+            .in("group_message_id", values: groupMessageIDs)
+            .execute()
+            .value {
+            starredMessageIDs = Set(rows.map { $0.group_message_id })
+        }
+    }
+
+    private struct NewStarredGroupMessage: Encodable {
+        let user_id: UUID
+        let group_message_id: UUID
+    }
+
+    /// Destacar/quitar destacado un mensaje de grupo real (propio o
+    /// ajeno), comparado con WhatsApp -- `starred_messages_insert_own` ya
+    /// comprueba del lado del servidor que soy de verdad miembro de este
+    /// grupo (0087_starred_messages.sql). Equivalente de
+    /// GroupChatViewModel.kt.toggleStar().
+    func toggleStar(_ groupMessageID: UUID) async {
+        let currentlyStarred = starredMessageIDs.contains(groupMessageID)
+        if currentlyStarred {
+            starredMessageIDs.remove(groupMessageID)
+        } else {
+            starredMessageIDs.insert(groupMessageID)
+        }
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        do {
+            if currentlyStarred {
+                try await SupabaseManager.shared.client
+                    .from("starred_messages")
+                    .delete()
+                    .eq("user_id", value: userID)
+                    .eq("group_message_id", value: groupMessageID)
+                    .execute()
+            } else {
+                try await SupabaseManager.shared.client
+                    .from("starred_messages")
+                    .insert(NewStarredGroupMessage(user_id: userID, group_message_id: groupMessageID))
+                    .execute()
+            }
+        } catch {
+            // Restricción unique(user_id, group_message_id): si ya
+            // existía, el estado deseado ya se cumple.
         }
     }
 

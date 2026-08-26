@@ -81,6 +81,9 @@ fun ChatScreen(
     // comparado con Instagram/WhatsApp Status/Snapchat.
     val storyPreviews by viewModel.storyPreviews.collectAsState()
     val reactions by viewModel.reactions.collectAsState()
+    // Mensajes destacados reales, comparado con WhatsApp
+    // (0087_starred_messages.sql).
+    val starredMessageIds by viewModel.starredMessageIds.collectAsState()
     val compatibility by viewModel.compatibility.collectAsState()
     val opponentId by viewModel.opponentId.collectAsState()
     val suggestedActivity by viewModel.suggestedActivity.collectAsState()
@@ -242,7 +245,7 @@ fun ChatScreen(
                         // 0022_messages_delete.sql).
                         modifier = Modifier.combinedClickable(
                             onClick = { showPicker = !showPicker },
-                            onLongClick = { if (isMine) managingMessage = message else reportMessageId = message.id }
+                            onLongClick = { managingMessage = message }
                         )
                     ) {
                         // Enviar una publicación a un chat real
@@ -311,7 +314,7 @@ fun ChatScreen(
                                 modifier = Modifier.size(200.dp).clip(RoundedCornerShape(14.dp))
                                     .combinedClickable(
                                         onClick = { fullScreenImageUrl = message.mediaUrl },
-                                        onLongClick = { if (isMine) managingMessage = message else reportMessageId = message.id }
+                                        onLongClick = { managingMessage = message }
                                     )
                             )
                         } else if (message.audioUrl != null) {
@@ -514,23 +517,43 @@ fun ChatScreen(
     // pulsado un mensaje propio lo borraba al instante sin confirmación --
     // ahora un menú real, ver 0049_messages_edit.sql.
     managingMessage?.let { message ->
+        val isMineMessage = message.senderId == currentUserId
+        // Mensajes destacados reales, comparado con WhatsApp -- sobre
+        // CUALQUIER mensaje (propio o ajeno), ver ChatViewModel.toggleStar(),
+        // 0087_starred_messages.sql. Mismo menú real, ahora también abierto
+        // al mantener pulsado un mensaje AJENO (antes iba directo a
+        // denunciar sin dejar destacarlo).
+        val isStarred = starredMessageIds.contains(message.id)
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { managingMessage = null },
             title = { Text("Mensaje") },
             text = {},
             confirmButton = {
-                androidx.compose.material3.TextButton(onClick = {
-                    editingMessage = message
-                    editedMessageText = message.body ?: ""
-                    managingMessage = null
-                }) { Text("Editar") }
+                if (isMineMessage) {
+                    androidx.compose.material3.TextButton(onClick = {
+                        editingMessage = message
+                        editedMessageText = message.body ?: ""
+                        managingMessage = null
+                    }) { Text("Editar") }
+                } else {
+                    androidx.compose.material3.TextButton(onClick = {
+                        reportMessageId = message.id
+                        managingMessage = null
+                    }) { Text("Denunciar") }
+                }
             },
             dismissButton = {
                 Row {
                     androidx.compose.material3.TextButton(onClick = {
-                        viewModel.deleteMessage(message.id)
+                        viewModel.toggleStar(message.id)
                         managingMessage = null
-                    }) { Text("Borrar") }
+                    }) { Text(if (isStarred) "Quitar destacado" else "Destacar") }
+                    if (isMineMessage) {
+                        androidx.compose.material3.TextButton(onClick = {
+                            viewModel.deleteMessage(message.id)
+                            managingMessage = null
+                        }) { Text("Borrar") }
+                    }
                     androidx.compose.material3.TextButton(onClick = { managingMessage = null }) { Text("Cancelar") }
                 }
             }

@@ -1632,6 +1632,66 @@ async function main() {
     await db.query(`insert into reel_comments (reel_id, author_id, body) values ($1, $2, 'intento con comentarios cerrados')`, [mutedWordsReel.id, u2]);
   });
 
+  // --- starred_messages (0087_starred_messages.sql): mensajes destacados
+  // reales, comparado con WhatsApp -- privado, sobre CUALQUIER mensaje
+  // (propio o ajeno), en un chat 1:1 o de grupo. Reutiliza `chat`
+  // (u1<->u2) para el 1:1; grupo propio y nuevo para el caso de grupo. ---
+  await asUser(u1);
+  const messageToStar = (await db.query(
+    `insert into messages (chat_id, sender_id, body) values ($1, $2, 'mensaje real para destacar') returning id`, [chat.id, u1]
+  )).rows[0];
+
+  await expectFail('starred_messages: el CHECK real impide destacar sin indicar ni mensaje 1:1 ni de grupo', async () => {
+    await db.query(`insert into starred_messages (user_id) values ($1)`, [u1]);
+  });
+  await expectFail('starred_messages: el CHECK real impide destacar indicando un mensaje 1:1 Y uno de grupo a la vez', async () => {
+    await db.query(`insert into starred_messages (user_id, message_id, group_message_id) values ($1, $2, $2)`, [u1, messageToStar.id]);
+  });
+
+  await asUser(u2);
+  await expectOk('starred_messages_insert_own: u2 SÍ puede destacar un mensaje real ajeno de un chat 1:1 en el que participa', async () => {
+    await db.query(`insert into starred_messages (user_id, message_id) values ($1, $2)`, [u2, messageToStar.id]);
+  });
+  const starredByU2 = (await db.query(`select id from starred_messages where user_id = $1`, [u2])).rows;
+  check('starred_messages_select_own: u2 SÍ ve su propio destacado real', starredByU2.length === 1);
+
+  await asUser(u1);
+  const starredAsSender = (await db.query(`select id from starred_messages where message_id = $1`, [messageToStar.id])).rows;
+  check('starred_messages_select_own: ni siquiera u1 (quien escribió el mensaje) puede ver que u2 lo destacó -- totalmente privado', starredAsSender.length === 0);
+
+  await asUser(u4);
+  await expectFail('starred_messages_insert_own: u4 real, que NO participa en el chat, NO puede destacar un mensaje ajeno', async () => {
+    await db.query(`insert into starred_messages (user_id, message_id) values ($1, $2)`, [u4, messageToStar.id]);
+  });
+
+  await asUser(u2);
+  await expectOk('starred_messages_delete_own: u2 SÍ puede quitar su propio destacado real', async () => {
+    await db.query(`delete from starred_messages where user_id = $1 and message_id = $2`, [u2, messageToStar.id]);
+  });
+  const starredAfterRemoval = (await db.query(`select id from starred_messages where user_id = $1`, [u2])).rows;
+  check('starred_messages_delete_own: la lista real de u2 queda vacía tras quitarlo', starredAfterRemoval.length === 0);
+
+  // Mismo espejo real para un mensaje de GRUPO -- grupo propio y nuevo.
+  const starGroupId = crypto.randomUUID();
+  await asUser(u1);
+  await db.query(`insert into group_chats (id, name, created_by) values ($1, $2, $3)`, [starGroupId, 'Grupo para destacar', u1]);
+  await db.query(`insert into group_chat_members (group_chat_id, user_id) values ($1, $2)`, [starGroupId, u2]);
+  const groupMessageToStar = (await db.query(
+    `insert into group_messages (group_chat_id, sender_id, body) values ($1, $2, 'mensaje de grupo real para destacar') returning id`, [starGroupId, u1]
+  )).rows[0];
+
+  await asUser(u2);
+  await expectOk('starred_messages_insert_own: u2 SÍ puede destacar un mensaje de grupo real ajeno', async () => {
+    await db.query(`insert into starred_messages (user_id, group_message_id) values ($1, $2)`, [u2, groupMessageToStar.id]);
+  });
+  const starredGroupMessage = (await db.query(`select id from starred_messages where user_id = $1 and group_message_id = $2`, [u2, groupMessageToStar.id])).rows;
+  check('starred_messages_select_own: u2 SÍ ve su propio destacado real de grupo', starredGroupMessage.length === 1);
+
+  await asUser(u3);
+  await expectFail('starred_messages_insert_own: u3 real, que NO es miembro del grupo, NO puede destacar un mensaje de grupo ajeno', async () => {
+    await db.query(`insert into starred_messages (user_id, group_message_id) values ($1, $2)`, [u3, groupMessageToStar.id]);
+  });
+
   // --- calls (0079_calls.sql): videollamada/llamada de voz 1:1 real
   // desde un chat, comparado con WhatsApp/Messenger/Instagram. ---
   await asUser(u1);

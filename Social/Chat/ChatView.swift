@@ -148,9 +148,6 @@ struct ChatView: View {
                                 onManage: {
                                     managingMessage = message
                                 },
-                                onReport: {
-                                    reportMessageID = message.id
-                                },
                                 onForward: {
                                     forwardingMessage = message
                                 }
@@ -218,12 +215,29 @@ struct ChatView: View {
             titleVisibility: .hidden
         ) {
             if let managingMessage {
-                Button("Editar") {
-                    editingMessage = managingMessage
-                    editedMessageText = managingMessage.body ?? ""
+                // Mensajes destacados reales, comparado con WhatsApp --
+                // sobre CUALQUIER mensaje (propio o ajeno), ver
+                // ChatViewModel.toggleStar(), 0087_starred_messages.sql.
+                // Mismo menú real, ahora también abierto al mantener
+                // pulsado un mensaje AJENO (antes iba directo a denunciar
+                // sin dejar destacarlo).
+                if managingMessage.senderID == currentUserID {
+                    Button("Editar") {
+                        editingMessage = managingMessage
+                        editedMessageText = managingMessage.body ?? ""
+                    }
+                } else {
+                    Button("Denunciar") {
+                        reportMessageID = managingMessage.id
+                    }
                 }
-                Button("Borrar", role: .destructive) {
-                    Task { await viewModel.deleteMessage(managingMessage.id) }
+                Button(viewModel.starredMessageIDs.contains(managingMessage.id) ? "Quitar destacado" : "Destacar") {
+                    Task { await viewModel.toggleStar(managingMessage.id) }
+                }
+                if managingMessage.senderID == currentUserID {
+                    Button("Borrar", role: .destructive) {
+                        Task { await viewModel.deleteMessage(managingMessage.id) }
+                    }
                 }
                 Button("Cancelar", role: .cancel) {}
             }
@@ -376,11 +390,11 @@ private struct MessageBubble: View {
     // pulsado un mensaje propio borraba al instante sin confirmación --
     // ahora abre un menú real (Editar/Borrar/Cancelar), ver
     // 0049_messages_edit.sql.
+    // Denunciar un mensaje concreto (0048_reports_message_reference.sql)
+    // y destacarlo (0087_starred_messages.sql) se gestionan ahora desde el
+    // mismo menú real de onManage() -- mantener pulsado CUALQUIER mensaje
+    // (antes: solo el propio) abre ese menú, ver ChatView.body.
     var onManage: () -> Void = {}
-    // Hallazgo real, comparado con Instagram/WhatsApp/Messenger: no había
-    // forma de denunciar un MENSAJE concreto -- ver
-    // 0048_reports_message_reference.sql.
-    var onReport: () -> Void = {}
     // Reenviar un mensaje real (0072_message_forward.sql), comparado con
     // WhatsApp/Telegram/Messenger.
     var onForward: () -> Void = {}
@@ -489,7 +503,7 @@ private struct MessageBubble: View {
                 // — mantener pulsado el tuyo lo borra (ver
                 // 0022_messages_delete.sql).
                 .onLongPressGesture {
-                    if isMine { onManage() } else { onReport() }
+                    onManage()
                 }
                 if !isMine { Spacer() }
             }

@@ -39,6 +39,9 @@ struct PerfilView: View {
     // en `saved_posts`, pero no había ninguna pantalla para ver lo
     // guardado (ver SavedPostsView.swift).
     @State private var showSavedPosts = false
+    // Mensajes destacados reales, comparado con WhatsApp -- mismo
+    // criterio que showSavedPosts de arriba (0087_starred_messages.sql).
+    @State private var showStarredMessages = false
     // Hallazgo real, comparado con Instagram/Twitter/TikTok: los
     // contadores "Siguiendo"/"Seguidores" ya eran reales, pero tocarlos no
     // hacía nada -- ver FollowListViewModel.swift.
@@ -149,6 +152,11 @@ struct PerfilView: View {
             .sheet(isPresented: $showSavedPosts) {
                 NavigationStack {
                     SavedPostsView()
+                }
+            }
+            .sheet(isPresented: $showStarredMessages) {
+                NavigationStack {
+                    StarredMessagesView()
                 }
             }
             .sheet(isPresented: $showSocialsList) {
@@ -267,7 +275,12 @@ struct PerfilView: View {
             ("Pubs. de socials", "person.2.square.stack", { showTaggedPosts = true }),
             ("En directo", "dot.radiowaves.left.and.right", { showLive = true }),
             ("Tus publicaciones", "square.grid.3x3", { showMyPosts = true }),
-            ("Guardados", "bookmark.fill", { showSavedPosts = true })
+            ("Guardados", "bookmark.fill", { showSavedPosts = true }),
+            // Mensajes destacados reales, comparado con WhatsApp
+            // (0087_starred_messages.sql) -- mismo criterio que el resto
+            // de esta rejilla: se añade sin quitar ninguno de los ya
+            // reales.
+            ("Destacados", "star.fill", { showStarredMessages = true })
         ]
     }
 

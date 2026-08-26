@@ -132,6 +132,66 @@ final class ChatViewModel: ObservableObject {
         await markMessagesRead()
         await markMessageNotificationsRead()
         await loadReactions()
+        await loadStarred()
+    }
+
+    // Mensajes destacados reales, comparado con WhatsApp
+    // (0087_starred_messages.sql) -- totalmente privado, sobre CUALQUIER
+    // mensaje (propio o ajeno). Equivalente de
+    // ChatViewModel.kt.starredMessageIds.
+    @Published var starredMessageIDs: Set<UUID> = []
+
+    private func loadStarred() async {
+        struct StarredIDRow: Decodable { let message_id: UUID }
+        let messageIDs = messages.map { $0.id }
+        guard !messageIDs.isEmpty else { return }
+        if let rows: [StarredIDRow] = try? await SupabaseManager.shared.client
+            .from("starred_messages")
+            .select("message_id")
+            .eq("user_id", value: currentUserID)
+            .in("message_id", values: messageIDs)
+            .execute()
+            .value {
+            starredMessageIDs = Set(rows.map { $0.message_id })
+        }
+    }
+
+    private struct NewStarredMessage: Encodable {
+        let user_id: UUID
+        let message_id: UUID
+    }
+
+    /// Destacar/quitar destacado un mensaje real (propio o ajeno),
+    /// comparado con WhatsApp -- `starred_messages_insert_own` ya
+    /// comprueba del lado del servidor que soy de verdad parte de este
+    /// chat (0087_starred_messages.sql). Equivalente de
+    /// ChatViewModel.kt.toggleStar().
+    func toggleStar(_ messageID: UUID) async {
+        let currentlyStarred = starredMessageIDs.contains(messageID)
+        if currentlyStarred {
+            starredMessageIDs.remove(messageID)
+        } else {
+            starredMessageIDs.insert(messageID)
+        }
+        do {
+            if currentlyStarred {
+                try await SupabaseManager.shared.client
+                    .from("starred_messages")
+                    .delete()
+                    .eq("user_id", value: currentUserID)
+                    .eq("message_id", value: messageID)
+                    .execute()
+            } else {
+                try await SupabaseManager.shared.client
+                    .from("starred_messages")
+                    .insert(NewStarredMessage(user_id: currentUserID, message_id: messageID))
+                    .execute()
+            }
+        } catch {
+            // Restricción unique(user_id, message_id): si ya existía, el
+            // estado deseado ya se cumple, mismo criterio que
+            // toggleReaction().
+        }
     }
 
     /// Hallazgo real, el hueco de mensajería más grande de la sesión:

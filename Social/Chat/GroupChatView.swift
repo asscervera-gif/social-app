@@ -94,7 +94,6 @@ struct GroupChatView: View {
                                 },
                                 onOpenFullScreen: { url in fullScreenURL = url },
                                 onManage: { managingMessage = message },
-                                onReport: { reportMessage = message },
                                 onForward: { forwardingMessage = message }
                             )
                             .id(message.id)
@@ -247,12 +246,29 @@ struct GroupChatView: View {
             titleVisibility: .hidden
         ) {
             if let managingMessage {
-                Button("Editar") {
-                    editingMessage = managingMessage
-                    editedMessageText = managingMessage.body ?? ""
+                // Mensajes destacados reales, comparado con WhatsApp --
+                // sobre CUALQUIER mensaje de grupo (propio o ajeno), ver
+                // GroupChatViewModel.toggleStar(), 0087_starred_messages.sql.
+                // Mismo menú real, ahora también abierto al mantener
+                // pulsado un mensaje AJENO (antes iba directo a denunciar
+                // sin dejar destacarlo).
+                if managingMessage.senderID == myID {
+                    Button("Editar") {
+                        editingMessage = managingMessage
+                        editedMessageText = managingMessage.body ?? ""
+                    }
+                } else {
+                    Button("Denunciar") {
+                        reportMessage = managingMessage
+                    }
                 }
-                Button("Borrar", role: .destructive) {
-                    Task { await viewModel.deleteMessage(managingMessage.id) }
+                Button(viewModel.starredMessageIDs.contains(managingMessage.id) ? "Quitar destacado" : "Destacar") {
+                    Task { await viewModel.toggleStar(managingMessage.id) }
+                }
+                if managingMessage.senderID == myID {
+                    Button("Borrar", role: .destructive) {
+                        Task { await viewModel.deleteMessage(managingMessage.id) }
+                    }
                 }
                 Button("Cancelar", role: .cancel) {}
             }
@@ -419,8 +435,11 @@ private struct GroupMessageBubble: View {
     // (0065_group_messages_edit_delete.sql), comparado con WhatsApp/
     // Telegram/Messenger -- mismo criterio que MessageBubble
     // (ChatView.swift, chat 1:1): mantener pulsado el propio mensaje.
+    // Denunciar un mensaje concreto y destacarlo
+    // (0087_starred_messages.sql) se gestionan ahora desde el mismo menú
+    // real de onManage() -- mantener pulsado CUALQUIER mensaje (antes:
+    // solo el propio) abre ese menú, ver GroupChatView.body.
     var onManage: () -> Void = {}
-    var onReport: () -> Void = {}
     // Reenviar un mensaje real (0072_message_forward.sql), comparado con
     // WhatsApp/Telegram/Messenger.
     var onForward: () -> Void = {}
@@ -490,7 +509,7 @@ private struct GroupMessageBubble: View {
                     .background(isMine ? Color.blue.opacity(0.15) : Color(.systemGray5))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .onTapGesture { showPicker.toggle() }
-                    .onLongPressGesture { if isMine { onManage() } else { onReport() } }
+                    .onLongPressGesture { onManage() }
             }
             if !reactions.isEmpty {
                 HStack(spacing: 4) {

@@ -186,6 +186,64 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
             markMessagesRead()
             markMessageNotificationsRead()
             loadReactions()
+            loadStarred()
+        }
+    }
+
+    // Mensajes destacados reales, comparado con WhatsApp
+    // (0087_starred_messages.sql) -- totalmente privado, sobre CUALQUIER
+    // mensaje (propio o ajeno).
+    private val _starredMessageIds = MutableStateFlow<Set<String>>(emptySet())
+    val starredMessageIds: StateFlow<Set<String>> = _starredMessageIds.asStateFlow()
+
+    @Serializable
+    private data class StarredIdRow(@SerialName("message_id") val messageId: String)
+
+    private suspend fun loadStarred() {
+        try {
+            val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return
+            val messageIds = _messages.value.map { it.id }
+            if (messageIds.isEmpty()) return
+            val rows = SupabaseManager.client.from("starred_messages")
+                .select(columns = Columns.raw("message_id")) {
+                    filter { eq("user_id", userId); isIn("message_id", messageIds) }
+                }
+                .decodeList<StarredIdRow>()
+            _starredMessageIds.value = rows.map { it.messageId }.toSet()
+        } catch (e: Exception) {
+            // No crítico: sin esto, el icono de destacado simplemente
+            // arranca sin marcar nada hasta la próxima carga.
+        }
+    }
+
+    @Serializable
+    private data class NewStarredMessage(
+        @SerialName("user_id") val userId: String,
+        @SerialName("message_id") val messageId: String
+    )
+
+    /** Destacar/quitar destacado un mensaje real (propio o ajeno),
+     * comparado con WhatsApp -- `starred_messages_insert_own` ya
+     * comprueba del lado del servidor que soy de verdad parte de este
+     * chat (0087_starred_messages.sql). */
+    fun toggleStar(messageId: String) {
+        val currentlyStarred = _starredMessageIds.value.contains(messageId)
+        _starredMessageIds.update { if (currentlyStarred) it - messageId else it + messageId }
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                if (currentlyStarred) {
+                    SupabaseManager.client.from("starred_messages").delete {
+                        filter { eq("user_id", userId); eq("message_id", messageId) }
+                    }
+                } else {
+                    SupabaseManager.client.from("starred_messages").insert(NewStarredMessage(userId, messageId))
+                }
+            } catch (e: Exception) {
+                // Restricción unique(user_id, message_id): si ya existía,
+                // el estado deseado ya se cumple, mismo criterio que
+                // toggleCommentLike().
+            }
         }
     }
 

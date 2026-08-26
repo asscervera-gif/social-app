@@ -78,6 +78,9 @@ fun GroupChatScreen(
     val messages by viewModel.messages.collectAsState()
     val members by viewModel.members.collectAsState()
     val reactions by viewModel.reactions.collectAsState()
+    // Mensajes destacados reales, comparado con WhatsApp
+    // (0087_starred_messages.sql).
+    val starredMessageIds by viewModel.starredMessageIds.collectAsState()
     val reads by viewModel.reads.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     // "En línea" y "escribiendo…" reales en un chat de grupo, comparado
@@ -257,7 +260,7 @@ fun GroupChatScreen(
                                     )
                                     .combinedClickable(
                                         onClick = { showPicker = !showPicker },
-                                        onLongClick = { if (isMine) managingMessage = message else reportMessage = message }
+                                        onLongClick = { managingMessage = message }
                                     )
                                     .padding(horizontal = 12.dp, vertical = 8.dp)
                             )
@@ -423,23 +426,44 @@ fun GroupChatScreen(
     // (0065_group_messages_edit_delete.sql), comparado con WhatsApp/
     // Telegram/Messenger -- mismo menú real que ChatScreen.kt (chat 1:1).
     managingMessage?.let { message ->
+        val isMineMessage = message.senderId == myId
+        // Mensajes destacados reales, comparado con WhatsApp -- sobre
+        // CUALQUIER mensaje de grupo (propio o ajeno), ver
+        // GroupChatViewModel.toggleStar(), 0087_starred_messages.sql.
+        // Mismo menú real, ahora también abierto al mantener pulsado un
+        // mensaje AJENO (antes iba directo a denunciar sin dejar
+        // destacarlo).
+        val isStarred = starredMessageIds.contains(message.id)
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { managingMessage = null },
             title = { Text("Mensaje") },
             text = {},
             confirmButton = {
-                TextButton(onClick = {
-                    editingMessage = message
-                    editedMessageText = message.body ?: ""
-                    managingMessage = null
-                }) { Text("Editar") }
+                if (isMineMessage) {
+                    TextButton(onClick = {
+                        editingMessage = message
+                        editedMessageText = message.body ?: ""
+                        managingMessage = null
+                    }) { Text("Editar") }
+                } else {
+                    TextButton(onClick = {
+                        reportMessage = message
+                        managingMessage = null
+                    }) { Text("Denunciar") }
+                }
             },
             dismissButton = {
                 Row {
                     TextButton(onClick = {
-                        viewModel.deleteMessage(message.id)
+                        viewModel.toggleStar(message.id)
                         managingMessage = null
-                    }) { Text("Borrar") }
+                    }) { Text(if (isStarred) "Quitar destacado" else "Destacar") }
+                    if (isMineMessage) {
+                        TextButton(onClick = {
+                            viewModel.deleteMessage(message.id)
+                            managingMessage = null
+                        }) { Text("Borrar") }
+                    }
                     TextButton(onClick = { managingMessage = null }) { Text("Cancelar") }
                 }
             }

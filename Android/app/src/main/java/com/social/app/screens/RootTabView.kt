@@ -84,6 +84,7 @@ private const val DUEL_HISTORY_ROUTE = "duel_history"
 private const val CHAT_LIST_ROUTE = "chat_list"
 private const val MY_POSTS_ROUTE = "my_posts"
 private const val SAVED_POSTS_ROUTE = "saved_posts"
+private const val STARRED_MESSAGES_ROUTE = "starred_messages"
 private const val SOCIALS_LIST_ROUTE = "socials_list"
 private const val FOLLOW_LIST_ROUTE = "follow_list/{tab}"
 private const val REELS_ROUTE = "reels"
@@ -313,7 +314,8 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                         onOpenFollowers = { navController.navigate("follow_list/followers") },
                         onOpenReels = { navController.navigate(REELS_ROUTE) },
                         onOpenLive = { navController.navigate(LIVE_STREAMS_ROUTE) },
-                        onOpenGroupChats = { navController.navigate(GROUP_CHATS_LIST_ROUTE) }
+                        onOpenGroupChats = { navController.navigate(GROUP_CHATS_LIST_ROUTE) },
+                        onOpenStarredMessages = { navController.navigate(STARRED_MESSAGES_ROUTE) }
                     )
                 }
                 // Reels (0050_reels.sql) -- primera UI de cliente real
@@ -423,6 +425,20 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                     com.social.app.ui.theme.BackScaffold(title = "Guardados", onBack = { navController.popBackStack() }) {
                         com.social.app.screens.perfil.SavedPostsScreen(
                             onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
+                        )
+                    }
+                }
+                // Mensajes destacados reales, comparado con WhatsApp --
+                // mismo patrón que SAVED_POSTS_ROUTE de arriba
+                // (0087_starred_messages.sql).
+                composable(STARRED_MESSAGES_ROUTE) {
+                    com.social.app.ui.theme.BackScaffold(title = "Destacados", onBack = { navController.popBackStack() }) {
+                        com.social.app.screens.perfil.StarredMessagesScreen(
+                            onOpenChat = { chatId -> navController.navigate("chat/$chatId") },
+                            onOpenGroupChat = { groupId ->
+                                val encodedName = java.net.URLEncoder.encode("Grupo", "UTF-8")
+                                navController.navigate("group_chat/$groupId/$encodedName")
+                            }
                         )
                     }
                 }

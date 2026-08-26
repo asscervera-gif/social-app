@@ -191,6 +191,7 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
                 loadReads()
                 loadSharedPosts(_messages.value)
                 markUnreadAsRead()
+                loadStarred()
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudieron cargar los mensajes: ${e.message}"
             } finally {
@@ -258,6 +259,66 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
             _reactions.value = rows.groupBy { it.groupMessageId }
         } catch (e: Exception) {
             // Sin bloquear el resto del hilo si falla.
+        }
+    }
+
+    // Mensajes destacados reales, comparado con WhatsApp
+    // (0087_starred_messages.sql) -- totalmente privado, sobre CUALQUIER
+    // mensaje de grupo (propio o ajeno).
+    private val _starredMessageIds = MutableStateFlow<Set<String>>(emptySet())
+    val starredMessageIds: StateFlow<Set<String>> = _starredMessageIds.asStateFlow()
+
+    @Serializable
+    private data class StarredGroupIdRow(@SerialName("group_message_id") val groupMessageId: String)
+
+    private suspend fun loadStarred() {
+        try {
+            val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return
+            // `starred_messages` no desnormaliza group_chat_id (a
+            // diferencia de group_message_reactions) -- filtro por
+            // user_id + isIn sobre los group_message_id ya cargados,
+            // mismo criterio que ChatViewModel.kt.loadStarred() (1:1).
+            val groupMessageIds = _messages.value.map { it.id }
+            if (groupMessageIds.isEmpty()) return
+            val rows = SupabaseManager.client.from("starred_messages")
+                .select(columns = Columns.raw("group_message_id")) {
+                    filter { eq("user_id", userId); isIn("group_message_id", groupMessageIds) }
+                }
+                .decodeList<StarredGroupIdRow>()
+            _starredMessageIds.value = rows.map { it.groupMessageId }.toSet()
+        } catch (e: Exception) {
+            // No crítico: sin esto, el icono de destacado simplemente
+            // arranca sin marcar nada hasta la próxima carga.
+        }
+    }
+
+    @Serializable
+    private data class NewStarredGroupMessage(
+        @SerialName("user_id") val userId: String,
+        @SerialName("group_message_id") val groupMessageId: String
+    )
+
+    /** Destacar/quitar destacado un mensaje de grupo real (propio o
+     * ajeno), comparado con WhatsApp -- `starred_messages_insert_own` ya
+     * comprueba del lado del servidor que soy de verdad miembro de este
+     * grupo (0087_starred_messages.sql). */
+    fun toggleStar(groupMessageId: String) {
+        val currentlyStarred = _starredMessageIds.value.contains(groupMessageId)
+        _starredMessageIds.update { if (currentlyStarred) it - groupMessageId else it + groupMessageId }
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                if (currentlyStarred) {
+                    SupabaseManager.client.from("starred_messages").delete {
+                        filter { eq("user_id", userId); eq("group_message_id", groupMessageId) }
+                    }
+                } else {
+                    SupabaseManager.client.from("starred_messages").insert(NewStarredGroupMessage(userId, groupMessageId))
+                }
+            } catch (e: Exception) {
+                // Restricción unique(user_id, group_message_id): si ya
+                // existía, el estado deseado ya se cumple.
+            }
         }
     }
 
