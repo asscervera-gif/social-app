@@ -900,6 +900,36 @@ async function main() {
   const socialOnlyStreamAsStranger = (await db.query(`select id from live_streams where id = $1`, [socialOnlyStream.id])).rows;
   check('live_streams_select: un tercero sin social (u3) NO ve el directo "solo socials" de u2', socialOnlyStreamAsStranger.length === 0);
 
+  // --- live_stream_messages (0059_live_stream_messages.sql): chat en vivo
+  // real durante un directo, comparado con Instagram/TikTok Live. Mismo
+  // criterio de visibilidad que la propia fila `live_streams`. ---
+  await expectOk('live_stream_messages_insert: sin bloqueo, u2 SÍ puede escribir en el chat del directo público de u3', async () => {
+    await asUser(u2);
+    await db.query(`insert into live_stream_messages (stream_id, sender_id, body) values ($1, $2, 'hola desde el chat')`, [liveStream.id, u2]);
+  });
+  await asUser(u3);
+  const liveChatAsHost = (await db.query(`select body from live_stream_messages where stream_id = $1`, [liveStream.id])).rows;
+  check('live_stream_messages_select: el HOST real (u3) SÍ ve el mensaje real de u2', liveChatAsHost.length === 1 && liveChatAsHost[0].body === 'hola desde el chat');
+  await asUser(u1);
+  const liveChatAsBlockedStranger = (await db.query(`select body from live_stream_messages where stream_id = $1`, [liveStream.id])).rows;
+  check('live_stream_messages_select: un tercero bloqueado con el host (u1) SÍ ve el chat -- el bloqueo no afecta a la visibilidad, igual que posts/reels', liveChatAsBlockedStranger.length === 1);
+  await expectFail('live_stream_messages_insert: bloqueado (u1 y u3 se bloquearon), u1 no puede escribir en el chat del directo de u3', async () => {
+    await db.query(`insert into live_stream_messages (stream_id, sender_id, body) values ($1, $2, 'intento bloqueado')`, [liveStream.id, u1]);
+  });
+
+  // Mismo criterio "solo socials" que live_streams_select: u1 (social
+  // aceptado con u2) SÍ puede escribir/leer, u3 (sin social) NO.
+  await asUser(u1);
+  await expectOk('live_stream_messages_insert: el social aceptado real (u1) SÍ puede escribir en el chat del directo "solo socials" de u2', async () => {
+    await db.query(`insert into live_stream_messages (stream_id, sender_id, body) values ($1, $2, 'hola u2')`, [socialOnlyStream.id, u1]);
+  });
+  await asUser(u3);
+  await expectFail('live_stream_messages_insert: un tercero sin social (u3) no puede escribir en el chat del directo "solo socials" de u2', async () => {
+    await db.query(`insert into live_stream_messages (stream_id, sender_id, body) values ($1, $2, 'intento ajeno')`, [socialOnlyStream.id, u3]);
+  });
+  const liveChatSocialOnlyAsStranger = (await db.query(`select id from live_stream_messages where stream_id = $1`, [socialOnlyStream.id])).rows;
+  check('live_stream_messages_select: un tercero sin social (u3) NO ve el chat del directo "solo socials" de u2', liveChatSocialOnlyAsStranger.length === 0);
+
   // --- group_chats / group_chat_members / group_messages
   // (0057_group_chats.sql): chats de grupo reales por primera vez,
   // comparado con WhatsApp/Instagram/Messenger/Facebook. Ronda de backend

@@ -68,6 +68,20 @@ struct LiveStreamRoomView: View {
     @State private var connecting = true
     @State private var errorMessage: String?
 
+    // Chat en vivo real (0059_live_stream_messages.sql), comparado con
+    // Instagram/TikTok Live -- antes solo había vídeo, nadie podía
+    // escribir mientras veía un directo.
+    @StateObject private var chatViewModel: LiveStreamChatViewModel
+    @State private var chatDraft = ""
+
+    init(stream: LiveStream, isHost: Bool, viewModel: LiveStreamsViewModel, onClose: @escaping () -> Void) {
+        self.stream = stream
+        self.isHost = isHost
+        self.viewModel = viewModel
+        self.onClose = onClose
+        self._chatViewModel = StateObject(wrappedValue: LiveStreamChatViewModel(streamID: stream.id))
+    }
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -104,6 +118,51 @@ struct LiveStreamRoomView: View {
 
                 Spacer()
 
+                // Chat en vivo real, comparado con Instagram/TikTok Live:
+                // lista de mensajes que se desplaza sobre el vídeo (abajo
+                // a la izquierda, mismo sitio que esas apps).
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(chatViewModel.messages) { message in
+                                (Text(chatViewModel.senderNames[message.senderID] ?? "…").bold() + Text(": \(message.body)"))
+                                    .font(.caption)
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.black.opacity(0.35))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .id(message.id)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: 260, maxHeight: 180)
+                    .onChange(of: chatViewModel.messages.count) { _ in
+                        if let last = chatViewModel.messages.last {
+                            withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 16)
+
+                if stream.status == "live" {
+                    HStack {
+                        TextField("Comenta…", text: $chatDraft)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit {
+                                chatViewModel.sendMessage(chatDraft)
+                                chatDraft = ""
+                            }
+                        Button("➤") {
+                            chatViewModel.sendMessage(chatDraft)
+                            chatDraft = ""
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
+                }
+
                 Button(isHost ? "Terminar directo" : "Salir") {
                     Task {
                         if isHost {
@@ -117,6 +176,9 @@ struct LiveStreamRoomView: View {
                 .buttonStyle(.borderedProminent)
                 .padding(.bottom, 32)
             }
+        }
+        .task {
+            await chatViewModel.load()
         }
         .task {
             room.add(delegate: coordinator)

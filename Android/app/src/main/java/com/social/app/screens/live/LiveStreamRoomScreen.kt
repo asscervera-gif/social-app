@@ -4,27 +4,36 @@ import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -71,6 +80,19 @@ fun LiveStreamRoomScreen(
     var localVideoTrack by remember { mutableStateOf<VideoTrack?>(null) }
     var remoteVideoTrack by remember { mutableStateOf<VideoTrack?>(null) }
     var viewerCount by remember { mutableStateOf(stream.viewerCount) }
+
+    // Chat en vivo real (0059_live_stream_messages.sql), comparado con
+    // Instagram/TikTok Live -- antes solo había vídeo, nadie podía
+    // escribir mientras veía un directo.
+    val chatViewModel = remember(stream.id) { LiveStreamChatViewModel(stream.id) }
+    val chatMessages by chatViewModel.messages.collectAsState()
+    val senderNames by chatViewModel.senderNames.collectAsState()
+    var chatDraft by remember { mutableStateOf("") }
+    val chatListState = rememberLazyListState()
+    LaunchedEffect(stream.id) { chatViewModel.load() }
+    LaunchedEffect(chatMessages.size) {
+        if (chatMessages.isNotEmpty()) chatListState.animateScrollToItem(chatMessages.size - 1)
+    }
 
     val requestPermissions = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -159,7 +181,70 @@ fun LiveStreamRoomScreen(
             Text(stream.title ?: "Directo", color = Color.White, style = MaterialTheme.typography.labelLarge)
         }
 
-        Column(modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp)) {
+        // Chat en vivo real, comparado con Instagram/TikTok Live: lista de
+        // mensajes que se desplaza sobre el vídeo (abajo a la izquierda,
+        // mismo sitio que esas apps), más el compositor para escribir.
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth(0.68f)
+                .padding(start = 16.dp, end = 8.dp, bottom = 96.dp)
+        ) {
+            LazyColumn(
+                state = chatListState,
+                modifier = Modifier.height(180.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                items(chatMessages, key = { it.id }) { message ->
+                    Text(
+                        buildString {
+                            append(senderNames[message.senderId] ?: "…")
+                            append(": ")
+                            append(message.body)
+                        },
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.Black.copy(alpha = 0.35f))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+        }
+
+        Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(16.dp)) {
+            if (stream.status == "live") {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 12.dp)) {
+                    OutlinedTextField(
+                        value = chatDraft,
+                        onValueChange = { chatDraft = it },
+                        modifier = Modifier.weight(1f).height(52.dp),
+                        placeholder = { Text("Comenta…", color = Color.White.copy(alpha = 0.6f)) },
+                        colors = TextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedContainerColor = Color.Black.copy(alpha = 0.3f),
+                            unfocusedContainerColor = Color.Black.copy(alpha = 0.3f)
+                        )
+                    )
+                    Text(
+                        "➤",
+                        color = Color.White,
+                        modifier = Modifier
+                            .padding(start = 8.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(MaterialTheme.colorScheme.primary)
+                            .clickable {
+                                if (chatDraft.isNotBlank()) {
+                                    chatViewModel.sendMessage(chatDraft)
+                                    chatDraft = ""
+                                }
+                            }
+                            .padding(12.dp)
+                    )
+                }
+            }
             Button(onClick = {
                 if (isHost) viewModel.endStream(stream) else viewModel.leaveStream(stream)
                 onClose()
