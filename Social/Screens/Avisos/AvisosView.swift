@@ -21,6 +21,16 @@ struct AvisosView: View {
     @State private var selectedChatID: UUID?
     @State private var showOpenedChat = false
     @State private var currentUserID: UUID?
+    // Publicación individual real, comparado con Instagram/Twitter/
+    // Facebook -- ver PostDetailView.swift para el hallazgo completo: un
+    // aviso de "like"/"comentario" no llevaba a ningún sitio.
+    @State private var selectedPostID: UUID?
+    @State private var showOpenedPost = false
+    // Hallazgo real de paso: mismo hueco exacto que "message" pero para
+    // un mensaje de GRUPO (0058_group_message_notify.sql ya manda
+    // group_chat_id desde esa ronda, sin cliente que lo usara).
+    @State private var selectedGroupChatID: UUID?
+    @State private var showOpenedGroupChat = false
 
     var body: some View {
         NavigationStack {
@@ -32,6 +42,16 @@ struct AvisosView: View {
                        let chatID = UUID(uuidString: chatIDString) {
                         selectedChatID = chatID
                         showOpenedChat = true
+                    } else if (entry.kind == "like" || entry.kind == "comment"),
+                              let postIDString = entry.payload["post_id"],
+                              let postID = UUID(uuidString: postIDString) {
+                        selectedPostID = postID
+                        showOpenedPost = true
+                    } else if entry.kind == "group_message",
+                              let groupChatIDString = entry.payload["group_chat_id"],
+                              let groupChatID = UUID(uuidString: groupChatIDString) {
+                        selectedGroupChatID = groupChatID
+                        showOpenedGroupChat = true
                     } else {
                         viewModel.selected = entry
                     }
@@ -84,6 +104,16 @@ struct AvisosView: View {
             .navigationDestination(isPresented: $showOpenedChat) {
                 if let selectedChatID, let currentUserID {
                     ChatView(chatID: selectedChatID, currentUserID: currentUserID)
+                }
+            }
+            .navigationDestination(isPresented: $showOpenedPost) {
+                if let selectedPostID {
+                    PostDetailView(postID: selectedPostID)
+                }
+            }
+            .navigationDestination(isPresented: $showOpenedGroupChat) {
+                if let selectedGroupChatID {
+                    GroupChatView(groupChatID: selectedGroupChatID, groupName: "Grupo")
                 }
             }
             .onDisappear { Task { await viewModel.stop() } }

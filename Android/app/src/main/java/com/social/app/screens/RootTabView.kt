@@ -90,6 +90,9 @@ private const val GROUP_CHATS_LIST_ROUTE = "group_chats"
 private const val GROUP_CHAT_ROUTE = "group_chat/{groupId}/{groupName}"
 private const val SEARCH_ROUTE = "search"
 private const val FIND_ROUTE = "find"
+// Publicación individual real ("permalink"), comparado con Instagram/
+// Twitter/Facebook -- ver PostDetailScreen.kt para el hallazgo completo.
+private const val POST_ROUTE = "post/{postId}"
 
 /**
  * Cinco pestañas + navegación real a chat/duelo — equivalente a
@@ -255,7 +258,25 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                     AvisosScreen(
                         onOpenChat = { chatId -> navController.navigate("chat/$chatId") },
                         onOpenProfile = { profileId -> navController.navigate("profile/$profileId") },
-                        onOpenDuelResult = { duelId -> navController.navigate("duel_result/$duelId") }
+                        onOpenDuelResult = { duelId -> navController.navigate("duel_result/$duelId") },
+                        // Publicación individual real, comparado con
+                        // Instagram/Twitter/Facebook -- ver
+                        // PostDetailScreen.kt para el hallazgo completo:
+                        // antes tocar un aviso de "like"/"comentario" no
+                        // llevaba a ningún sitio.
+                        onOpenPost = { postId -> navController.navigate("post/$postId") },
+                        // Hallazgo real de paso, encontrado en el mismo
+                        // bloque `when`: un aviso de mensaje de GRUPO
+                        // tampoco llevaba a ningún sitio (a diferencia de
+                        // "message", que ya abría el chat 1:1 desde hace
+                        // varias rondas) -- mismo criterio que
+                        // group_chat/{groupId}/{groupName}, con un título
+                        // de respaldo genérico mientras
+                        // GroupChatViewModel.kt carga el nombre real.
+                        onOpenGroupChat = { groupChatId ->
+                            val encodedName = java.net.URLEncoder.encode("Grupo", "UTF-8")
+                            navController.navigate("group_chat/$groupChatId/$encodedName")
+                        }
                     )
                 }
                 composable(Tab.PERFIL.route) {
@@ -322,6 +343,18 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                 // los contadores "Sigo"/"Seguid." de la cabecera del perfil
                 // ya eran reales, pero tocarlos no hacía nada -- no existía
                 // ninguna pantalla para ver QUIÉN sigue a quién.
+                // Publicación individual real ("permalink"), comparado con
+                // Instagram/Twitter/Facebook -- ver PostDetailScreen.kt
+                // para el hallazgo completo.
+                composable(POST_ROUTE) { routeEntry ->
+                    val postId = routeEntry.arguments?.getString("postId") ?: return@composable
+                    com.social.app.ui.theme.BackScaffold(title = "Publicación", onBack = { navController.popBackStack() }) {
+                        com.social.app.screens.home.PostDetailScreen(
+                            postId = postId,
+                            onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
+                        )
+                    }
+                }
                 composable(FOLLOW_LIST_ROUTE) { routeEntry ->
                     val tabArg = routeEntry.arguments?.getString("tab")
                     val initialTab = if (tabArg == "followers") {

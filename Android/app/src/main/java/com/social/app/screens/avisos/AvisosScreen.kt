@@ -64,6 +64,13 @@ fun AvisosScreen(
     onOpenChat: (String) -> Unit,
     onOpenProfile: (String) -> Unit,
     onOpenDuelResult: (String) -> Unit,
+    // Publicación individual real, comparado con Instagram/Twitter/
+    // Facebook -- ver PostDetailScreen.kt para el hallazgo completo: un
+    // aviso de "like"/"comentario" no llevaba a ningún sitio.
+    onOpenPost: (String) -> Unit = {},
+    // Hallazgo real de paso: un aviso de mensaje de GRUPO tampoco llevaba
+    // a ningún sitio, a diferencia de "message" (chat 1:1).
+    onOpenGroupChat: (String) -> Unit = {},
     viewModel: AvisosViewModel = viewModel()
 ) {
     val notifications by viewModel.notifications.collectAsState()
@@ -126,6 +133,19 @@ fun AvisosScreen(
                     // chat_id: un aviso de mensaje no tiene ninguna acción
                     // que mostrar en la hoja genérica, solo abrir el chat.
                     entry.kind == "message" && chatId != null -> onOpenChat(chatId)
+                    // Publicación individual real, comparado con Instagram/
+                    // Twitter/Facebook -- `payload.post_id` ya existía
+                    // desde 0007_likes.sql/0008_comments.sql, pero ningún
+                    // cliente lo usaba nunca: tocar el aviso era un tap
+                    // muerto (marcaba leído y ya). Ver PostDetailScreen.kt.
+                    (entry.kind == "like" || entry.kind == "comment") && entry.payload["post_id"] != null ->
+                        onOpenPost(entry.payload["post_id"]!!)
+                    // Hallazgo real de paso: mismo hueco exacto que
+                    // "message" pero para un mensaje de GRUPO
+                    // (0058_group_message_notify.sql ya manda
+                    // group_chat_id desde esa ronda, sin cliente que lo usara).
+                    entry.kind == "group_message" && entry.payload["group_chat_id"] != null ->
+                        onOpenGroupChat(entry.payload["group_chat_id"]!!)
                 }
             })
         }
