@@ -1863,7 +1863,7 @@ Resultado real medido: `sys.boot_completed` en ~0s (antes ~30-40s), `adb shell e
   - **`send-push/index.ts`**: añadidos `comment`/`comment_like`/`reel_comment_like`/`group_message` a `iconFor`/`titleFor`. Verificado con la misma herramienta ya usada para `live-token`: `esbuild` (sin errores de sintaxis) + `tsc --noEmit` (mismos errores esperados de tipos de Deno, cero errores de lógica propia).
   - **`AvisosViewModel.kt`/`.swift`**: mismos cuatro casos añadidos a `icon()`/`title()`.
   - **`AjustesScreen.kt`/`AjustesView.swift` (`NOTIFICATION_CATEGORIES`/`notificationCategories`)**: `comment_like`/`reel_comment_like` añadidos a "Me gusta" (antes silenciar "Me gusta" no silenciaba en realidad el like a un comentario) y `group_message` a "Mensajes".
-  - **Verificado real, no simulado**: RLS 132/132. Android `:app:compileDebugKotlin` OK (`BUILD SUCCESSFUL`). iOS: push pendiente, CI real por confirmar en cuanto se suba.
+  - **Verificado real, no simulado**: RLS 132/132. Android `:app:compileDebugKotlin` OK (`BUILD SUCCESSFUL`). **iOS: CI real VERIFICADO EN VERDE** (`0de646f`, run `32916622828`).
 
 ## Archivo de pasadas anteriores (resumido)
 
