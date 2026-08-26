@@ -121,6 +121,13 @@ private struct ReelRow: View {
     let onLike: () -> Void
     let onOpenComments: () -> Void
     @State private var player: AVPlayer?
+    // Nombre de usuario único real (@handle, 0073_profile_username.sql) +
+    // notificación real de mención (0074_mentions.sql), comparado con
+    // Instagram/TikTok -- esta pantalla ni siquiera tenía etiquetas
+    // tocables (a diferencia del feed, HomeView.swift.PostCard), solo
+    // texto plano; se corrige de paso al construir el componente
+    // compartido MentionHashtagText.swift.
+    @State private var mentionProfileID: UUID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -140,7 +147,12 @@ private struct ReelRow: View {
             .clipShape(RoundedRectangle(cornerRadius: 12))
 
             if let caption = reel.caption {
-                Text(caption).font(.subheadline)
+                MentionHashtagText(
+                    text: caption,
+                    onOpenMention: { username in
+                        Task { mentionProfileID = await MentionResolver.resolveProfileID(username: username) }
+                    }
+                )
             }
             HStack {
                 Button(action: onLike) {
@@ -156,6 +168,19 @@ private struct ReelRow: View {
         }
         .padding()
         .padding(.bottom, 8)
+        // Mismo patrón `isPresented:` compatible con iOS 16 ya usado en
+        // HomeView.swift.PostCard -- ReelsView() siempre se presenta
+        // dentro de un NavigationStack propio del que la llama
+        // (PerfilView.swift/AvisosView.swift), así que este modificador
+        // funciona igual aquí aunque ReelsView.body no declare el suyo.
+        .navigationDestination(isPresented: Binding(
+            get: { mentionProfileID != nil },
+            set: { isPresented in if !isPresented { mentionProfileID = nil } }
+        )) {
+            if let mentionProfileID {
+                ProfileViewerView(profileID: mentionProfileID)
+            }
+        }
         Divider()
     }
 }

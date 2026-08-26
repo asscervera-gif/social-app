@@ -22,13 +22,17 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.social.app.util.MentionHashtagText
+import com.social.app.util.MentionResolver
 import com.social.app.util.relativeTime
+import kotlinx.coroutines.launch
 
 /**
  * Publicación individual real ("permalink"), comparado con Instagram/
@@ -47,6 +51,8 @@ fun PostDetailScreen(postId: String, onOpenProfile: (String) -> Unit) {
     val errorMessage by viewModel.errorMessage.collectAsState()
     var showComments by remember { mutableStateOf(false) }
     var fullScreenUrl by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val mentionResolver = remember { MentionResolver() }
 
     LaunchedEffect(postId) { viewModel.load() }
 
@@ -107,7 +113,22 @@ fun PostDetailScreen(postId: String, onOpenProfile: (String) -> Unit) {
                     }
                 }
             }
-            post.caption?.let { Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 4.dp)) }
+            // @menciones reales (0073_profile_username.sql +
+            // 0074_mentions.sql), comparado con Instagram/Twitter/TikTok --
+            // esta pantalla ni siquiera tenía etiquetas tocables (a
+            // diferencia del feed, HomeScreen.kt.PostCard), solo texto
+            // plano; se corrige de paso al construir el mismo componente
+            // compartido aquí.
+            post.caption?.let { caption ->
+                MentionHashtagText(
+                    text = caption,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                    onOpenMention = { username ->
+                        scope.launch { mentionResolver.resolveProfileId(username)?.let(onOpenProfile) }
+                    }
+                )
+            }
             Text(
                 relativeTime(post.createdAt),
                 style = MaterialTheme.typography.labelSmall,

@@ -151,6 +151,14 @@ fun AvisosScreen(
                     // el que abrir la publicación real).
                     entry.kind == "comment_like" && entry.payload["post_id"] != null ->
                         onOpenPost(entry.payload["post_id"]!!)
+                    // @menciones reales (0074_mentions.sql), comparado con
+                    // Instagram/Twitter/TikTok -- el payload trae post_id
+                    // O reel_id según dónde se escribió el @usuario (con o
+                    // sin comment_id si fue dentro de un comentario, no de
+                    // un caption); mismo criterio de navegación directa que
+                    // like/comment ya tenían para posts.
+                    entry.kind == "mention" && entry.payload["post_id"] != null ->
+                        onOpenPost(entry.payload["post_id"]!!)
                     // Hallazgo real de paso: mismo hueco exacto que
                     // "message" pero para un mensaje de GRUPO
                     // (0058_group_message_notify.sql ya manda
@@ -166,6 +174,11 @@ fun AvisosScreen(
                     // hasta ReelsScreen.kt.initialReelId/ReelsViewModel.kt.load().
                     (entry.kind == "reel_like" || entry.kind == "reel_comment" || entry.kind == "reel_comment_like") &&
                         entry.payload["reel_id"] != null -> onOpenReel(entry.payload["reel_id"]!!)
+                    // @menciones reales (0074_mentions.sql) dentro de un
+                    // caption/comentario de REEL -- mismo criterio que la
+                    // rama de post_id de arriba.
+                    entry.kind == "mention" && entry.payload["reel_id"] != null ->
+                        onOpenReel(entry.payload["reel_id"]!!)
                 }
             })
         }
@@ -194,6 +207,7 @@ private fun contextFor(kind: String): String = when (kind) {
     "fight" -> "Te ha retado a un duelo de preguntas."
     "compat_request" -> "Quiere ver vuestra compatibilidad. Acéptalo para desvelarla mutuamente."
     "like", "comment", "reel_like", "reel_comment" -> "Ha interactuado con tu contenido."
+    "mention" -> "Te ha mencionado."
     "social_accepted" -> "Aceptó tu social."
     "compat_accepted" -> "Compartió su compatibilidad contigo."
     else -> "Nueva notificación."

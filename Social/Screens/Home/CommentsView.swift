@@ -15,6 +15,10 @@ struct CommentsView: View {
     // existía denuncia global de usuario, ahora también por comentario
     // concreto.
     @State private var reportingComment: Comment?
+    // Nombre de usuario único real (@handle, 0073_profile_username.sql) +
+    // notificación real de mención (0074_mentions.sql), comparado con
+    // Instagram/Twitter/TikTok.
+    @State private var mentionProfileID: UUID?
     let onCommentAdded: () -> Void
     var onCommentRemoved: () -> Void = {}
 
@@ -56,7 +60,13 @@ struct CommentsView: View {
                         .buttonStyle(.plain)
 
                         HStack {
-                            Text(comment.body)
+                            MentionHashtagText(
+                                text: comment.body,
+                                font: .body,
+                                onOpenMention: { username in
+                                    Task { mentionProfileID = await MentionResolver.resolveProfileID(username: username) }
+                                }
+                            )
                             Spacer()
                             // Comparado con Instagram/Twitter/Facebook: dar
                             // like a un comentario concreto, no solo a la
@@ -111,6 +121,14 @@ struct CommentsView: View {
                     // ahora una referencia real
                     // (0045_reports_content_reference.sql).
                     ReportSheet(userID: myID, reportedID: comment.author_id, commentID: comment.id)
+                }
+            }
+            .navigationDestination(isPresented: Binding(
+                get: { mentionProfileID != nil },
+                set: { isPresented in if !isPresented { mentionProfileID = nil } }
+            )) {
+                if let mentionProfileID {
+                    ProfileViewerView(profileID: mentionProfileID)
                 }
             }
         }

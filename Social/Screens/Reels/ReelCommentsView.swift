@@ -21,6 +21,10 @@ struct ReelCommentsView: View {
     @State private var draft = ""
     @State private var myID: UUID?
     @State private var reportingAuthorID: UUID?
+    // Nombre de usuario único real (@handle, 0073_profile_username.sql) +
+    // notificación real de mención (0074_mentions.sql), comparado con
+    // Instagram/TikTok -- mismo criterio que CommentsView.swift (posts).
+    @State private var mentionProfileID: UUID?
     let onCommentAdded: () -> Void
     var onCommentRemoved: () -> Void = {}
 
@@ -56,7 +60,13 @@ struct ReelCommentsView: View {
                         .buttonStyle(.plain)
 
                         HStack {
-                            Text(comment.body)
+                            MentionHashtagText(
+                                text: comment.body,
+                                font: .body,
+                                onOpenMention: { username in
+                                    Task { mentionProfileID = await MentionResolver.resolveProfileID(username: username) }
+                                }
+                            )
                             Spacer()
                             // Comparado con Instagram/Twitter/Facebook: dar
                             // like a un comentario concreto (0054_comment_likes.sql).
@@ -109,6 +119,14 @@ struct ReelCommentsView: View {
             )) {
                 if let myID, let reportingAuthorID {
                     ReportSheet(userID: myID, reportedID: reportingAuthorID)
+                }
+            }
+            .navigationDestination(isPresented: Binding(
+                get: { mentionProfileID != nil },
+                set: { isPresented in if !isPresented { mentionProfileID = nil } }
+            )) {
+                if let mentionProfileID {
+                    ProfileViewerView(profileID: mentionProfileID)
                 }
             }
         }

@@ -67,8 +67,8 @@ async function main() {
   const u1 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
   const u2 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
   await db.query(`
-    insert into profiles (id, display_name) values ($1, 'Uno'), ($2, 'Dos')
-    on conflict (id) do update set display_name = excluded.display_name
+    insert into profiles (id, display_name, username) values ($1, 'Uno', 'uno_test'), ($2, 'Dos', 'dos_test')
+    on conflict (id) do update set display_name = excluded.display_name, username = excluded.username
   `, [u1, u2]);
 
   // --- Prueba 1: is_verified no se puede autoconceder por UPDATE directo ---
@@ -105,6 +105,53 @@ async function main() {
   await db.query(`update socials set status = 'accepted' where id = $1`, [social.id]);
   const attendeesAfter = (await db.query(`select profile_id, social_count from event_attendees where event_id = $1 order by profile_id`, [event.id])).rows;
   check('increment_event_social_count: ambos asistentes suben a 1 tras aceptar el social dentro del evento', attendeesAfter.every(r => r.social_count === 1));
+
+  // --- Prueba 5: @menciones reales en captions/comentarios (0074_mentions.sql) ---
+  const mentionPost = (await db.query(
+    `insert into posts (author_id, caption) values ($1, 'hola @dos_test, mira esto') returning id`,
+    [u1]
+  )).rows[0];
+  const mentionPostNotif = (await db.query(
+    `select * from notifications where kind = 'mention' and recipient_id = $1 and payload->>'post_id' = $2`,
+    [u2, mentionPost.id]
+  )).rows;
+  check('notify_mentions_in_post: @dos_test en un caption real SÍ genera un aviso real a u2', mentionPostNotif.length === 1);
+
+  await db.query(`insert into comments (post_id, author_id, body) values ($1, $2, 'gracias @uno_test')`, [mentionPost.id, u2]);
+  const mentionCommentNotif = (await db.query(
+    `select * from notifications where kind = 'mention' and recipient_id = $1 and payload->>'post_id' = $2`,
+    [u1, mentionPost.id]
+  )).rows;
+  check('notify_mentions_in_comment: @uno_test en un comentario real SÍ genera un aviso real a u1', mentionCommentNotif.length === 1);
+
+  await db.query(`insert into posts (author_id, caption) values ($1, 'hablando de mí mismo, @uno_test') returning id`, [u1]);
+  const selfMentionCount = (await db.query(`select count(*)::int as n from notifications where kind = 'mention' and recipient_id = $1 and actor_id = $1`, [u1])).rows[0].n;
+  check('notify_mentions_in_post: automencionarse (@uno_test siendo u1) NO genera aviso', selfMentionCount === 0);
+
+  const mentionReel = (await db.query(
+    `insert into reels (author_id, video_url, caption) values ($1, 'v.mp4', 'reel con @dos_test') returning id`,
+    [u1]
+  )).rows[0];
+  const mentionReelNotif = (await db.query(
+    `select * from notifications where kind = 'mention' and recipient_id = $1 and payload->>'reel_id' = $2`,
+    [u2, mentionReel.id]
+  )).rows;
+  check('notify_mentions_in_reel: @dos_test en un caption de reel real SÍ genera un aviso real a u2', mentionReelNotif.length === 1);
+
+  await db.query(`insert into reel_comments (reel_id, author_id, body) values ($1, $2, 'jaja @uno_test')`, [mentionReel.id, u2]);
+  const mentionReelCommentNotif = (await db.query(
+    `select * from notifications where kind = 'mention' and recipient_id = $1 and payload->>'reel_id' = $2 and payload ? 'comment_id'`,
+    [u1, mentionReel.id]
+  )).rows;
+  check('notify_mentions_in_reel_comment: @uno_test en un comentario de reel real SÍ genera un aviso real a u1', mentionReelCommentNotif.length === 1);
+
+  await db.query(`insert into blocks (blocker_id, blocked_id) values ($1, $2)`, [u2, u1]);
+  const blockedMentionPost = (await db.query(`insert into posts (author_id, caption) values ($1, 'oye @dos_test') returning id`, [u1])).rows[0];
+  const blockedMentionNotif = (await db.query(
+    `select * from notifications where kind = 'mention' and recipient_id = $1 and payload->>'post_id' = $2`,
+    [u2, blockedMentionPost.id]
+  )).rows;
+  check('notify_mentions_in_post: mencionar a alguien que te bloqueó NO genera aviso', blockedMentionNotif.length === 0);
 
   console.log('\n--- fin de las pruebas funcionales ---');
   if (!allPassed) process.exitCode = 1;

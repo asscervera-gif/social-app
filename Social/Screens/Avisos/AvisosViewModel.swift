@@ -195,6 +195,9 @@ extension AvisosViewModel.NotificationEntry {
         case "comment_like": return "heart.fill"
         case "reel_comment_like": return "heart.fill"
         case "group_message": return "person.2.fill"
+        // @menciones reales (0074_mentions.sql), comparado con
+        // Instagram/Twitter/TikTok.
+        case "mention": return "at"
         default: return "bell"
         }
     }
@@ -215,6 +218,7 @@ extension AvisosViewModel.NotificationEntry {
         case "comment_like": return "Le gustó tu comentario"
         case "reel_comment_like": return "Le gustó tu comentario"
         case "group_message": return "Nuevo mensaje de grupo"
+        case "mention": return "Te mencionó"
         default: return "Notificación"
         }
     }

@@ -45,6 +45,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import com.social.app.util.MentionHashtagText
+import com.social.app.util.MentionResolver
 import com.social.app.util.relativeTime
 import kotlinx.coroutines.launch
 
@@ -139,6 +141,7 @@ fun ReelsScreen(
                         player = exoPlayer,
                         onLike = { viewModel.toggleLike(reel) },
                         onOpenProfile = { onOpenProfile(reel.authorId) },
+                        onOpenMentionProfile = onOpenProfile,
                         onOpenComments = { commentingReelId = reel.id }
                     )
                 }
@@ -181,8 +184,15 @@ private fun ReelPage(
     player: ExoPlayer,
     onLike: () -> Unit,
     onOpenProfile: () -> Unit,
+    // Nombre de usuario único real (@handle, 0073_profile_username.sql) +
+    // notificación real de mención (0074_mentions.sql), comparado con
+    // Instagram/TikTok -- mismo criterio que
+    // HomeScreen.kt.PostCard.onOpenMentionProfile.
+    onOpenMentionProfile: (String) -> Unit = {},
     onOpenComments: () -> Unit
 ) {
+    val scope = rememberCoroutineScope()
+    val mentionResolver = remember { MentionResolver() }
     Box(modifier = Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)) {
         if (isCurrent) {
             AndroidView(
@@ -211,8 +221,20 @@ private fun ReelPage(
                     modifier = Modifier.padding(start = 8.dp)
                 )
             }
-            reel.caption?.let {
-                Text(it, color = androidx.compose.ui.graphics.Color.White, modifier = Modifier.padding(top = 6.dp))
+            // @menciones reales (0073_profile_username.sql +
+            // 0074_mentions.sql), comparado con Instagram/TikTok --
+            // `baseColor`/`linkColor` en blanco fijo, igual que el resto de
+            // esta pantalla sobre el vídeo (no el esquema normal de la app).
+            reel.caption?.let { caption ->
+                MentionHashtagText(
+                    text = caption,
+                    modifier = Modifier.padding(top = 6.dp),
+                    baseColor = androidx.compose.ui.graphics.Color.White,
+                    linkColor = androidx.compose.ui.graphics.Color.White,
+                    onOpenMention = { username ->
+                        scope.launch { mentionResolver.resolveProfileId(username)?.let(onOpenMentionProfile) }
+                    }
+                )
             }
             Text(
                 relativeTime(reel.createdAt),

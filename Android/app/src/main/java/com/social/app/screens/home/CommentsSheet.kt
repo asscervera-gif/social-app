@@ -24,12 +24,16 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.social.app.backend.SupabaseManager
+import com.social.app.util.MentionHashtagText
+import com.social.app.util.MentionResolver
 import io.github.jan.supabase.gotrue.auth
+import kotlinx.coroutines.launch
 
 /**
  * Hoja de comentarios de un post — equivalente de la funcionalidad que
@@ -59,6 +63,8 @@ fun CommentsSheet(
     // concreto (mismo criterio: sin columna nueva, se denuncia al autor
     // con el id del comentario en los detalles).
     var reportingCommentId by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val mentionResolver = remember { MentionResolver() }
 
     LaunchedEffect(postId) { viewModel.load() }
 
@@ -98,7 +104,18 @@ fun CommentsSheet(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(comment.body, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                            // @menciones reales (0073_profile_username.sql +
+                            // 0074_mentions.sql), comparado con Instagram/
+                            // Twitter/TikTok -- tocar un @usuario dentro de
+                            // un comentario real abre ese perfil.
+                            MentionHashtagText(
+                                text = comment.body,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f),
+                                onOpenMention = { username ->
+                                    scope.launch { mentionResolver.resolveProfileId(username)?.let(onOpenProfile) }
+                                }
+                            )
                             // Comparado con Instagram/Twitter/Facebook: dar
                             // like a un comentario concreto, no solo a la
                             // publicación entera (0054_comment_likes.sql).

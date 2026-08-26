@@ -95,6 +95,9 @@ function iconFor(kind: string): string {
     case "comment_like": return "❤";
     case "reel_comment_like": return "❤";
     case "group_message": return "👥";
+    // @menciones reales (0074_mentions.sql), comparado con
+    // Instagram/Twitter/TikTok.
+    case "mention": return "@";
     default: return "🔔";
   }
 }
@@ -114,6 +117,7 @@ function titleFor(kind: string): string {
     case "reel_comment_like": return "Le gustó tu comentario";
     case "group_message": return "Nuevo mensaje de grupo";
     case "reel_comment": return "Comentó tu reel";
+    case "mention": return "Te mencionó";
     default: return "Notificación";
   }
 }

@@ -172,6 +172,9 @@ fun NotificationEntry.icon(): String = when (kind) {
     "comment_like" -> "❤"
     "reel_comment_like" -> "❤"
     "group_message" -> "👥"
+    // @menciones reales (0074_mentions.sql), comparado con
+    // Instagram/Twitter/TikTok.
+    "mention" -> "@"
     else -> "🔔"
 }
 
@@ -190,5 +193,6 @@ fun NotificationEntry.title(): String = when (kind) {
     "comment_like" -> "Le gustó tu comentario"
     "reel_comment_like" -> "Le gustó tu comentario"
     "group_message" -> "Nuevo mensaje de grupo"
+    "mention" -> "Te mencionó"
     else -> "Notificación"
 }

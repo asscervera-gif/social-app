@@ -28,6 +28,13 @@ struct PostDetailView: View {
     @State private var errorMessage: String?
     @State private var showComments = false
     @State private var fullScreenURL: URL?
+    // Nombre de usuario único real (@handle, 0073_profile_username.sql) +
+    // notificación real de mención (0074_mentions.sql), comparado con
+    // Instagram/Twitter/Facebook -- esta pantalla ni siquiera tenía
+    // etiquetas tocables (a diferencia del feed, HomeView.swift.PostCard),
+    // solo texto plano; se corrige de paso al construir el componente
+    // compartido MentionHashtagText.swift.
+    @State private var mentionProfileID: UUID?
 
     var body: some View {
         ScrollView {
@@ -81,7 +88,19 @@ struct PostDetailView: View {
                         }
                     }
                     if let caption = post.caption {
-                        Text(caption).font(.subheadline)
+                        MentionHashtagText(
+                            text: caption,
+                            onOpenMention: { username in
+                                Task {
+                                    guard let id = await MentionResolver.resolveProfileID(username: username) else { return }
+                                    if let onOpenProfile {
+                                        onOpenProfile(id)
+                                    } else {
+                                        mentionProfileID = id
+                                    }
+                                }
+                            }
+                        )
                     }
                     Text(relativeTime(post.createdAt))
                         .font(.caption2)
@@ -119,6 +138,18 @@ struct PostDetailView: View {
         )) {
             if let fullScreenURL {
                 FullScreenImageView(url: fullScreenURL, onDismiss: { self.fullScreenURL = nil })
+            }
+        }
+        // Solo aplica cuando `onOpenProfile` no viene dado (esta vista se
+        // presenta sola, con su propio NavigationLink de autor) -- mismo
+        // patrón `isPresented:` compatible con iOS 16 ya usado en
+        // HomeView.swift.PostCard.
+        .navigationDestination(isPresented: Binding(
+            get: { mentionProfileID != nil },
+            set: { isPresented in if !isPresented { mentionProfileID = nil } }
+        )) {
+            if let mentionProfileID {
+                ProfileViewerView(profileID: mentionProfileID)
             }
         }
     }

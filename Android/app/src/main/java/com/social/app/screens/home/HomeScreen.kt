@@ -34,9 +34,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.text.ClickableText
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -44,15 +43,14 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.social.app.ui.theme.SocialColors
+import com.social.app.util.MentionHashtagText
+import com.social.app.util.MentionResolver
 import com.social.app.util.relativeTime
 import io.github.jan.supabase.gotrue.auth
+import kotlinx.coroutines.launch
 import com.social.app.backend.model.Post
 
 /**
@@ -189,6 +187,7 @@ fun HomeScreen(
                     onToggleSave = { viewModel.toggleSave(post) },
                     onOpenHashtag = onOpenHashtag,
                     onOpenProfile = { onOpenProfile(post.authorId) },
+                    onOpenMentionProfile = onOpenProfile,
                     onRequestCompat = { viewModel.requestCompatibility(post.authorId) }
                 )
             }
@@ -215,47 +214,6 @@ fun HomeScreen(
             onDismiss = { showNewPost = false },
             onPosted = { viewModel.load() }
         )
-    }
-}
-
-/**
- * Etiquetas tocables dentro del texto de un caption — hasta esta pasada
- * el buscador ya sabía buscar posts por "#etiqueta" (ver
- * SearchViewModel.kt) pero no había ninguna forma de llegar ahí desde una
- * publicación real del feed: había que teclear la etiqueta de memoria.
- * Mismo criterio que Instagram/TikTok (tocar una etiqueta abre su
- * búsqueda).
- */
-@Composable
-private fun CaptionText(caption: String, onOpenHashtag: (String) -> Unit) {
-    val linkColor = MaterialTheme.colorScheme.primary
-    val baseColor = LocalContentColor.current
-    val annotated = remember(caption) {
-        buildAnnotatedStringWithHashtags(caption, linkColor, baseColor)
-    }
-    ClickableText(text = annotated) { offset ->
-        annotated.getStringAnnotations(tag = "hashtag", start = offset, end = offset)
-            .firstOrNull()
-            ?.let { onOpenHashtag(it.item) }
-    }
-}
-
-private fun buildAnnotatedStringWithHashtags(caption: String, linkColor: androidx.compose.ui.graphics.Color, baseColor: androidx.compose.ui.graphics.Color): AnnotatedString {
-    return androidx.compose.ui.text.buildAnnotatedString {
-        val words = caption.split(" ")
-        words.forEachIndexed { index, word ->
-            if (word.startsWith("#") && word.length > 1) {
-                val tag = word.drop(1).trimEnd { !it.isLetterOrDigit() }
-                pushStringAnnotation(tag = "hashtag", annotation = tag)
-                withStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)) {
-                    append(word)
-                }
-                pop()
-            } else {
-                withStyle(SpanStyle(color = baseColor)) { append(word) }
-            }
-            if (index != words.lastIndex) append(" ")
-        }
     }
 }
 
@@ -312,9 +270,17 @@ private fun PostCard(
     onToggleSave: () -> Unit,
     onOpenHashtag: (String) -> Unit = {},
     onOpenProfile: () -> Unit = {},
+    // Nombre de usuario único real (@handle, 0073_profile_username.sql) +
+    // notificación real de mención (0074_mentions.sql), comparado con
+    // Instagram/Twitter/TikTok -- distinto de onOpenProfile (siempre abre
+    // al AUTOR del post): aquí el perfil de destino se resuelve en tiempo
+    // real a partir del @usuario tocado dentro del propio caption.
+    onOpenMentionProfile: (String) -> Unit = {},
     onRequestCompat: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val mentionResolver = remember { MentionResolver() }
     // Hallazgo real: comparado con cualquier app grande, no había forma de
     // denunciar una publicación directamente — solo existía la denuncia
     // global de usuario (SafetyToolbar). `reports.reported_id` no tiene
@@ -415,7 +381,15 @@ private fun PostCard(
                     }
                 }
             }
-            post.caption?.let { CaptionText(it, onOpenHashtag) }
+            post.caption?.let { caption ->
+                MentionHashtagText(
+                    text = caption,
+                    onOpenHashtag = onOpenHashtag,
+                    onOpenMention = { username ->
+                        scope.launch { mentionResolver.resolveProfileId(username)?.let(onOpenMentionProfile) }
+                    }
+                )
+            }
             if (post.createdAt.isNotBlank()) {
                 Text(
                     relativeTime(post.createdAt),

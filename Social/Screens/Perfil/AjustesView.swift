@@ -20,11 +20,14 @@ struct AjustesView: View {
     // nunca se añadieron a ninguna categoría -- silenciar "Me gusta" no
     // silenciaba en realidad el like a un comentario, solo el like a la
     // publicación entera. "group_message" (0057_group_chats.sql) añadido
-    // a "Mensajes".
+    // a "Mensajes". "mention" (0074_mentions.sql) en su propia categoría
+    // -- comparado con Instagram, que también deja silenciar menciones
+    // por separado de comentarios normales.
     static let notificationCategories: [(String, [String])] = [
         ("Mensajes", ["message", "group_message"]),
         ("Me gusta", ["like", "reel_like", "comment_like", "reel_comment_like"]),
         ("Comentarios", ["comment", "reel_comment"]),
+        ("Menciones", ["mention"]),
         ("Socials", ["social", "social_accepted"]),
         ("Seguidores", ["follow"]),
         ("Duelos", ["fight"]),

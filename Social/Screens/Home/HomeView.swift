@@ -207,30 +207,6 @@ struct HomeView: View {
     }
 }
 
-/// Construye una etiqueta tocable dentro del caption usando
-/// `AttributedString.link` con un esquema propio (`socialhashtag://tag`) —
-/// no es una URL real, solo se usa como transporte para que
-/// `.environment(\.openURL)` intercepte el toque, mismo criterio ya usado
-/// en otros sitios de la app para acciones locales sin backend.
-private func hashtagAttributedString(_ caption: String) -> AttributedString {
-    var result = AttributedString("")
-    let words = caption.split(separator: " ", omittingEmptySubsequences: false)
-    for (index, word) in words.enumerated() {
-        var piece = AttributedString(word)
-        if word.hasPrefix("#"), word.count > 1 {
-            let tag = word.dropFirst().trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-            if let url = URL(string: "socialhashtag://\(tag)") {
-                piece.link = url
-                piece.foregroundColor = .accentColor
-                piece.underlineStyle = .single
-            }
-        }
-        result += piece
-        if index != words.count - 1 { result += AttributedString(" ") }
-    }
-    return result
-}
-
 private struct RecommendedCard: View {
     let profile: Profile
     let compatibility: Int?
@@ -315,6 +291,12 @@ private struct PostCard: View {
     // solo abría el share sheet nativo del sistema (ShareLink), sin
     // ninguna forma de mandarla como mensaje real dentro de la propia app.
     @State private var showSendSheet = false
+    // Nombre de usuario único real (@handle, 0073_profile_username.sql) +
+    // notificación real de mención (0074_mentions.sql), comparado con
+    // Instagram/Twitter/TikTok -- distinto del NavigationLink de arriba
+    // (siempre lleva al AUTOR del post): aquí el destino se resuelve en
+    // tiempo real a partir del @usuario tocado dentro del propio caption.
+    @State private var mentionProfileID: UUID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -406,18 +388,17 @@ private struct PostCard: View {
                 // ninguna forma de llegar ahí desde una publicación real
                 // del feed — había que teclear la etiqueta de memoria.
                 // Mismo criterio ya construido y compiler-verificado en la
-                // versión Kotlin equivalente (CaptionText en
-                // HomeScreen.kt), aquí con `AttributedString.link` en vez
-                // de `ClickableText` (no existe en SwiftUI).
-                Text(hashtagAttributedString(caption))
-                    .font(.subheadline)
-                    .environment(\.openURL, OpenURLAction { url in
-                        if url.scheme == "socialhashtag", let tag = url.host {
-                            onOpenHashtag(tag)
-                            return .handled
-                        }
-                        return .systemAction
-                    })
+                // versión Kotlin equivalente. @menciones reales
+                // (0073_profile_username.sql + 0074_mentions.sql) añadidas
+                // en esta misma pasada, comparado con Instagram/Twitter/
+                // TikTok.
+                MentionHashtagText(
+                    text: caption,
+                    onOpenHashtag: onOpenHashtag,
+                    onOpenMention: { username in
+                        Task { mentionProfileID = await MentionResolver.resolveProfileID(username: username) }
+                    }
+                )
             }
             Text(relativeTime(post.createdAt))
                 .font(.caption2)
@@ -484,6 +465,17 @@ private struct PostCard: View {
         )) {
             if let fullScreenURL {
                 FullScreenImageView(url: fullScreenURL, onDismiss: { self.fullScreenURL = nil })
+            }
+        }
+        // Mismo patrón `isPresented:` compatible con iOS 16 ya usado en
+        // HomeView.swift para `hashtagToOpen` -- `navigationDestination(item:)`
+        // exige iOS 17+, y el objetivo de despliegue de este proyecto es 16.0.
+        .navigationDestination(isPresented: Binding(
+            get: { mentionProfileID != nil },
+            set: { isPresented in if !isPresented { mentionProfileID = nil } }
+        )) {
+            if let mentionProfileID {
+                ProfileViewerView(profileID: mentionProfileID)
             }
         }
         .task {

@@ -147,9 +147,26 @@ struct AvisosView: View {
             showOpenedGroupChat = true
             return
         }
+        // @menciones reales (0074_mentions.sql), comparado con Instagram/
+        // Twitter/TikTok -- el payload trae post_id O reel_id según dónde
+        // se escribió el @usuario (mismo criterio que AvisosScreen.kt).
+        if entry.kind == "mention",
+           let postIDString = entry.payload["post_id"],
+           let postID = UUID(uuidString: postIDString) {
+            selectedPostID = postID
+            showOpenedPost = true
+            return
+        }
         // Abrir un reel concreto real, comparado con Instagram/TikTok --
         // cierra el hueco documentado dos rondas atrás.
         if entry.kind == "reel_like" || entry.kind == "reel_comment" || entry.kind == "reel_comment_like",
+           let reelIDString = entry.payload["reel_id"],
+           let reelID = UUID(uuidString: reelIDString) {
+            selectedReelID = reelID
+            showOpenedReel = true
+            return
+        }
+        if entry.kind == "mention",
            let reelIDString = entry.payload["reel_id"],
            let reelID = UUID(uuidString: reelIDString) {
             selectedReelID = reelID
@@ -212,6 +229,7 @@ private func contextFor(_ kind: String) -> String {
     case "fight": return "Te ha retado a un duelo de preguntas."
     case "compat_request": return "Quiere ver vuestra compatibilidad. Acéptalo para desvelarla mutuamente."
     case "like", "comment", "reel_like", "reel_comment": return "Ha interactuado con tu contenido."
+    case "mention": return "Te ha mencionado."
     case "social_accepted": return "Aceptó tu social."
     case "compat_accepted": return "Compartió su compatibilidad contigo."
     default: return "Nueva notificación."

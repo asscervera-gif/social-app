@@ -52,10 +52,15 @@ private data class IsAdminRow(@SerialName("is_admin") val isAdmin: Boolean)
 // se añadieron a ninguna categoría -- silenciar "Me gusta" no silenciaba
 // en realidad el like a un comentario, solo el like a la publicación
 // entera. "group_message" (0057_group_chats.sql) añadido a "Mensajes".
+// "mention" (0074_mentions.sql) en su propia categoría -- comparado con
+// Instagram, que también deja silenciar menciones por separado de
+// comentarios normales (una mención puede llegar de alguien que no te
+// esté comentando nada a ti directamente).
 private val NOTIFICATION_CATEGORIES: List<Pair<String, List<String>>> = listOf(
     "Mensajes" to listOf("message", "group_message"),
     "Me gusta" to listOf("like", "reel_like", "comment_like", "reel_comment_like"),
     "Comentarios" to listOf("comment", "reel_comment"),
+    "Menciones" to listOf("mention"),
     "Socials" to listOf("social", "social_accepted"),
     "Seguidores" to listOf("follow"),
     "Duelos" to listOf("fight"),
