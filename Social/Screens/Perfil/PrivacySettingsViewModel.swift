@@ -64,6 +64,12 @@ final class PrivacySettingsViewModel: ObservableObject {
     // todos los demás, incluido quien lo escribió. Equivalente de
     // PrivacySettingsViewModel.kt.mutedKeywords.
     @Published var mutedKeywords: [String] = []
+    // Recibo de lectura real ("Leído ✓✓"), comparado con WhatsApp/
+    // Instagram/Messenger -- mismo criterio recíproco real que esas apps:
+    // si lo apagas, tampoco ves el de los demás (ChatViewModel.swift ya
+    // deja de pintar "Leído" para cualquiera cuyo propio interruptor esté
+    // apagado, sea quien sea). Ver 0091_read_receipts_toggle.sql.
+    @Published var readReceiptsEnabled = true
     @Published var errorMessage: String?
 
     private struct PrivacyRow: Decodable {
@@ -71,6 +77,7 @@ final class PrivacySettingsViewModel: ObservableObject {
         let location_public: Bool
         let muted_push_kinds: [String]
         let muted_keywords: [String]
+        let read_receipts_enabled: Bool
     }
 
     func load() async {
@@ -78,7 +85,7 @@ final class PrivacySettingsViewModel: ObservableObject {
         do {
             let row: PrivacyRow = try await SupabaseManager.shared.client
                 .from("profiles")
-                .select("compat_public,location_public,muted_push_kinds,muted_keywords")
+                .select("compat_public,location_public,muted_push_kinds,muted_keywords,read_receipts_enabled")
                 .eq("id", value: userID)
                 .single()
                 .execute()
@@ -87,6 +94,7 @@ final class PrivacySettingsViewModel: ObservableObject {
             locationPublic = row.location_public
             mutedKinds = Set(row.muted_push_kinds)
             mutedKeywords = row.muted_keywords
+            readReceiptsEnabled = row.read_receipts_enabled
         } catch {
             errorMessage = "No se pudo cargar la privacidad."
         }
@@ -155,6 +163,14 @@ final class PrivacySettingsViewModel: ObservableObject {
                 errorMessage = "No se pudo guardar el cambio."
                 mutedKinds = previous
             }
+        }
+    }
+
+    func setReadReceiptsEnabled(_ value: Bool) {
+        let previous = readReceiptsEnabled
+        readReceiptsEnabled = value
+        Task {
+            if !(await updateColumn(["read_receipts_enabled": value])) { readReceiptsEnabled = previous }
         }
     }
 

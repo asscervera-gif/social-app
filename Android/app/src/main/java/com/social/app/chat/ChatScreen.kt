@@ -85,6 +85,10 @@ fun ChatScreen(
     // Mensajes destacados reales, comparado con WhatsApp
     // (0087_starred_messages.sql).
     val starredMessageIds by viewModel.starredMessageIds.collectAsState()
+    // Recibo de lectura real ("Leído ✓✓"), comparado con WhatsApp/
+    // Instagram/Messenger -- ver ChatViewModel.showReadReceipts,
+    // 0091_read_receipts_toggle.sql.
+    val showReadReceipts by viewModel.showReadReceipts.collectAsState()
     val compatibility by viewModel.compatibility.collectAsState()
     val opponentId by viewModel.opponentId.collectAsState()
     val suggestedActivity by viewModel.suggestedActivity.collectAsState()
@@ -427,10 +431,16 @@ fun ChatScreen(
                         )
                     }
                     if (isMine) {
+                        // Recibo de lectura real, comparado con WhatsApp/
+                        // Instagram/Messenger -- `showReadReceipts` ya es
+                        // false si CUALQUIERA de los dos desactivó el
+                        // suyo, ver ChatViewModel.loadReadReceiptsVisibility(),
+                        // 0091_read_receipts_toggle.sql.
+                        val showRead = message.readAt != null && showReadReceipts
                         Text(
-                            if (message.readAt != null) "Leído ✓✓" else "Enviado ✓",
+                            if (showRead) "Leído ✓✓" else "Enviado ✓",
                             style = MaterialTheme.typography.labelSmall,
-                            color = if (message.readAt != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (showRead) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }

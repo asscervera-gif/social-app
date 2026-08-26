@@ -98,6 +98,7 @@ fun AjustesScreen(
     val privacy = remember { PrivacySettingsViewModel() }
     val compatPublic by privacy.compatPublic.collectAsState()
     val locationPublic by privacy.locationPublic.collectAsState()
+    val readReceiptsEnabled by privacy.readReceiptsEnabled.collectAsState()
     LaunchedEffect(Unit) { privacy.load() }
 
     // Hallazgo real: `reports` existía y ya recibía denuncias reales
@@ -324,6 +325,25 @@ fun AjustesScreen(
                 )
             }
             Switch(checked = locationPublic, onCheckedChange = { privacy.setLocationPublic(context, it) })
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.padding(end = 12.dp)) {
+                // Recibo de lectura real ("Leído ✓✓"), comparado con
+                // WhatsApp/Instagram/Messenger -- criterio recíproco real:
+                // si lo apagas, tampoco ves el de los demás (ver
+                // ChatViewModel.kt.opponentReadReceiptsEnabled, 0091).
+                Text("Recibos de lectura")
+                Text(
+                    "Muestra \"Leído ✓✓\" a los demás. Si lo apagas, tampoco verás el suyo.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(checked = readReceiptsEnabled, onCheckedChange = { privacy.setReadReceiptsEnabled(it) })
         }
 
         // Hallazgo real: mismo patrón que socials — una vez aceptada una

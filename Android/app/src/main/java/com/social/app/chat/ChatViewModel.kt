@@ -112,6 +112,16 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
     private val _opponentId = MutableStateFlow<String?>(null)
     val opponentId: StateFlow<String?> = _opponentId.asStateFlow()
 
+    // Recibo de lectura real ("Leído ✓✓"), comparado con WhatsApp/
+    // Instagram/Messenger -- mismo criterio recíproco real que esas apps:
+    // si CUALQUIERA de los dos (yo o la otra persona) desactivó su propio
+    // recibo, no se pinta "Leído" para ninguno de los dos lados, aunque
+    // `read_at` siga marcándose igual que siempre por debajo (sigue
+    // haciendo falta para el propio recuento de "no leídos" del
+    // destinatario, 0088). Ver 0091_read_receipts_toggle.sql.
+    private val _showReadReceipts = MutableStateFlow(true)
+    val showReadReceipts: StateFlow<Boolean> = _showReadReceipts.asStateFlow()
+
     private val _suggestedActivity = MutableStateFlow<String?>(null)
     val suggestedActivity: StateFlow<String?> = _suggestedActivity.asStateFlow()
 
@@ -187,6 +197,28 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
             markMessageNotificationsRead()
             loadReactions()
             loadStarred()
+        }
+    }
+
+    @Serializable
+    private data class ReadReceiptsRow(
+        val id: String,
+        @SerialName("read_receipts_enabled") val readReceiptsEnabled: Boolean
+    )
+
+    /** Igual que WhatsApp/Instagram/Messenger: si CUALQUIERA de los dos
+     * (yo o la otra persona) desactivó su propio recibo de lectura, no se
+     * pinta "Leído" en ninguno de los dos sentidos -- ver
+     * 0091_read_receipts_toggle.sql. */
+    private suspend fun loadReadReceiptsVisibility(myId: String?, opponentId: String?) {
+        if (myId == null || opponentId == null) return
+        try {
+            val rows = SupabaseManager.client.from("profiles")
+                .select(columns = Columns.raw("id,read_receipts_enabled")) { filter { isIn("id", listOf(myId, opponentId)) } }
+                .decodeList<ReadReceiptsRow>()
+            _showReadReceipts.value = rows.all { it.readReceiptsEnabled }
+        } catch (e: Exception) {
+            // No crítico: si falla, se queda en el valor por defecto (true).
         }
     }
 
@@ -463,6 +495,7 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
                 chat.userBId -> chat.userAId
                 else -> null
             }
+            loadReadReceiptsVisibility(myId, _opponentId.value)
             checkActivitySuggestion()
             if (_messages.value.isEmpty()) loadIcebreaker()
         } catch (e: Exception) {

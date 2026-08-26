@@ -193,6 +193,21 @@ struct AjustesView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            // Recibo de lectura real ("Leído ✓✓"), comparado con WhatsApp/
+            // Instagram/Messenger -- criterio recíproco real: si lo
+            // apagas, tampoco ves el de los demás (ver
+            // ChatViewModel.swift.showReadReceipts, 0091).
+            Toggle(isOn: Binding(
+                get: { privacy.readReceiptsEnabled },
+                set: { privacy.setReadReceiptsEnabled($0) }
+            )) {
+                VStack(alignment: .leading) {
+                    Text("Recibos de lectura")
+                    Text("Muestra \"Leído ✓✓\" a los demás. Si lo apagas, tampoco verás el suyo.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
 
             // Hallazgo real: mismo patrón que socials — una vez aceptada
             // una compat_request, no había NINGUNA forma de revocar el

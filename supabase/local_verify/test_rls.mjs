@@ -2018,6 +2018,27 @@ async function main() {
     groupCallAfterIdentityAttack.caller_id === u1 && groupCallAfterIdentityAttack.group_chat_id === callGroupId && groupCallAfterIdentityAttack.chat_id === null && groupCallAfterIdentityAttack.room_name === groupCall.room_name
   );
 
+  // --- profiles.read_receipts_enabled (0091_read_receipts_toggle.sql):
+  // desactivar el recibo de lectura real, comparado con WhatsApp/
+  // Instagram/Messenger -- columna normal sin trigger ni política nueva
+  // (mismo criterio que compat_public/location_public): profiles_update_own
+  // (0002_rls.sql) ya deja tocar cualquier columna propia, y
+  // profiles_select_public (0002_rls.sql) ya expone el resto de columnas
+  // de cualquier perfil visible -- aquí solo se confirma el valor por
+  // defecto real y que de verdad es visible/editable, sin duplicar esas
+  // pruebas genéricas. ---
+  const defaultReceipts = (await db.query(`select read_receipts_enabled from profiles where id = $1`, [u2])).rows[0];
+  check('profiles.read_receipts_enabled: arranca en true por defecto', defaultReceipts.read_receipts_enabled === true);
+
+  await asUser(u2);
+  await expectOk('profiles_update_own: u2 SÍ puede desactivar su propio recibo de lectura', async () => {
+    await db.query(`update profiles set read_receipts_enabled = false where id = $1`, [u2]);
+  });
+
+  await asUser(u1);
+  const receiptsSeenByOther = (await db.query(`select read_receipts_enabled from profiles where id = $1`, [u2])).rows[0];
+  check('profiles_select_public: u1 real SÍ ve el recibo desactivado de u2 (necesario para no pintarle "Leído" en el chat)', receiptsSeenByOther.read_receipts_enabled === false);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

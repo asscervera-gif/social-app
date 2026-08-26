@@ -21,6 +21,15 @@ final class ChatViewModel: ObservableObject {
     @Published var suggestedActivity: String?
     @Published var errorMessage: String?
     @Published var opponentID: UUID?
+    // Recibo de lectura real ("Leído ✓✓"), comparado con WhatsApp/
+    // Instagram/Messenger -- mismo criterio recíproco real que esas apps:
+    // si CUALQUIERA de los dos (yo o la otra persona) desactivó su propio
+    // recibo, no se pinta "Leído" para ninguno de los dos lados, aunque
+    // `read_at` siga marcándose igual que siempre por debajo (sigue
+    // haciendo falta para el propio recuento de "no leídos" del
+    // destinatario, 0088). Ver 0091_read_receipts_toggle.sql. Equivalente
+    // de ChatViewModel.kt.showReadReceipts.
+    @Published var showReadReceipts = true
     // Paginación hacia atrás -- hueco real documentado desde que loadHistory()
     // se limitó a los últimos 100 mensajes (ver comentario ahí): sin esto, un
     // chat con más de 100 mensajes perdía silenciosamente todo lo anterior,
@@ -159,6 +168,31 @@ final class ChatViewModel: ObservableObject {
     private struct NewStarredMessage: Encodable {
         let user_id: UUID
         let message_id: UUID
+    }
+
+    private struct ReadReceiptsRow: Decodable {
+        let id: UUID
+        let read_receipts_enabled: Bool
+    }
+
+    /// Igual que WhatsApp/Instagram/Messenger: si CUALQUIERA de los dos
+    /// (yo o la otra persona) desactivó su propio recibo de lectura, no
+    /// se pinta "Leído" en ninguno de los dos sentidos -- ver
+    /// 0091_read_receipts_toggle.sql. Equivalente de
+    /// ChatViewModel.kt.loadReadReceiptsVisibility().
+    private func loadReadReceiptsVisibility() async {
+        guard let opponentID else { return }
+        do {
+            let rows: [ReadReceiptsRow] = try await SupabaseManager.shared.client
+                .from("profiles")
+                .select("id,read_receipts_enabled")
+                .in("id", values: [currentUserID, opponentID])
+                .execute()
+                .value
+            showReadReceipts = rows.allSatisfy { $0.read_receipts_enabled }
+        } catch {
+            // No crítico: si falla, se queda en el valor por defecto (true).
+        }
     }
 
     /// Destacar/quitar destacado un mensaje real (propio o ajeno),
@@ -439,6 +473,7 @@ final class ChatViewModel: ObservableObject {
                 .value
             compatibilityScore = chat.compatibilityScore
             opponentID = chat.userAID == currentUserID ? chat.userBID : (chat.userBID == currentUserID ? chat.userAID : nil)
+            await loadReadReceiptsVisibility()
 
             await checkActivitySuggestion()
             if messages.isEmpty { await loadIcebreaker() }

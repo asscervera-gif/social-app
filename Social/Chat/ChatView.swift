@@ -173,7 +173,8 @@ struct ChatView: View {
                                 },
                                 onForward: {
                                     forwardingMessage = message
-                                }
+                                },
+                                showReadReceipts: viewModel.showReadReceipts
                             )
                             .id(message.id)
                         }
@@ -428,6 +429,11 @@ private struct MessageBubble: View {
     // Reenviar un mensaje real (0072_message_forward.sql), comparado con
     // WhatsApp/Telegram/Messenger.
     var onForward: () -> Void = {}
+    // Recibo de lectura real ("Leído ✓✓"), comparado con WhatsApp/
+    // Instagram/Messenger -- ya es false si CUALQUIERA de los dos
+    // desactivó el suyo, ver ChatViewModel.loadReadReceiptsVisibility(),
+    // 0091_read_receipts_toggle.sql.
+    var showReadReceipts: Bool = true
 
     @State private var showPicker = false
     // Hallazgo real, comparado con Instagram/Twitter/WhatsApp: no había
@@ -587,9 +593,10 @@ private struct MessageBubble: View {
                     .foregroundStyle(.secondary)
             }
             if isMine {
-                Text(message.readAt != nil ? "Leído ✓✓" : "Enviado ✓")
+                let showRead = message.readAt != nil && showReadReceipts
+                Text(showRead ? "Leído ✓✓" : "Enviado ✓")
                     .font(.caption2)
-                    .foregroundStyle(message.readAt != nil ? Color.accentColor : .secondary)
+                    .foregroundStyle(showRead ? Color.accentColor : .secondary)
             }
         }
         // Mismo patrón Binding(get:set:) ya usado en HomeView.swift para

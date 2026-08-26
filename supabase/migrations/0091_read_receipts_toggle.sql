@@ -1,0 +1,35 @@
+-- ============================================================================
+-- SOCIAL — Desactivar los recibos de lectura ("✓✓ leído"), comparado con
+-- WhatsApp/Instagram/Messenger
+--
+-- Hallazgo real: `messages.read_at`/ChatScreen.kt ya mostraban "Leído ✓✓"
+-- en cuanto la otra persona abría el chat (0017_message_read_receipts.sql)
+-- -- sin ningún interruptor para desactivarlo, a diferencia de las tres
+-- apps de referencia, que sí dejan apagar el recibo de lectura (con la
+-- misma regla real y recíproca: si lo apagas, tampoco ves el de los
+-- demás).
+--
+-- Diseño deliberado, sin tocar `messages`/sus triggers en absoluto:
+-- `read_at` sigue marcándose exactamente igual que hasta ahora (sigue
+-- haciendo falta para el propio recuento de "no leídos" del destinatario,
+-- 0088_mark_chat_unread.sql, que no tiene nada que ver con lo que VE el
+-- remitente). Lo único nuevo es `profiles.read_receipts_enabled`: el
+-- CLIENTE del remitente decide si pintar "Leído ✓✓" o quedarse en
+-- "Enviado ✓" mirando el valor real de esta columna en el perfil del
+-- DESTINATARIO -- exactamente el mismo patrón ya usado por
+-- compat_public/location_public (PrivacySettingsViewModel.kt): activar/
+-- desactivar una columna del propio perfil, sin trigger ni política
+-- nueva, porque `profiles_update_own` (0002_rls.sql) ya deja tocar
+-- cualquier columna propia y `profiles_select_public` (0002_rls.sql) ya
+-- expone el resto de columnas de cualquier perfil visible.
+--
+-- Aviso de honestidad: al ser una columna de lectura pública normal (como
+-- display_name/avatar_url), un cliente modificado podría ignorar este
+-- valor y mostrar "Leído" igualmente -- la misma limitación real que
+-- reconocen WhatsApp/Instagram/Messenger para esta función exacta (el
+-- dato ya llegó al dispositivo del remitente por diseño, para que el
+-- propio destinatario pueda sincronizar su lectura entre sus varios
+-- dispositivos; no hay forma de ocultar `read_at` del todo sin romper eso).
+-- ============================================================================
+
+alter table profiles add column read_receipts_enabled boolean not null default true;

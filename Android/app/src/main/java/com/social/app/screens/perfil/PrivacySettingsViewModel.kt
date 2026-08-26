@@ -31,7 +31,8 @@ class PrivacySettingsViewModel : ViewModel() {
         @SerialName("compat_public") val compatPublic: Boolean,
         @SerialName("location_public") val locationPublic: Boolean,
         @SerialName("muted_push_kinds") val mutedPushKinds: List<String> = emptyList(),
-        @SerialName("muted_keywords") val mutedKeywords: List<String> = emptyList()
+        @SerialName("muted_keywords") val mutedKeywords: List<String> = emptyList(),
+        @SerialName("read_receipts_enabled") val readReceiptsEnabled: Boolean = true
     )
 
     private val _compatPublic = MutableStateFlow(false)
@@ -39,6 +40,14 @@ class PrivacySettingsViewModel : ViewModel() {
 
     private val _locationPublic = MutableStateFlow(false)
     val locationPublic: StateFlow<Boolean> = _locationPublic.asStateFlow()
+
+    // Desactivar el recibo de lectura real ("Leído ✓✓"), comparado con
+    // WhatsApp/Instagram/Messenger -- mismo criterio recíproco real: si lo
+    // apagas, tampoco ves el de los demás (ChatViewModel.kt ya deja de
+    // pintar "Leído" para cualquiera cuyo propio interruptor esté
+    // apagado, sea quien sea). Ver 0091_read_receipts_toggle.sql.
+    private val _readReceiptsEnabled = MutableStateFlow(true)
+    val readReceiptsEnabled: StateFlow<Boolean> = _readReceiptsEnabled.asStateFlow()
 
     // Hallazgo real, comparado con Instagram/Twitter/Facebook/WhatsApp:
     // todas dejan silenciar "me gusta" sin silenciar "mensajes" -- esta
@@ -65,12 +74,13 @@ class PrivacySettingsViewModel : ViewModel() {
             try {
                 val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
                 val row = SupabaseManager.client.from("profiles")
-                    .select(columns = Columns.raw("compat_public,location_public,muted_push_kinds,muted_keywords")) { filter { eq("id", userId) } }
+                    .select(columns = Columns.raw("compat_public,location_public,muted_push_kinds,muted_keywords,read_receipts_enabled")) { filter { eq("id", userId) } }
                     .decodeSingle<PrivacyRow>()
                 _compatPublic.value = row.compatPublic
                 _locationPublic.value = row.locationPublic
                 _mutedKinds.value = row.mutedPushKinds.toSet()
                 _mutedKeywords.value = row.mutedKeywords
+                _readReceiptsEnabled.value = row.readReceiptsEnabled
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo cargar la privacidad."
             }
@@ -125,6 +135,12 @@ class PrivacySettingsViewModel : ViewModel() {
                 _mutedKinds.value = previous
             }
         }
+    }
+
+    fun setReadReceiptsEnabled(value: Boolean) {
+        val previous = _readReceiptsEnabled.value
+        _readReceiptsEnabled.value = value
+        updateColumn("read_receipts_enabled", value) { _readReceiptsEnabled.value = previous }
     }
 
     fun setCompatPublic(value: Boolean) {
