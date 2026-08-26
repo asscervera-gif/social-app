@@ -53,7 +53,10 @@ data class Post(
     // Hallazgo real, comparado con SOCIAL_APP.html ("Pubs de socials",
     // etiqueta "con Marta"): no había forma de decir con quién se hizo una
     // publicación — 0051_post_social_tags.sql.
-    @SerialName("tagged_profile_id") val taggedProfileId: String? = null
+    @SerialName("tagged_profile_id") val taggedProfileId: String? = null,
+    // Archivar publicaciones real (0076_archive_posts.sql), comparado con
+    // Instagram/Facebook -- null significa visible con normalidad.
+    @SerialName("archived_at") val archivedAt: String? = null
 )
 
 @Serializable

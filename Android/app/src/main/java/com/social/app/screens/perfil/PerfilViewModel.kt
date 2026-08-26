@@ -92,7 +92,10 @@ class PerfilViewModel : ViewModel() {
     )
 
     @Serializable
-    private data class MediaRow(@SerialName("media_url") val mediaUrl: String? = null)
+    private data class MediaRow(
+        @SerialName("media_url") val mediaUrl: String? = null,
+        @SerialName("archived_at") val archivedAt: String? = null
+    )
 
     @Serializable
     private data class IdRow(val id: String)
@@ -132,14 +135,20 @@ class PerfilViewModel : ViewModel() {
                 // piden las últimas 20 y se filtra en cliente -- mismo
                 // criterio de no adivinar una llamada de API no comprobada
                 // ya aplicado en el resto de esta sesión.
+                //
+                // Archivar publicaciones real (0076_archive_posts.sql),
+                // comparado con Instagram/Facebook: una publicación
+                // archivada no debe seguir asomando en la rotación de la
+                // cabecera del propio perfil, mismo criterio ya aplicado
+                // al feed principal (HomeViewModel.kt).
                 _latestPostMediaUrl.value = SupabaseManager.client.from("posts")
-                    .select(columns = io.github.jan.supabase.postgrest.query.Columns.raw("media_url")) {
+                    .select(columns = io.github.jan.supabase.postgrest.query.Columns.raw("media_url,archived_at")) {
                         filter { eq("author_id", id) }
                         order("created_at", io.github.jan.supabase.postgrest.query.Order.DESCENDING)
                         limit(20)
                     }
                     .decodeList<MediaRow>()
-                    .firstOrNull { !it.mediaUrl.isNullOrBlank() }?.mediaUrl
+                    .firstOrNull { !it.mediaUrl.isNullOrBlank() && it.archivedAt == null }?.mediaUrl
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo cargar el perfil: ${e.message}"
             }

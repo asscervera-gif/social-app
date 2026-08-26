@@ -102,7 +102,14 @@ class SearchViewModel : ViewModel() {
                     limit(30)
                 }
                 .decodeList<Post>()
-                .filter { it.authorId !in blockedIds }
+                // Archivar publicaciones real (0076_archive_posts.sql),
+                // comparado con Instagram/Facebook: `posts_select` deja
+                // ver la propia publicación archivada al propio autor
+                // (para poder gestionarla en "Tus publicaciones"), pero
+                // no debería seguir apareciendo en resultados de búsqueda
+                // ni para él mismo -- mismo criterio ya aplicado al feed
+                // principal.
+                .filter { it.authorId !in blockedIds && it.archivedAt == null }
             _postResults.value = matches
         } catch (e: Exception) {
             _errorMessage.value = "No se pudo buscar."

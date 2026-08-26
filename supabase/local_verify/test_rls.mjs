@@ -1341,6 +1341,61 @@ async function main() {
   const closeFriendsStoryAfterRemoval = (await db.query(`select id from stories where id = $1`, [closeFriendsStory.id])).rows;
   check('stories_select: tras quitarlo de la lista real, u2 ya NO ve la historia "close_friends"', closeFriendsStoryAfterRemoval.length === 0);
 
+  // --- posts.archived_at (0076_archive_posts.sql): archivar una
+  // publicación real sin borrarla, comparado con Instagram/Facebook. ---
+  //
+  // Hallazgo real de robustez del propio arnés de pruebas (no de RLS): la
+  // primera versión de este bloque usaba u3 como "tercero cualquiera",
+  // pero u3 ya es admin desde el bloque de moderación de más arriba --
+  // `posts_select_admin`/`comments_select_admin` (0045) le dan
+  // visibilidad total de verdad e intencionada (un admin revisando una
+  // denuncia SÍ debe ver hasta el contenido archivado), así que los dos
+  // primeros intentos de este bloque "fallaban" solo porque u3 no era un
+  // desconocido real. Un u4 nuevo, sin admin y sin ninguna relación con
+  // u1, es el tercero real que hace falta aquí.
+  await asSuperuser();
+  const u4 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(`insert into profiles (id, display_name) values ($1, 'Cuatro') on conflict (id) do nothing`, [u4]);
+
+  await asUser(u1);
+  const archivablePost = (await db.query(
+    `insert into posts (author_id, caption) values ($1, 'una publicación normal') returning id`, [u1]
+  )).rows[0];
+  await db.query(`insert into comments (post_id, author_id, body) values ($1, $2, 'qué bien')`, [archivablePost.id, u1]);
+
+  await asUser(u4);
+  const beforeArchiveAsStranger = (await db.query(`select id from posts where id = $1`, [archivablePost.id])).rows;
+  check('posts_select: antes de archivar, un tercero cualquiera (u4) SÍ ve una publicación pública real', beforeArchiveAsStranger.length === 1);
+
+  await asUser(u1);
+  await expectOk('posts_write_own: el propio autor (u1) SÍ puede archivar su publicación real', async () => {
+    await db.query(`update posts set archived_at = now() where id = $1`, [archivablePost.id]);
+  });
+
+  await asUser(u4);
+  await db.query(`update posts set archived_at = null where id = $1`, [archivablePost.id]);
+  const archivedAsStranger = (await db.query(`select id from posts where id = $1`, [archivablePost.id])).rows;
+  check('posts_select: tras archivarla de verdad, un tercero (u4) YA NO ve la publicación', archivedAsStranger.length === 0);
+
+  await asUser(u1);
+  const afterOthersArchiveAttempt = (await db.query(`select archived_at from posts where id = $1`, [archivablePost.id])).rows[0];
+  check('posts_write_own: un tercero (u4) NO puede desarchivar la publicación ajena de u1 (RLS real: 0 filas afectadas, no un error)', afterOthersArchiveAttempt.archived_at !== null);
+
+  await asUser(u4);
+  const archivedCommentsAsStranger = (await db.query(`select id from comments where post_id = $1`, [archivablePost.id])).rows;
+  check('comments_select: tras archivar el post real, un tercero (u4) tampoco ve sus comentarios', archivedCommentsAsStranger.length === 0);
+
+  await asUser(u1);
+  const archivedAsAuthor = (await db.query(`select id from posts where id = $1`, [archivablePost.id])).rows;
+  check('posts_select: el propio autor (u1) SIEMPRE ve su publicación archivada real', archivedAsAuthor.length === 1);
+
+  await expectOk('posts_write_own: el propio autor (u1) SÍ puede restaurar (desarchivar) su publicación real', async () => {
+    await db.query(`update posts set archived_at = null where id = $1`, [archivablePost.id]);
+  });
+  await asUser(u4);
+  const restoredAsStranger = (await db.query(`select id from posts where id = $1`, [archivablePost.id])).rows;
+  check('posts_select: tras restaurarla de verdad, un tercero (u4) vuelve a verla', restoredAsStranger.length === 1);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

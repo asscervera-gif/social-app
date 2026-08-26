@@ -86,6 +86,27 @@ class MyPostsViewModel : ViewModel() {
      * propia publicación ya estaba permitido a nivel de RLS, solo faltaba
      * el botón. Mismo límite real que `posts_caption_length`
      * (0023_text_length_limits.sql, 2200 caracteres). */
+    /** Archivar publicaciones real (0076_archive_posts.sql), comparado
+     * con Instagram/Facebook: antes o se dejaba visible para siempre o se
+     * borraba para siempre, sin término medio -- `posts_write_own`
+     * (0002_rls.sql) ya es `for all`, así que archivar/restaurar ya
+     * estaba permitido a nivel de RLS, solo faltaba el botón y la
+     * columna. */
+    fun toggleArchive(post: Post) {
+        val isCurrentlyArchived = post.archivedAt != null
+        val newArchivedAt: String? = if (isCurrentlyArchived) null else java.time.Instant.now().toString()
+        _posts.value = _posts.value.map { if (it.id == post.id) it.copy(archivedAt = newArchivedAt) else it }
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("posts")
+                    .update({ set("archived_at", newArchivedAt) }) { filter { eq("id", post.id) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo actualizar el archivo."
+                load()
+            }
+        }
+    }
+
     fun editCaption(post: Post, newCaption: String) {
         if (newCaption.length > 2200) {
             _errorMessage.value = "El texto no puede tener más de 2200 caracteres."
@@ -115,12 +136,21 @@ fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
     // hechas CON un social -- 0051_post_social_tags.sql. Reutiliza la
     // misma lista de socials aceptados que NewPostSheet.kt ya usa para
     // etiquetar, para resolver el nombre real de la persona etiquetada.
-    var showOnlyTagged by remember { mutableStateOf(false) }
+    // 0 = "Todas", 1 = "Con tus socials", 2 = "Archivadas" -- las dos
+    // primeras excluyen las archivadas (mismo criterio que Instagram: el
+    // archivo es un sitio aparte, no una publicación más mezclada con el
+    // resto), la última solo las archivadas, ver
+    // MyPostsViewModel.toggleArchive().
+    var selectedTab by remember { mutableStateOf(0) }
     val socialsViewModel: SocialsListViewModel = viewModel()
     val socials by socialsViewModel.socials.collectAsState()
     LaunchedEffect(Unit) { socialsViewModel.load() }
     val socialNameById = remember(socials) { socials.associate { it.profileId to it.displayName } }
-    val visiblePosts = if (showOnlyTagged) posts.filter { it.taggedProfileId != null } else posts
+    val visiblePosts = when (selectedTab) {
+        1 -> posts.filter { it.archivedAt == null && it.taggedProfileId != null }
+        2 -> posts.filter { it.archivedAt != null }
+        else -> posts.filter { it.archivedAt == null }
+    }
     // Hallazgo real, mismo hueco ya cerrado en el feed y el chat: no
     // había forma de tocar la imagen para verla a tamaño completo.
     var fullScreenUrl by remember { mutableStateOf<String?>(null) }
@@ -147,24 +177,35 @@ fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
     ) {
         Text("Tus publicaciones", style = MaterialTheme.typography.headlineSmall)
         androidx.compose.material3.TabRow(
-            selectedTabIndex = if (showOnlyTagged) 1 else 0,
+            selectedTabIndex = selectedTab,
             modifier = Modifier.padding(top = 12.dp)
         ) {
             androidx.compose.material3.Tab(
-                selected = !showOnlyTagged,
-                onClick = { showOnlyTagged = false },
+                selected = selectedTab == 0,
+                onClick = { selectedTab = 0 },
                 text = { Text("Todas") }
             )
             androidx.compose.material3.Tab(
-                selected = showOnlyTagged,
-                onClick = { showOnlyTagged = true },
+                selected = selectedTab == 1,
+                onClick = { selectedTab = 1 },
                 text = { Text("Con tus socials") }
+            )
+            // Archivar publicaciones real (0076_archive_posts.sql),
+            // comparado con Instagram/Facebook.
+            androidx.compose.material3.Tab(
+                selected = selectedTab == 2,
+                onClick = { selectedTab = 2 },
+                text = { Text("Archivadas") }
             )
         }
         errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 12.dp)) }
         if (visiblePosts.isEmpty() && errorMessage == null) {
             Text(
-                if (showOnlyTagged) "Ninguna publicación etiquetada con un social todavía." else "Todavía no has publicado nada.",
+                when (selectedTab) {
+                    1 -> "Ninguna publicación etiquetada con un social todavía."
+                    2 -> "No tienes ninguna publicación archivada."
+                    else -> "Todavía no has publicado nada."
+                },
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 12.dp)
             )
@@ -213,6 +254,15 @@ fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
                                     },
                                     modifier = Modifier.padding(end = 8.dp)
                                 ) { Text("Editar") }
+                                // Archivar publicaciones real
+                                // (0076_archive_posts.sql), comparado con
+                                // Instagram/Facebook -- antes o se dejaba
+                                // visible para siempre o se borraba para
+                                // siempre, sin término medio.
+                                OutlinedButton(
+                                    onClick = { viewModel.toggleArchive(post) },
+                                    modifier = Modifier.padding(end = 8.dp)
+                                ) { Text(if (post.archivedAt != null) "Desarchivar" else "Archivar") }
                                 OutlinedButton(onClick = { viewModel.delete(post) }) { Text("Borrar") }
                             }
                         }

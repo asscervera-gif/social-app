@@ -68,7 +68,16 @@ final class HomeViewModel: ObservableObject {
                 .limit(30)
                 .execute()
                 .value
-            feed = allFeed.filter { !blockedIDs.contains($0.authorID) }
+            // Archivar publicaciones real (0076_archive_posts.sql),
+            // comparado con Instagram/Facebook: `posts_select` ya excluye
+            // una archivada para CUALQUIER OTRO usuario, pero el propio
+            // autor SIEMPRE la ve vía RLS (para poder gestionarla en "Tus
+            // publicaciones") -- sin filtrar aquí en cliente, el propio
+            // autor seguiría viendo su publicación archivada mezclada en
+            // su propio feed principal, justo lo que archivar debería
+            // evitar. Mismo fix ya construido en la versión Kotlin
+            // equivalente.
+            feed = allFeed.filter { !blockedIDs.contains($0.authorID) && $0.archivedAt == nil }
 
             let feedIDs = feed.map { $0.id }
             if !feedIDs.isEmpty {

@@ -94,16 +94,25 @@ class HomeViewModel : ViewModel() {
                 } catch (e: Exception) {
                     emptySet()
                 }
-                // Optimización: la tarjeta del feed solo usa estas 7 columnas
+                // Optimización: la tarjeta del feed solo usa estas 8 columnas
                 // de "posts", no filas completas (mismo patrón que
                 // MatchViewModel/DuelEntryPoint/AvisosViewModel).
+                //
+                // Archivar publicaciones real (0076_archive_posts.sql),
+                // comparado con Instagram/Facebook: `posts_select` ya
+                // excluye una archivada para CUALQUIER OTRO usuario, pero
+                // el propio autor SIEMPRE la ve vía RLS (para poder
+                // gestionarla en "Tus publicaciones") -- sin filtrar aquí
+                // en cliente, el propio autor seguiría viendo su
+                // publicación archivada mezclada en su propio feed
+                // principal, justo lo que archivar debería evitar.
                 _feed.value = SupabaseManager.client.from("posts")
-                    .select(columns = Columns.raw("id,author_id,media_url,caption,is_social_only,like_count,comment_count,created_at")) {
+                    .select(columns = Columns.raw("id,author_id,media_url,caption,is_social_only,like_count,comment_count,created_at,archived_at")) {
                         order("created_at", Order.DESCENDING)
                         limit(30)
                     }
                     .decodeList<Post>()
-                    .filter { it.authorId !in blockedIds }
+                    .filter { it.authorId !in blockedIds && it.archivedAt == null }
 
                 val feedIds = _feed.value.map { it.id }
                 if (feedIds.isNotEmpty()) {

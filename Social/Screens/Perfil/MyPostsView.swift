@@ -48,6 +48,30 @@ final class MyPostsViewModel: ObservableObject {
         }
     }
 
+    /// Archivar publicaciones real (0076_archive_posts.sql), comparado
+    /// con Instagram/Facebook: antes o se dejaba visible para siempre o
+    /// se borraba para siempre, sin término medio -- `posts_write_own`
+    /// (0002_rls.sql) ya es `for all`, así que archivar/restaurar ya
+    /// estaba permitido a nivel de RLS, solo faltaba el botón y la
+    /// columna. Equivalente de MyPostsViewModel.kt.toggleArchive().
+    func toggleArchive(_ post: Post) async {
+        let isCurrentlyArchived = post.archivedAt != nil
+        let newArchivedAt = isCurrentlyArchived ? nil : ISO8601DateFormatter().string(from: Date())
+        if let index = posts.firstIndex(where: { $0.id == post.id }) {
+            posts[index].archivedAt = newArchivedAt
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("posts")
+                .update(["archived_at": newArchivedAt])
+                .eq("id", value: post.id)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo actualizar el archivo."
+            await load()
+        }
+    }
+
     /// Hallazgo real, comparado con Instagram: no había forma de editar el
     /// caption de una publicación ya hecha, solo borrarla entera --
     /// `posts_write_own` (0002_rls.sql) ya es `for all`, así que editar la
@@ -87,11 +111,15 @@ struct MyPostsView: View {
     @StateObject private var socialsViewModel = SocialsListViewModel()
     // "Pubs. de socials" (PerfilView.swift) abre esta misma pantalla ya
     // filtrada en vez de duplicarla -- por defecto "Tus publicaciones"
-    // sigue mostrando todas.
-    @State private var showOnlyTagged: Bool
+    // sigue mostrando todas. Tercera pestaña "Archivadas"
+    // (0076_archive_posts.sql), comparado con Instagram/Facebook.
+    private enum PostsTab: Hashable {
+        case all, tagged, archived
+    }
+    @State private var selectedTab: PostsTab
 
     init(initialTaggedOnly: Bool = false) {
-        _showOnlyTagged = State(initialValue: initialTaggedOnly)
+        _selectedTab = State(initialValue: initialTaggedOnly ? .tagged : .all)
     }
     // Hallazgo real, mismo hueco ya cerrado en el feed y el chat: no
     // había forma de tocar la imagen para verla a tamaño completo.
@@ -101,8 +129,23 @@ struct MyPostsView: View {
     @State private var editingPost: Post?
     @State private var editedCaption = ""
 
+    // Las dos primeras excluyen las archivadas (mismo criterio que
+    // Instagram: el archivo es un sitio aparte, no una publicación más
+    // mezclada con el resto), la última solo las archivadas.
     private var visiblePosts: [Post] {
-        showOnlyTagged ? viewModel.posts.filter { $0.taggedProfileID != nil } : viewModel.posts
+        switch selectedTab {
+        case .all: return viewModel.posts.filter { $0.archivedAt == nil }
+        case .tagged: return viewModel.posts.filter { $0.archivedAt == nil && $0.taggedProfileID != nil }
+        case .archived: return viewModel.posts.filter { $0.archivedAt != nil }
+        }
+    }
+
+    private var emptyStateText: String {
+        switch selectedTab {
+        case .tagged: return "Ninguna publicación etiquetada con un social todavía."
+        case .archived: return "No tienes ninguna publicación archivada."
+        case .all: return "Todavía no has publicado nada."
+        }
     }
 
     private func taggedName(_ id: UUID) -> String {
@@ -111,9 +154,10 @@ struct MyPostsView: View {
 
     var body: some View {
         List {
-            Picker("", selection: $showOnlyTagged) {
-                Text("Todas").tag(false)
-                Text("Con tus socials").tag(true)
+            Picker("", selection: $selectedTab) {
+                Text("Todas").tag(PostsTab.all)
+                Text("Con tus socials").tag(PostsTab.tagged)
+                Text("Archivadas").tag(PostsTab.archived)
             }
             .pickerStyle(.segmented)
             .listRowSeparator(.hidden)
@@ -122,8 +166,7 @@ struct MyPostsView: View {
                 Text(error).font(.footnote).foregroundStyle(.red)
             }
             if visiblePosts.isEmpty {
-                Text(showOnlyTagged ? "Ninguna publicación etiquetada con un social todavía." : "Todavía no has publicado nada.")
-                    .foregroundStyle(.secondary)
+                Text(emptyStateText).foregroundStyle(.secondary)
             }
             ForEach(visiblePosts) { post in
                 VStack(alignment: .leading, spacing: 4) {
@@ -160,6 +203,14 @@ struct MyPostsView: View {
                         editedCaption = post.caption ?? ""
                     }
                     .tint(.blue)
+                    // Archivar publicaciones real
+                    // (0076_archive_posts.sql), comparado con Instagram/
+                    // Facebook -- antes o se dejaba visible para siempre o
+                    // se borraba para siempre, sin término medio.
+                    Button(post.archivedAt != nil ? "Desarchivar" : "Archivar") {
+                        Task { await viewModel.toggleArchive(post) }
+                    }
+                    .tint(.gray)
                 }
             }
         }

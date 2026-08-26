@@ -80,22 +80,27 @@ final class PerfilViewModel: ObservableObject {
         sections.first { $0.sectionKey == key }
     }
 
-    private struct MediaRow: Decodable { let media_url: String? }
+    private struct MediaRow: Decodable { let media_url: String?; let archived_at: String? }
 
     /// Sin un filtro "is not null" verificado en supabase-swift, se piden
     /// las últimas 20 y se filtra en cliente -- mismo criterio de no
     /// adivinar una llamada de API no comprobada ya aplicado en el resto
     /// de esta sesión. Equivalente de PerfilViewModel.kt (latestPostMediaUrl).
+    ///
+    /// Archivar publicaciones real (0076_archive_posts.sql), comparado
+    /// con Instagram/Facebook: una publicación archivada no debe seguir
+    /// asomando en la rotación de la cabecera del propio perfil, mismo
+    /// criterio ya aplicado al feed principal (HomeViewModel.swift).
     private func loadLatestPostMedia(userID: UUID) async {
         guard let rows: [MediaRow] = try? await SupabaseManager.shared.client
             .from("posts")
-            .select("media_url")
+            .select("media_url,archived_at")
             .eq("author_id", value: userID)
             .order("created_at", ascending: false)
             .limit(20)
             .execute()
             .value else { return }
-        latestPostMediaURL = rows.compactMap { $0.media_url }.first.flatMap(URL.init)
+        latestPostMediaURL = rows.filter { $0.archived_at == nil }.compactMap { $0.media_url }.first.flatMap(URL.init)
     }
 
     /// Hallazgo real: comparado con cualquier app grande, no había forma

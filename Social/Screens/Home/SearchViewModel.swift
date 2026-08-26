@@ -83,7 +83,13 @@ final class SearchViewModel: ObservableObject {
                 .limit(30)
                 .execute()
                 .value
-            postResults = matches.filter { !blockedIDs.contains($0.authorID) }
+            // Archivar publicaciones real (0076_archive_posts.sql),
+            // comparado con Instagram/Facebook: `posts_select` deja ver
+            // la propia publicación archivada al propio autor (para
+            // poder gestionarla en "Tus publicaciones"), pero no debería
+            // seguir apareciendo en resultados de búsqueda ni para él
+            // mismo -- mismo criterio ya aplicado al feed principal.
+            postResults = matches.filter { !blockedIDs.contains($0.authorID) && $0.archivedAt == nil }
         } catch {
             errorMessage = "No se pudo buscar."
         }

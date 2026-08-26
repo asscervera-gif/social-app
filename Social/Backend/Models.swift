@@ -77,6 +77,9 @@ struct Post: Codable, Identifiable {
     // etiqueta "con Marta"): no había forma de decir con quién se hizo una
     // publicación — 0051_post_social_tags.sql.
     var taggedProfileID: UUID?
+    // Archivar publicaciones real (0076_archive_posts.sql), comparado con
+    // Instagram/Facebook -- nil significa visible con normalidad.
+    var archivedAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -88,6 +91,7 @@ struct Post: Codable, Identifiable {
         case commentCount = "comment_count"
         case createdAt = "created_at"
         case taggedProfileID = "tagged_profile_id"
+        case archivedAt = "archived_at"
     }
 }
 
