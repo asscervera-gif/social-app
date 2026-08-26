@@ -41,6 +41,16 @@ struct GroupChatView: View {
             if let error = viewModel.errorMessage {
                 Text(error).font(.footnote).foregroundStyle(.red)
             }
+            // "En línea" real en un chat de grupo, comparado con
+            // WhatsApp/Messenger -- ver GroupChatViewModel.swift para el
+            // hallazgo completo. Mismo texto que ChatView.swift (1:1)
+            // pero con el conteo, ya que aquí puede haber varios a la vez.
+            if !viewModel.onlineMemberIDs.isEmpty {
+                Text("🟢 \(viewModel.onlineMemberIDs.count) en línea")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+            }
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 6) {
@@ -69,6 +79,22 @@ struct GroupChatView: View {
                         withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
                     }
                 }
+            }
+            // "Escribiendo…" real en un chat de grupo, comparado con
+            // WhatsApp/Messenger -- resuelve los IDs a nombres usando la
+            // lista de miembros ya cargada, y a diferencia del chat 1:1
+            // puede haber varias personas escribiendo a la vez.
+            let typingNames = viewModel.typingMemberIDs
+                .filter { $0 != myID }
+                .compactMap { id in viewModel.members.first { $0.id == id }?.displayName }
+            if !typingNames.isEmpty {
+                Text(typingNames.count == 1
+                    ? "\(typingNames[0]) está escribiendo…"
+                    : "\(typingNames[0]) y \(typingNames.count - 1) más están escribiendo…")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
             }
             HStack {
                 // Fotos reales en un chat de grupo, comparado con

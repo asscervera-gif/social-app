@@ -10,8 +10,11 @@ import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
 import io.github.jan.supabase.realtime.PostgresAction
 import io.github.jan.supabase.realtime.RealtimeChannel
+import io.github.jan.supabase.realtime.broadcast
+import io.github.jan.supabase.realtime.broadcastFlow
 import io.github.jan.supabase.realtime.channel
 import io.github.jan.supabase.realtime.postgresChangeFlow
+import io.github.jan.supabase.realtime.presenceChangeFlow
 import io.github.jan.supabase.realtime.realtime
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -81,6 +84,42 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
+    // "En línea" y "escribiendo…" reales en un chat de grupo, comparado
+    // con WhatsApp/Messenger -- mismo mecanismo exacto que
+    // ChatViewModel.kt (chat 1:1): Presence/Broadcast de Realtime sobre el
+    // mismo canal ya abierto para mensajes, sin tabla ni columna nueva. A
+    // diferencia del 1:1 (un único "¿está en línea?"), aquí hace falta un
+    // CONJUNTO de miembros -- puede haber varios a la vez viendo el grupo
+    // o escribiendo.
+    private val _onlineMemberIds = MutableStateFlow<Set<String>>(emptySet())
+    val onlineMemberIds: StateFlow<Set<String>> = _onlineMemberIds.asStateFlow()
+
+    private val _typingMemberIds = MutableStateFlow<Set<String>>(emptySet())
+    val typingMemberIds: StateFlow<Set<String>> = _typingMemberIds.asStateFlow()
+    private val typingClearJobs = mutableMapOf<String, kotlinx.coroutines.Job>()
+    private var typingSendJob: kotlinx.coroutines.Job? = null
+
+    @Serializable
+    private data class PresenceState(@SerialName("user_id") val userId: String)
+
+    @Serializable
+    private data class TypingEvent(@SerialName("user_id") val userId: String)
+
+    /** Llamado desde GroupChatScreen en cada pulsación del campo de texto
+     * -- mismo debounce de 300ms ya usado en ChatViewModel.kt.notifyTyping(). */
+    fun notifyTyping() {
+        typingSendJob?.cancel()
+        typingSendJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(300)
+            val myId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+            try {
+                channel?.broadcast("typing", TypingEvent(myId))
+            } catch (e: Exception) {
+                // Sin conexión: no bloquear la escritura por esto.
+            }
+        }
+    }
 
     private var channel: RealtimeChannel? = null
 
@@ -276,6 +315,47 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
         }.onEach { delete ->
             val id = delete.oldRecord["id"]?.toString()?.trim('"') ?: return@onEach
             _reactions.update { map -> map.mapValues { (_, list) -> list.filter { it.id != id } } }
+        }.launchIn(viewModelScope)
+
+        // "En línea" real -- mismo patrón exacto que ChatViewModel.kt
+        // (chat 1:1), aquí como un CONJUNTO de miembros (puede haber
+        // varios viendo el grupo a la vez).
+        ch.presenceChangeFlow().onEach { action ->
+            fun decode(p: io.github.jan.supabase.realtime.Presence) = try {
+                Json.decodeFromJsonElement(PresenceState.serializer(), p.state).userId
+            } catch (e: Exception) {
+                null
+            }
+            val joined = action.joins.values.mapNotNull(::decode)
+            val left = action.leaves.values.mapNotNull(::decode)
+            _onlineMemberIds.update { current -> (current + joined) - left.toSet() }
+        }.launchIn(viewModelScope)
+
+        viewModelScope.launch {
+            val myId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+            try {
+                ch.track(Json.encodeToJsonElement(PresenceState.serializer(), PresenceState(myId)).let {
+                    it as kotlinx.serialization.json.JsonObject
+                })
+            } catch (e: Exception) {
+                // Sin presencia no se rompe el resto del chat.
+            }
+        }
+
+        // "Escribiendo…" real -- mismo patrón exacto que ChatViewModel.kt
+        // (chat 1:1): sin evento explícito de "dejé de escribir" (WhatsApp
+        // hace lo mismo), se apaga sola si esa persona no manda otro
+        // broadcast en 3s -- un job de apagado POR PERSONA, a diferencia
+        // del 1:1 que solo necesita uno.
+        ch.broadcastFlow<TypingEvent>("typing").onEach { event ->
+            val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
+            if (event.userId == myId) return@onEach
+            _typingMemberIds.update { it + event.userId }
+            typingClearJobs[event.userId]?.cancel()
+            typingClearJobs[event.userId] = viewModelScope.launch {
+                kotlinx.coroutines.delay(3000)
+                _typingMemberIds.update { it - event.userId }
+            }
         }.launchIn(viewModelScope)
 
         viewModelScope.launch { ch.subscribe() }

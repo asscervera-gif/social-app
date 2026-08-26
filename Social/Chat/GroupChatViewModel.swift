@@ -67,6 +67,17 @@ final class GroupChatViewModel: ObservableObject {
         let user_id: UUID
     }
 
+    // "En línea" y "escribiendo…" reales en un chat de grupo, comparado
+    // con WhatsApp/Messenger -- mismo mecanismo exacto que
+    // ChatViewModel.swift (chat 1:1): Presence/Broadcast de Realtime
+    // sobre el mismo canal ya abierto para mensajes. A diferencia del
+    // 1:1 (un único booleano), aquí hace falta un CONJUNTO de miembros
+    // -- puede haber varios a la vez viendo el grupo o escribiendo.
+    @Published var onlineMemberIDs = Set<UUID>()
+    @Published var typingMemberIDs = Set<UUID>()
+    private var typingClearTasks: [UUID: Task<Void, Never>] = [:]
+    private var typingSendTask: Task<Void, Never>?
+
     private var channel: RealtimeChannelV2?
 
     init(groupChatID: UUID) {
@@ -186,6 +197,18 @@ final class GroupChatViewModel: ObservableObject {
         }
     }
 
+    /// Llamado desde GroupChatView en cada pulsación del campo de texto --
+    /// mismo debounce de 300ms ya usado en ChatViewModel.swift.notifyTyping().
+    func notifyTyping() {
+        typingSendTask?.cancel()
+        typingSendTask = Task {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled, let channel else { return }
+            guard let myID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+            try? await channel.broadcast(event: "typing", message: ["user_id": .string(myID.uuidString)])
+        }
+    }
+
     private func loadMembers() async {
         struct MemberIDRow: Decodable { let user_id: UUID }
         guard let memberRows: [MemberIDRow] = try? await SupabaseManager.shared.client
@@ -278,6 +301,48 @@ final class GroupChatViewModel: ObservableObject {
                     for key in reactions.keys {
                         reactions[key]?.removeAll { $0.id == id }
                     }
+                }
+            }
+        }
+
+        // "En línea" real -- mismo patrón exacto que ChatViewModel.swift
+        // (chat 1:1), aquí como un CONJUNTO de miembros (puede haber
+        // varios viendo el grupo a la vez). Firma real verificada en CI
+        // (ver ChatViewModel.swift): `track(state: JSONObject) async` y
+        // `PresenceActionV2.joins/.leaves` como `[String: PresenceV2]`.
+        Task {
+            guard let myID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+            await ch.track(state: ["user_id": .string(myID.uuidString)])
+        }
+        let presenceEvents = ch.presenceChange()
+        Task {
+            for await action in presenceEvents {
+                func decode(_ presences: [String: PresenceV2]) -> [UUID] {
+                    presences.values.compactMap { $0.state["user_id"]?.stringValue }.compactMap { UUID(uuidString: $0) }
+                }
+                decode(action.joins).forEach { onlineMemberIDs.insert($0) }
+                decode(action.leaves).forEach { onlineMemberIDs.remove($0) }
+            }
+        }
+
+        // "Escribiendo…" real -- mismo patrón exacto que
+        // ChatViewModel.swift (chat 1:1): sin evento explícito de "dejé
+        // de escribir" (WhatsApp hace lo mismo), se apaga sola si esa
+        // persona no manda otro broadcast en 3s -- una tarea de apagado
+        // POR PERSONA, a diferencia del 1:1 que solo necesita una.
+        let typingEvents = ch.broadcastStream(event: "typing")
+        Task {
+            let myID = try? await SupabaseManager.shared.client.auth.session.user.id
+            for await message in typingEvents {
+                guard let senderIDString = message["user_id"]?.stringValue,
+                      let senderID = UUID(uuidString: senderIDString),
+                      senderID != myID else { continue }
+                typingMemberIDs.insert(senderID)
+                typingClearTasks[senderID]?.cancel()
+                typingClearTasks[senderID] = Task {
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    guard !Task.isCancelled else { return }
+                    typingMemberIDs.remove(senderID)
                 }
             }
         }

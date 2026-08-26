@@ -59,6 +59,12 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
     val reactions by viewModel.reactions.collectAsState()
     val reads by viewModel.reads.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    // "En línea" y "escribiendo…" reales en un chat de grupo, comparado
+    // con WhatsApp/Messenger -- ver GroupChatViewModel.kt para el
+    // hallazgo completo (conjuntos en vez de un único booleano, a
+    // diferencia del chat 1:1).
+    val onlineMemberIds by viewModel.onlineMemberIds.collectAsState()
+    val typingMemberIds by viewModel.typingMemberIds.collectAsState()
     var draft by remember { mutableStateOf("") }
     var showMembers by remember { mutableStateOf(false) }
     val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
@@ -99,6 +105,18 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(8.dp)) }
+            // "En línea" real en un chat de grupo, comparado con
+            // WhatsApp/Messenger -- mismo texto que ChatScreen.kt (1:1)
+            // pero con el conteo, ya que aquí puede haber varios a la vez.
+            if (onlineMemberIds.isNotEmpty()) {
+                Text(
+                    "🟢 ${onlineMemberIds.size} en línea",
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             LazyColumn(
                 state = listState,
                 modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
@@ -206,6 +224,25 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
                     }
                 }
             }
+            // "Escribiendo…" real en un chat de grupo, comparado con
+            // WhatsApp/Messenger -- resuelve los IDs a nombres usando la
+            // lista de miembros ya cargada, y a diferencia del chat 1:1
+            // puede haber varias personas escribiendo a la vez.
+            val typingNames = typingMemberIds
+                .filter { it != myId }
+                .mapNotNull { id -> members.firstOrNull { it.id == id }?.displayName }
+            if (typingNames.isNotEmpty()) {
+                val text = when (typingNames.size) {
+                    1 -> "${typingNames[0]} está escribiendo…"
+                    else -> "${typingNames[0]} y ${typingNames.size - 1} más están escribiendo…"
+                }
+                Text(
+                    text,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                )
+            }
             Row(modifier = Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 // Fotos reales en un chat de grupo, comparado con
                 // WhatsApp/Instagram/Messenger/Facebook -- mismo patrón
@@ -231,7 +268,7 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
                 }
                 OutlinedTextField(
                     value = draft,
-                    onValueChange = { draft = it },
+                    onValueChange = { draft = it; viewModel.notifyTyping() },
                     modifier = Modifier.weight(1f),
                     placeholder = { Text(if (isRecording) "Grabando…" else "Mensaje…") },
                     enabled = !isRecording
