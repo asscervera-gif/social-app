@@ -44,6 +44,12 @@ final class GroupChatViewModel: ObservableObject {
     @Published var members: [Profile] = []
     @Published var errorMessage: String?
 
+    // Nombre editable y foto de grupo real (0063_group_chat_photo.sql),
+    // comparado con WhatsApp/Messenger/Telegram -- `group_chats_update_own`
+    // (0057_group_chats.sql) ya dejaba al creador renombrar/poner foto,
+    // pero ningún cliente lo llamaba nunca ni cargaba esta fila.
+    @Published var groupChat: GroupChat?
+
     // Reacciones a mensajes de grupo (0060_group_message_reactions.sql),
     // comparado con WhatsApp/Messenger/Instagram -- mismo patrón exacto
     // que ChatViewModel.swift (chat 1:1).
@@ -93,6 +99,7 @@ final class GroupChatViewModel: ObservableObject {
                 .order("created_at", ascending: true)
                 .execute()
                 .value
+            await loadGroupChat()
             await loadMembers()
             await loadReactions()
             await loadReads()
@@ -206,6 +213,57 @@ final class GroupChatViewModel: ObservableObject {
             guard !Task.isCancelled, let channel else { return }
             guard let myID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
             try? await channel.broadcast(event: "typing", message: ["user_id": .string(myID.uuidString)])
+        }
+    }
+
+    private func loadGroupChat() async {
+        groupChat = try? await SupabaseManager.shared.client
+            .from("group_chats")
+            .select()
+            .eq("id", value: groupChatID)
+            .single()
+            .execute()
+            .value
+    }
+
+    /// Renombrar el grupo real, comparado con WhatsApp/Messenger/Telegram
+    /// -- RLS (`group_chats_update_own`, 0057_group_chats.sql) ya limitaba
+    /// esto al creador; aquí se intenta igual para cualquiera y se deja
+    /// que el servidor decida (0 filas afectadas y sin error si no eres el
+    /// creador, mismo comportamiento ya confirmado en test_rls.mjs).
+    /// Diccionario con solo la columna a cambiar (mismo patrón ya usado en
+    /// ChatViewModel.swift.markMessagesRead()/toggleMute() etc.), no un
+    /// struct con campos opcionales -- evita el riesgo real de que un
+    /// campo no tocado se codifique como `null` y borre la foto/nombre.
+    func renameGroup(_ newName: String) async {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 100 else { return }
+        do {
+            try await SupabaseManager.shared.client
+                .from("group_chats")
+                .update(["name": trimmed])
+                .eq("id", value: groupChatID)
+                .execute()
+            groupChat?.name = trimmed
+        } catch {
+            errorMessage = "No se pudo renombrar el grupo."
+        }
+    }
+
+    /// Foto de grupo real -- reutiliza tal cual `StorageUploader.uploadImage`
+    /// ya construido para fotos de chat, sin infraestructura nueva.
+    func updatePhoto(imageData: Data) async {
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        do {
+            let url = try await StorageUploader.uploadImage(data: imageData, fileExtension: "jpg", userID: userID)
+            try await SupabaseManager.shared.client
+                .from("group_chats")
+                .update(["photo_url": url])
+                .eq("id", value: groupChatID)
+                .execute()
+            groupChat?.photoURL = url
+        } catch {
+            errorMessage = "No se pudo cambiar la foto del grupo."
         }
     }
 

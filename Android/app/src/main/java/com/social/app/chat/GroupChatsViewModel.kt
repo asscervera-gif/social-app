@@ -20,7 +20,10 @@ data class GroupChat(
     val id: String,
     val name: String,
     @SerialName("created_by") val createdBy: String,
-    @SerialName("created_at") val createdAt: String = ""
+    @SerialName("created_at") val createdAt: String = "",
+    // Nombre editable y foto de grupo real (0063_group_chat_photo.sql),
+    // comparado con WhatsApp/Messenger/Telegram.
+    @SerialName("photo_url") val photoUrl: String? = null
 )
 
 /**
@@ -54,7 +57,7 @@ class GroupChatsViewModel : ViewModel() {
             _isLoading.value = true
             try {
                 _groups.value = SupabaseManager.client.from("group_chats")
-                    .select(columns = Columns.raw("id,name,created_by,created_at")) {
+                    .select(columns = Columns.raw("id,name,created_by,created_at,photo_url")) {
                         order("created_at", Order.DESCENDING)
                     }
                     .decodeList<GroupChat>()

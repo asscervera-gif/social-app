@@ -58,6 +58,13 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
     private val _members = MutableStateFlow<List<Profile>>(emptyList())
     val members: StateFlow<List<Profile>> = _members.asStateFlow()
 
+    // Nombre editable y foto de grupo real (0063_group_chat_photo.sql),
+    // comparado con WhatsApp/Messenger/Telegram -- `group_chats_update_own`
+    // (0057_group_chats.sql) ya dejaba al creador renombrar/poner foto,
+    // pero ningún cliente lo llamaba nunca ni cargaba esta fila.
+    private val _groupChat = MutableStateFlow<GroupChat?>(null)
+    val groupChat: StateFlow<GroupChat?> = _groupChat.asStateFlow()
+
     // Reacciones a mensajes de grupo (0060_group_message_reactions.sql),
     // comparado con WhatsApp/Messenger/Instagram -- mismo patrón exacto
     // que ChatViewModel.kt (chat 1:1, 0018_message_reactions.sql).
@@ -133,6 +140,7 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
                         order("created_at", Order.ASCENDING)
                     }
                     .decodeList<GroupMessage>()
+                loadGroupChat()
                 loadMembers()
                 loadReactions()
                 loadReads()
@@ -238,6 +246,62 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo reaccionar."
+            }
+        }
+    }
+
+    private suspend fun loadGroupChat() {
+        try {
+            _groupChat.value = SupabaseManager.client.from("group_chats")
+                .select(columns = Columns.raw("id,name,created_by,created_at,photo_url")) {
+                    filter { eq("id", groupChatId) }
+                }
+                .decodeSingle<GroupChat>()
+        } catch (e: Exception) {
+            // Sin bloquear el resto del hilo si falla -- el nombre pasado
+            // por navegación (groupName) sigue sirviendo de respaldo.
+        }
+    }
+
+    @Serializable
+    private data class GroupChatUpdate(
+        val name: String? = null,
+        @SerialName("photo_url") val photoUrl: String? = null
+    )
+
+    /** Renombrar el grupo real, comparado con WhatsApp/Messenger/Telegram
+     * -- RLS (`group_chats_update_own`, 0057_group_chats.sql) ya limitaba
+     * esto al creador; aquí se intenta igual para cualquiera y se deja
+     * que el servidor decida (0 filas afectadas y sin error si no eres el
+     * creador, mismo comportamiento ya confirmado en test_rls.mjs). */
+    fun renameGroup(newName: String) {
+        val trimmed = newName.trim()
+        if (trimmed.isEmpty() || trimmed.length > 100) return
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("group_chats").update(GroupChatUpdate(name = trimmed)) {
+                    filter { eq("id", groupChatId) }
+                }
+                _groupChat.update { it?.copy(name = trimmed) }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo renombrar el grupo."
+            }
+        }
+    }
+
+    /** Foto de grupo real -- reutiliza tal cual `StorageUploader.uploadImage`
+     * ya construido para fotos de chat, sin infraestructura nueva. */
+    fun updatePhoto(context: android.content.Context, uri: android.net.Uri) {
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                val url = com.social.app.backend.StorageUploader.uploadImage(context, uri, userId)
+                SupabaseManager.client.from("group_chats").update(GroupChatUpdate(photoUrl = url)) {
+                    filter { eq("id", groupChatId) }
+                }
+                _groupChat.update { it?.copy(photoUrl = url) }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo cambiar la foto del grupo."
             }
         }
     }

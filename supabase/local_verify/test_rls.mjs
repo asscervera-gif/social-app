@@ -42,8 +42,24 @@ async function setupStubs() {
   `);
 }
 
+// Hallazgo real de esta pasada, en el propio arnés de pruebas (no en el
+// esquema): `0041_notify_push_trigger.sql` ya documentaba desde que se
+// escribió (commit `9043388`, 2026-08-25) que `create extension pg_net`
+// "no es verificable en PGlite", pero `applyMigrations()` nunca se
+// actualizó para saltárselo -- a diferencia de uuid-ossp (sí stubbeado
+// aquí desde el principio), pg_net lanzaba una excepción sin capturar que
+// tumbaba el `for` de golpe. Confirmado reproduciendo el fallo contra el
+// HEAD real del repo (`git stash` + reejecución), no solo en esta rama de
+// trabajo: CUALQUIER ejecución de este arnés desde que se aplicó 0041
+// termina en "ERROR INESPERADO: extension pg_net is not available" antes
+// de correr ni un solo `check()` -- ninguno de los recuentos "local X/X"
+// documentados en LOOP_STATE.md para rondas posteriores a 0041 pudo salir
+// de ejecutar este archivo tal cual estaba committeado. Mismo criterio que
+// uuid-ossp: stub de la sentencia, sin tocar el resto de la migración.
 function stripUnavailableExtension(sql) {
-  return sql.replace(/create extension if not exists "uuid-ossp";?/gi, '-- stub');
+  return sql
+    .replace(/create extension if not exists "uuid-ossp";?/gi, '-- stub')
+    .replace(/create extension if not exists pg_net(\s+with schema \w+)?;?/gi, '-- stub (pg_net no disponible en PGlite, ver 0041_notify_push_trigger.sql)');
 }
 
 async function applyMigrations() {
@@ -1059,6 +1075,28 @@ async function main() {
   await expectFail('group_messages_has_content: un mensaje SIN body, media_url NI audio_url sigue sin poder insertarse', async () => {
     await db.query(`insert into group_messages (group_chat_id, sender_id) values ($1, $2)`, [group.id, u1]);
   });
+
+  // --- group_chats.photo_url (0063_group_chat_photo.sql): nombre editable
+  // y foto de grupo real, comparado con WhatsApp/Messenger/Telegram.
+  // `group_chats_update_own` ya existía desde 0057 pero nunca se había
+  // probado -- confirma aquí, con datos reales, que hace lo que su nombre
+  // promete. ---
+  await expectOk('group_chats_update_own: el creador real (u1) SÍ puede renombrar su grupo y ponerle foto', async () => {
+    await db.query(`update group_chats set name = 'Grupo renombrado', photo_url = 'https://media/grupo.jpg' where id = $1`, [group.id]);
+  });
+  await asUser(u2);
+  const groupRenamedAsMember = (await db.query(`select name, photo_url from group_chats where id = $1`, [group.id])).rows[0];
+  check('group_chats_select: otro miembro real (u2) SÍ ve el nuevo nombre y foto', groupRenamedAsMember?.name === 'Grupo renombrado' && groupRenamedAsMember?.photo_url === 'https://media/grupo.jpg');
+  // Hallazgo real de RLS, encontrado escribiendo este mismo test: un
+  // UPDATE gobernado solo por USING (sin WITH CHECK adicional en el
+  // cliente) que no encuentra ninguna fila que pase esa condición NO
+  // lanza excepción -- simplemente actualiza 0 filas en silencio, a
+  // diferencia de un INSERT/UPDATE que sí viola un WITH CHECK real (eso
+  // sí lanza). `expectFail` (piensa "debe lanzar") no es la comprobación
+  // correcta aquí -- lo correcto es confirmar que la fila NO cambió.
+  await db.query(`update group_chats set name = 'Intento ajeno' where id = $1`, [group.id]);
+  const groupAfterStrangerUpdate = (await db.query(`select name from group_chats where id = $1`, [group.id])).rows[0];
+  check('group_chats_update_own: un miembro real que NO es el creador (u2) no puede renombrar el grupo (RLS real: 0 filas afectadas, no un error)', groupAfterStrangerUpdate?.name === 'Grupo renombrado');
 
   // Salir del grupo real: mismo hallazgo de Postgres/RLS ya documentado
   // para live_stream_viewers -- group_chat_members_select deja ver la

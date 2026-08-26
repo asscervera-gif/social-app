@@ -25,11 +25,15 @@ struct GroupChat: Codable, Identifiable {
     var name: String
     let createdBy: UUID
     var createdAt: String
+    // Nombre editable y foto de grupo real (0063_group_chat_photo.sql),
+    // comparado con WhatsApp/Messenger/Telegram.
+    var photoURL: String?
 
     enum CodingKeys: String, CodingKey {
         case id, name
         case createdBy = "created_by"
         case createdAt = "created_at"
+        case photoURL = "photo_url"
     }
 }
 
@@ -84,7 +88,7 @@ final class GroupChatsViewModel: ObservableObject {
                     .execute()
             }
             AnalyticsManager.track("group_chat_created")
-            return GroupChat(id: groupID, name: trimmed, createdBy: userID, createdAt: "")
+            return GroupChat(id: groupID, name: trimmed, createdBy: userID, createdAt: "", photoURL: nil)
         } catch {
             errorMessage = "No se pudo crear el grupo."
             return nil

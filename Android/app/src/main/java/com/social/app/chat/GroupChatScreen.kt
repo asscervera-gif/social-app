@@ -65,6 +65,10 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
     // diferencia del chat 1:1).
     val onlineMemberIds by viewModel.onlineMemberIds.collectAsState()
     val typingMemberIds by viewModel.typingMemberIds.collectAsState()
+    // Nombre editable y foto de grupo real, comparado con WhatsApp/
+    // Messenger/Telegram -- ver GroupChatViewModel.kt para el hallazgo
+    // completo (RLS ya existía desde 0057, solo faltaba cliente).
+    val groupChat by viewModel.groupChat.collectAsState()
     var draft by remember { mutableStateOf("") }
     var showMembers by remember { mutableStateOf(false) }
     val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
@@ -295,6 +299,8 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
         MembersSheet(
             groupChatViewModel = viewModel,
             members = members,
+            groupChat = groupChat,
+            myId = myId,
             onDismiss = { showMembers = false },
             onLeave = {
                 showMembers = false
@@ -309,6 +315,8 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
 private fun MembersSheet(
     groupChatViewModel: GroupChatViewModel,
     members: List<com.social.app.backend.model.Profile>,
+    groupChat: GroupChat?,
+    myId: String?,
     onDismiss: () -> Unit,
     onLeave: () -> Unit
 ) {
@@ -318,9 +326,53 @@ private fun MembersSheet(
     val socials by socialsViewModel.socials.collectAsState()
     LaunchedEffect(Unit) { socialsViewModel.load() }
 
+    // Nombre editable y foto de grupo real, comparado con WhatsApp/
+    // Messenger/Telegram -- solo el creador puede tocarlos (RLS
+    // `group_chats_update_own`, 0057_group_chats.sql, mismo rol de
+    // "admin" que esas apps sin construir un sistema de roles nuevo).
+    val isCreator = groupChat != null && groupChat.createdBy == myId
+    var editingName by remember { mutableStateOf(false) }
+    var nameDraft by remember(groupChat?.name) { mutableStateOf(groupChat?.name.orEmpty()) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val pickGroupPhoto = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri -> uri?.let { groupChatViewModel.updatePhoto(context, it) } }
+
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(modifier = Modifier.padding(20.dp)) {
-            Text("Miembros del grupo", style = MaterialTheme.typography.titleLarge)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.foundation.Image(
+                    painter = coil.compose.rememberAsyncImagePainter(groupChat?.photoUrl),
+                    contentDescription = null,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .let { if (isCreator) it.clickable { pickGroupPhoto.launch("image/*") } else it }
+                )
+                if (editingName) {
+                    OutlinedTextField(
+                        value = nameDraft,
+                        onValueChange = { nameDraft = it },
+                        modifier = Modifier.padding(start = 12.dp).weight(1f),
+                        singleLine = true
+                    )
+                    TextButton(onClick = {
+                        groupChatViewModel.renameGroup(nameDraft)
+                        editingName = false
+                    }) { Text("Guardar") }
+                } else {
+                    Text(
+                        groupChat?.name ?: "Miembros del grupo",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.padding(start = 12.dp).weight(1f)
+                    )
+                    if (isCreator) {
+                        TextButton(onClick = { editingName = true }) { Text("✏") }
+                    }
+                }
+            }
             members.forEach { member ->
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 6.dp)) {
                     com.social.app.avatar.AvatarView(config = member.avatarConfig ?: emptyMap(), size = 32.dp)

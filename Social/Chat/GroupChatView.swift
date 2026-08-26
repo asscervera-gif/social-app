@@ -150,7 +150,7 @@ struct GroupChatView: View {
             myID = try? await SupabaseManager.shared.client.auth.session.user.id
         }
         .sheet(isPresented: $showMembers) {
-            GroupMembersView(viewModel: viewModel) {
+            GroupMembersView(viewModel: viewModel, myID: myID) {
                 showMembers = false
                 Task {
                     if await viewModel.leaveGroup() {
@@ -175,13 +175,66 @@ struct GroupChatView: View {
 
 private struct GroupMembersView: View {
     @ObservedObject var viewModel: GroupChatViewModel
+    let myID: UUID?
     let onLeave: () -> Void
     @State private var showAddPicker = false
     @StateObject private var socialsViewModel = SocialsListViewModel()
+    // Nombre editable y foto de grupo real, comparado con WhatsApp/
+    // Messenger/Telegram -- solo el creador puede tocarlos (RLS
+    // `group_chats_update_own`, 0057_group_chats.sql, mismo rol de
+    // "admin" que esas apps sin construir un sistema de roles nuevo).
+    @State private var editingName = false
+    @State private var nameDraft = ""
+    @State private var selectedGroupPhoto: PhotosPickerItem?
+
+    private var isCreator: Bool { viewModel.groupChat?.createdBy != nil && viewModel.groupChat?.createdBy == myID }
 
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    HStack {
+                        PhotosPicker(selection: $selectedGroupPhoto, matching: .images) {
+                            if let photoURLString = viewModel.groupChat?.photoURL, let photoURL = URL(string: photoURLString) {
+                                AsyncImage(url: photoURL) { image in
+                                    image.resizable().scaledToFill()
+                                } placeholder: {
+                                    ProgressView()
+                                }
+                                .frame(width: 48, height: 48)
+                                .clipShape(Circle())
+                            } else {
+                                Circle().fill(Color(.systemGray5)).frame(width: 48, height: 48).overlay(Text("👥"))
+                            }
+                        }
+                        .disabled(!isCreator)
+                        .onChange(of: selectedGroupPhoto) { newValue in
+                            Task {
+                                if let data = try? await newValue?.loadTransferable(type: Data.self) {
+                                    await viewModel.updatePhoto(imageData: data)
+                                }
+                            }
+                        }
+                        if editingName {
+                            TextField("Nombre del grupo", text: $nameDraft)
+                            Button("Guardar") {
+                                Task { await viewModel.renameGroup(nameDraft) }
+                                editingName = false
+                            }
+                        } else {
+                            Text(viewModel.groupChat?.name ?? "Grupo").font(.headline)
+                            if isCreator {
+                                Spacer()
+                                Button {
+                                    nameDraft = viewModel.groupChat?.name ?? ""
+                                    editingName = true
+                                } label: {
+                                    Image(systemName: "pencil")
+                                }
+                            }
+                        }
+                    }
+                }
                 Section("Miembros") {
                     ForEach(viewModel.members) { member in
                         HStack {

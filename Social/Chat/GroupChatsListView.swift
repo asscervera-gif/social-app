@@ -41,10 +41,23 @@ struct GroupChatsListView: View {
                     showOpenedGroup = true
                 } label: {
                     HStack {
-                        Circle()
-                            .fill(Color(.systemGray5))
+                        // Foto de grupo real (0063_group_chat_photo.sql),
+                        // comparado con WhatsApp/Messenger/Telegram --
+                        // "👥" de respaldo mientras no se le ponga foto.
+                        if let photoURLString = group.photoURL, let photoURL = URL(string: photoURLString) {
+                            AsyncImage(url: photoURL) { image in
+                                image.resizable().scaledToFill()
+                            } placeholder: {
+                                ProgressView()
+                            }
                             .frame(width: 44, height: 44)
-                            .overlay(Text("👥"))
+                            .clipShape(Circle())
+                        } else {
+                            Circle()
+                                .fill(Color(.systemGray5))
+                                .frame(width: 44, height: 44)
+                                .overlay(Text("👥"))
+                        }
                         Text(group.name).font(.subheadline.bold())
                     }
                 }

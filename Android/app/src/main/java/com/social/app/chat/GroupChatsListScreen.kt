@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -92,7 +93,19 @@ fun GroupChatsListScreen(viewModel: GroupChatsViewModel = viewModel(), onOpenGro
                                 .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("👥")
+                            // Foto de grupo real (0063_group_chat_photo.sql),
+                            // comparado con WhatsApp/Messenger/Telegram --
+                            // "👥" de respaldo mientras no se le ponga foto.
+                            if (group.photoUrl != null) {
+                                androidx.compose.foundation.Image(
+                                    painter = coil.compose.rememberAsyncImagePainter(group.photoUrl),
+                                    contentDescription = null,
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                    modifier = Modifier.size(44.dp).clip(CircleShape)
+                                )
+                            } else {
+                                Text("👥")
+                            }
                         }
                         Text(group.name, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(start = 12.dp))
                     }

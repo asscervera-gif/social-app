@@ -33,8 +33,14 @@ async function setupStubs() {
   `);
 }
 
+// Mismo hallazgo real documentado en test_rls.mjs: `create extension
+// pg_net` (0041_notify_push_trigger.sql) lanzaba una excepción sin
+// capturar que tumbaba applyMigrations() entero -- stubbeada aquí igual
+// que uuid-ossp.
 function stripUnavailableExtension(sql) {
-  return sql.replace(/create extension if not exists "uuid-ossp";?/gi, '-- stub');
+  return sql
+    .replace(/create extension if not exists "uuid-ossp";?/gi, '-- stub')
+    .replace(/create extension if not exists pg_net(\s+with schema \w+)?;?/gi, '-- stub (pg_net no disponible en PGlite, ver 0041_notify_push_trigger.sql)');
 }
 
 async function applyMigrations() {
