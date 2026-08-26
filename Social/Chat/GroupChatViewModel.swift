@@ -3,10 +3,10 @@
 //  Social
 //
 //  Hilo de un chat de grupo real -- mismo patrón que ChatViewModel.swift
-//  (1:1), simplificado a propósito: sin reacciones/voz/read-receipts
-//  todavía (`group_messages` no las tiene, hueco real documentado en
-//  0057_group_chats.sql, no fingido). Mensajes en vivo vía Realtime, mismo
-//  mecanismo ya usado en el chat 1:1. Equivalente de GroupChatViewModel.kt.
+//  (1:1). Reacciones reales (0060_group_message_reactions.sql) -- voz/
+//  read-receipts siguen pendientes, hueco real documentado. Mensajes en
+//  vivo vía Realtime, mismo mecanismo ya usado en el chat 1:1. Equivalente
+//  de GroupChatViewModel.kt.
 //
 
 import Foundation
@@ -38,6 +38,18 @@ final class GroupChatViewModel: ObservableObject {
     @Published var members: [Profile] = []
     @Published var errorMessage: String?
 
+    // Reacciones a mensajes de grupo (0060_group_message_reactions.sql),
+    // comparado con WhatsApp/Messenger/Instagram -- mismo patrón exacto
+    // que ChatViewModel.swift (chat 1:1).
+    @Published var reactions: [UUID: [GroupMessageReaction]] = [:]
+
+    struct GroupMessageReaction: Codable, Identifiable {
+        let id: UUID
+        let group_message_id: UUID
+        let user_id: UUID
+        let emoji: String
+    }
+
     private var channel: RealtimeChannelV2?
 
     init(groupChatID: UUID) {
@@ -54,10 +66,62 @@ final class GroupChatViewModel: ObservableObject {
                 .execute()
                 .value
             await loadMembers()
+            await loadReactions()
         } catch {
             errorMessage = "No se pudieron cargar los mensajes: \(error.localizedDescription)"
         }
         await subscribeToRealtime()
+    }
+
+    private func loadReactions() async {
+        do {
+            // Filtro directo por group_chat_id (desnormalizado en la
+            // tabla) -- mismo criterio que ChatViewModel.swift.loadReactions().
+            let rows: [GroupMessageReaction] = try await SupabaseManager.shared.client
+                .from("group_message_reactions")
+                .select()
+                .eq("group_chat_id", value: groupChatID)
+                .execute()
+                .value
+            reactions = Dictionary(grouping: rows, by: { $0.group_message_id })
+        } catch {
+            // Sin bloquear el resto del hilo si falla.
+        }
+    }
+
+    private struct NewGroupReaction: Encodable {
+        let group_message_id: UUID
+        let group_chat_id: UUID
+        let user_id: UUID
+        let emoji: String
+    }
+
+    /// Toggle: si ya reaccionaste con ese emoji a ese mensaje, lo quita; si
+    /// no, lo añade. Equivalente de ChatViewModel.swift.toggleReaction().
+    func toggleReaction(groupMessageID: UUID, emoji: String) async {
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        let existing = reactions[groupMessageID]?.first { $0.user_id == userID && $0.emoji == emoji }
+        do {
+            if let existing {
+                try await SupabaseManager.shared.client
+                    .from("group_message_reactions")
+                    .delete()
+                    .eq("id", value: existing.id)
+                    .execute()
+                reactions[groupMessageID]?.removeAll { $0.id == existing.id }
+            } else {
+                let inserted: GroupMessageReaction = try await SupabaseManager.shared.client
+                    .from("group_message_reactions")
+                    .insert(NewGroupReaction(group_message_id: groupMessageID, group_chat_id: groupChatID, user_id: userID, emoji: emoji))
+                    .select()
+                    .single()
+                    .execute()
+                    .value
+                reactions[groupMessageID, default: []].append(inserted)
+            }
+        } catch {
+            errorMessage = "No se pudo reaccionar."
+        }
     }
 
     private func loadMembers() async {
@@ -87,6 +151,17 @@ final class GroupChatViewModel: ObservableObject {
             InsertAction.self, schema: "public", table: "group_messages",
             filter: "group_chat_id=eq.\(groupChatID.uuidString)"
         )
+        // Reacciones en vivo -- inserciones y borrados de otros miembros
+        // del grupo, sin tener que recargar. Mismo patrón exacto que
+        // ChatViewModel.swift (chat 1:1).
+        let reactionInserts = ch.postgresChange(
+            InsertAction.self, schema: "public", table: "group_message_reactions",
+            filter: "group_chat_id=eq.\(groupChatID.uuidString)"
+        )
+        let reactionDeletes = ch.postgresChange(
+            DeleteAction.self, schema: "public", table: "group_message_reactions",
+            filter: "group_chat_id=eq.\(groupChatID.uuidString)"
+        )
         channel = ch
         await ch.subscribe()
 
@@ -95,6 +170,31 @@ final class GroupChatViewModel: ObservableObject {
                 if let message = try? change.decodeRecord(as: GroupMessage.self, decoder: JSONDecoder()) {
                     if !messages.contains(where: { $0.id == message.id }) {
                         messages.append(message)
+                    }
+                }
+            }
+        }
+
+        Task {
+            for await change in reactionInserts {
+                if let reaction = try? change.decodeRecord(as: GroupMessageReaction.self, decoder: JSONDecoder()) {
+                    if !(reactions[reaction.group_message_id]?.contains(where: { $0.id == reaction.id }) ?? false) {
+                        reactions[reaction.group_message_id, default: []].append(reaction)
+                    }
+                }
+            }
+        }
+
+        // Aviso de honestidad, mismo criterio ya documentado en
+        // ChatViewModel.swift: la forma exacta de `oldRecord` en un
+        // DeleteAction (acceso tipo diccionario a AnyJSON con
+        // `.stringValue`) está razonada por analogía, no verificada con
+        // compilador real -- si difiere, es el único sitio a ajustar.
+        Task {
+            for await change in reactionDeletes {
+                if let idString = change.oldRecord["id"]?.stringValue, let id = UUID(uuidString: idString) {
+                    for key in reactions.keys {
+                        reactions[key]?.removeAll { $0.id == id }
                     }
                 }
             }

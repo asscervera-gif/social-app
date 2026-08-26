@@ -1005,6 +1005,29 @@ async function main() {
   )).rows;
   check('notify_new_group_message: quien escribió (u2) NO se notifica a sí mismo', groupMessageNotifAsSender.length === 0);
 
+  // --- group_message_reactions (0060_group_message_reactions.sql):
+  // reaccionar a un mensaje de grupo, comparado con WhatsApp/Messenger/
+  // Instagram. Reutiliza el mensaje real "hola grupo" de u2 de más arriba. ---
+  await asSuperuser();
+  const groupMsg = (await db.query(`select id from group_messages where group_chat_id = $1 and body = 'hola grupo'`, [group.id])).rows[0];
+  await expectOk('group_message_reactions_insert: un miembro real (u1) SÍ puede reaccionar al mensaje de u2', async () => {
+    await asUser(u1);
+    await db.query(`insert into group_message_reactions (group_message_id, group_chat_id, user_id, emoji) values ($1, $2, $3, '❤')`, [groupMsg.id, group.id, u1]);
+  });
+  await asUser(u2);
+  const groupReactionsAsMember = (await db.query(`select emoji from group_message_reactions where group_message_id = $1`, [groupMsg.id])).rows;
+  check('group_message_reactions_select: otro miembro real (u2) SÍ ve la reacción real de u1', groupReactionsAsMember.length === 1 && groupReactionsAsMember[0].emoji === '❤');
+  await asUser(u3);
+  await expectFail('group_message_reactions_insert: alguien que NO es miembro (u3) no puede reaccionar', async () => {
+    await db.query(`insert into group_message_reactions (group_message_id, group_chat_id, user_id, emoji) values ($1, $2, $3, '👍')`, [groupMsg.id, group.id, u3]);
+  });
+  const groupReactionsAsStranger = (await db.query(`select id from group_message_reactions where group_message_id = $1`, [groupMsg.id])).rows;
+  check('group_message_reactions_select: alguien que NO es miembro (u3) NO ve las reacciones', groupReactionsAsStranger.length === 0);
+  await asUser(u1);
+  await expectOk('group_message_reactions_delete_own: u1 SÍ puede quitar su propia reacción', async () => {
+    await db.query(`delete from group_message_reactions where group_message_id = $1 and user_id = $2`, [groupMsg.id, u1]);
+  });
+
   // Salir del grupo real: mismo hallazgo de Postgres/RLS ya documentado
   // para live_stream_viewers -- group_chat_members_select deja ver la
   // propia fila (por reflexividad del exists de autopertenencia), así que

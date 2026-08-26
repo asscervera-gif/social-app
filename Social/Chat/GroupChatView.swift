@@ -4,9 +4,9 @@
 //
 //  Hilo de un chat de grupo real, comparado con WhatsApp/Instagram/
 //  Messenger/Facebook -- ver GroupChatViewModel.swift para el hallazgo
-//  completo. Mismo patrón visual que ChatView.swift (1:1), simplificado
-//  (sin reacciones/voz/read-receipts todavía, hueco real documentado).
-//  Equivalente de GroupChatScreen.kt.
+//  completo. Mismo patrón visual que ChatView.swift (1:1). Reacciones
+//  reales (0060_group_message_reactions.sql) -- voz/read-receipts siguen
+//  pendientes, hueco real documentado. Equivalente de GroupChatScreen.kt.
 //
 
 import SwiftUI
@@ -35,19 +35,16 @@ struct GroupChatView: View {
                         ForEach(viewModel.messages) { message in
                             let sender = viewModel.members.first { $0.id == message.senderID }
                             let isMine = message.senderID == myID
-                            VStack(alignment: isMine ? .trailing : .leading, spacing: 2) {
-                                if !isMine {
-                                    Text(sender?.displayName ?? "…")
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
+                            GroupMessageBubble(
+                                message: message,
+                                senderName: sender?.displayName,
+                                isMine: isMine,
+                                currentUserID: myID,
+                                reactions: viewModel.reactions[message.id] ?? [],
+                                onToggleReaction: { emoji in
+                                    Task { await viewModel.toggleReaction(groupMessageID: message.id, emoji: emoji) }
                                 }
-                                Text(message.body ?? "")
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
-                                    .background(isMine ? Color.blue.opacity(0.15) : Color(.systemGray5))
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                            }
-                            .frame(maxWidth: .infinity, alignment: isMine ? .trailing : .leading)
+                            )
                             .id(message.id)
                         }
                     }
@@ -136,5 +133,64 @@ private struct GroupMembersView: View {
             .navigationTitle("Miembros del grupo")
             .task { await socialsViewModel.load() }
         }
+    }
+}
+
+/// Burbuja de un mensaje de grupo con reacciones reales
+/// (0060_group_message_reactions.sql), comparado con WhatsApp/Messenger/
+/// Instagram -- mismo patrón exacto que la burbuja del chat 1:1 en
+/// ChatView.swift: tocar la burbuja abre/cierra un selector rápido de
+/// emojis. Vista propia (no inline en el ForEach) porque `showPicker`
+/// necesita ser un `@State` por mensaje.
+private struct GroupMessageBubble: View {
+    let message: GroupMessage
+    let senderName: String?
+    let isMine: Bool
+    let currentUserID: UUID?
+    let reactions: [GroupChatViewModel.GroupMessageReaction]
+    let onToggleReaction: (String) -> Void
+
+    @State private var showPicker = false
+    private let reactionEmojis = ["❤", "😂", "😮", "😢", "👍"]
+
+    var body: some View {
+        VStack(alignment: isMine ? .trailing : .leading, spacing: 2) {
+            if !isMine {
+                Text(senderName ?? "…")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Text(message.body ?? "")
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(isMine ? Color.blue.opacity(0.15) : Color(.systemGray5))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .onTapGesture { showPicker.toggle() }
+            if !reactions.isEmpty {
+                HStack(spacing: 4) {
+                    ForEach(Array(Dictionary(grouping: reactions, by: { $0.emoji })), id: \.key) { emoji, group in
+                        let iReacted = group.contains { $0.user_id == currentUserID }
+                        Text("\(emoji) \(group.count)")
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(iReacted ? Color.accentColor.opacity(0.25) : Color.gray.opacity(0.15))
+                            .clipShape(Capsule())
+                            .onTapGesture { onToggleReaction(emoji) }
+                    }
+                }
+            }
+            if showPicker {
+                HStack(spacing: 6) {
+                    ForEach(reactionEmojis, id: \.self) { emoji in
+                        Text(emoji).onTapGesture {
+                            onToggleReaction(emoji)
+                            showPicker = false
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: isMine ? .trailing : .leading)
     }
 }

@@ -42,8 +42,9 @@ import kotlinx.coroutines.launch
 /**
  * Hilo de un chat de grupo real, comparado con WhatsApp/Instagram/
  * Messenger/Facebook -- ver GroupChatViewModel.kt para el hallazgo
- * completo. Mismo patrón visual que ChatScreen.kt (1:1), simplificado
- * (sin reacciones/voz/read-receipts todavía, hueco real documentado).
+ * completo. Mismo patrón visual que ChatScreen.kt (1:1). Reacciones reales
+ * (0060_group_message_reactions.sql) -- voz/read-receipts siguen
+ * pendientes, hueco real documentado.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,6 +52,7 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
     val viewModel = remember(groupChatId) { GroupChatViewModel(groupChatId) }
     val messages by viewModel.messages.collectAsState()
     val members by viewModel.members.collectAsState()
+    val reactions by viewModel.reactions.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     var draft by remember { mutableStateOf("") }
     var showMembers by remember { mutableStateOf(false) }
@@ -79,6 +81,13 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
                 items(messages, key = { it.id }) { message ->
                     val sender = members.firstOrNull { it.id == message.senderId }
                     val isMine = message.senderId == myId
+                    // Reacciones reales a mensajes de grupo
+                    // (0060_group_message_reactions.sql), comparado con
+                    // WhatsApp/Messenger/Instagram -- mismo patrón exacto
+                    // que ChatScreen.kt (chat 1:1): tocar la burbuja abre/
+                    // cierra un selector rápido de emojis.
+                    var showPicker by remember(message.id) { mutableStateOf(false) }
+                    val reactionEmojis = listOf("❤", "😂", "😮", "😢", "👍")
                     Column(
                         horizontalAlignment = if (isMine) Alignment.End else Alignment.Start,
                         modifier = Modifier.fillMaxWidth()
@@ -98,8 +107,38 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
                                     if (isMine) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                                     else MaterialTheme.colorScheme.surfaceVariant
                                 )
+                                .clickable { showPicker = !showPicker }
                                 .padding(horizontal = 12.dp, vertical = 8.dp)
                         )
+                        val messageReactions = reactions[message.id].orEmpty()
+                        if (messageReactions.isNotEmpty()) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 2.dp)) {
+                                messageReactions.groupBy { it.emoji }.forEach { (emoji, group) ->
+                                    val iReacted = group.any { it.userId == myId }
+                                    androidx.compose.material3.Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (iReacted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                        modifier = Modifier.clickable { viewModel.toggleReaction(message.id, emoji) }
+                                    ) {
+                                        Text("$emoji ${group.size}", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
+                            }
+                        }
+                        if (showPicker) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {
+                                reactionEmojis.forEach { emoji ->
+                                    Text(
+                                        emoji,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        modifier = Modifier.clickable {
+                                            viewModel.toggleReaction(message.id, emoji)
+                                            showPicker = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }

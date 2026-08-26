@@ -37,10 +37,10 @@ data class GroupMessage(
 
 /**
  * Hilo de un chat de grupo real -- mismo patrón que ChatViewModel.kt
- * (1:1), simplificado a propósito: sin reacciones/voz/read-receipts
- * todavía (`group_messages` no las tiene, hueco real documentado en
- * 0057_group_chats.sql, no fingido). Mensajes en vivo vía Realtime, mismo
- * mecanismo ya usado en el chat 1:1 (`postgresChangeFlow`).
+ * (1:1). Reacciones reales (0060_group_message_reactions.sql) -- voz/
+ * read-receipts siguen pendientes, hueco real documentado. Mensajes en
+ * vivo vía Realtime, mismo mecanismo ya usado en el chat 1:1
+ * (`postgresChangeFlow`).
  */
 class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
 
@@ -49,6 +49,20 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
 
     private val _members = MutableStateFlow<List<Profile>>(emptyList())
     val members: StateFlow<List<Profile>> = _members.asStateFlow()
+
+    // Reacciones a mensajes de grupo (0060_group_message_reactions.sql),
+    // comparado con WhatsApp/Messenger/Instagram -- mismo patrón exacto
+    // que ChatViewModel.kt (chat 1:1, 0018_message_reactions.sql).
+    @Serializable
+    data class GroupMessageReaction(
+        val id: String,
+        @SerialName("group_message_id") val groupMessageId: String,
+        @SerialName("user_id") val userId: String,
+        val emoji: String
+    )
+
+    private val _reactions = MutableStateFlow<Map<String, List<GroupMessageReaction>>>(emptyMap())
+    val reactions: StateFlow<Map<String, List<GroupMessageReaction>>> = _reactions.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -69,12 +83,62 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
                     }
                     .decodeList<GroupMessage>()
                 loadMembers()
+                loadReactions()
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudieron cargar los mensajes: ${e.message}"
             } finally {
                 _isLoading.value = false
             }
             subscribeToRealtime()
+        }
+    }
+
+    private suspend fun loadReactions() {
+        try {
+            // Filtro directo por group_chat_id (desnormalizado en la
+            // tabla) en vez de `isIn` sobre una lista de group_message_id
+            // -- mismo criterio ya usado en ChatViewModel.kt.loadReactions().
+            val rows = SupabaseManager.client.from("group_message_reactions")
+                .select { filter { eq("group_chat_id", groupChatId) } }
+                .decodeList<GroupMessageReaction>()
+            _reactions.value = rows.groupBy { it.groupMessageId }
+        } catch (e: Exception) {
+            // Sin bloquear el resto del hilo si falla.
+        }
+    }
+
+    @Serializable
+    private data class NewGroupReaction(
+        @SerialName("group_message_id") val groupMessageId: String,
+        @SerialName("group_chat_id") val groupChatId: String,
+        @SerialName("user_id") val userId: String,
+        val emoji: String
+    )
+
+    /** Toggle: si ya reaccionaste con ese emoji a ese mensaje, lo quita; si
+     * no, lo añade. `unique(group_message_id, user_id, emoji)`
+     * (0060_group_message_reactions.sql) es la fuente de verdad real. */
+    fun toggleReaction(groupMessageId: String, emoji: String) {
+        viewModelScope.launch {
+            val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+            val existing = _reactions.value[groupMessageId]?.firstOrNull { it.userId == userId && it.emoji == emoji }
+            try {
+                if (existing != null) {
+                    SupabaseManager.client.from("group_message_reactions").delete { filter { eq("id", existing.id) } }
+                    _reactions.update { map ->
+                        map + (groupMessageId to (map[groupMessageId].orEmpty().filter { it.id != existing.id }))
+                    }
+                } else {
+                    val inserted = SupabaseManager.client.from("group_message_reactions")
+                        .insert(NewGroupReaction(groupMessageId, groupChatId, userId, emoji)) { select() }
+                        .decodeSingle<GroupMessageReaction>()
+                    _reactions.update { map ->
+                        map + (groupMessageId to (map[groupMessageId].orEmpty() + inserted))
+                    }
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo reaccionar."
+            }
         }
     }
 
@@ -112,6 +176,30 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
                 _messages.update { it + message }
             }
         }.launchIn(viewModelScope)
+
+        // Reacciones en vivo -- inserciones y borrados de otros miembros
+        // del grupo, sin tener que recargar. Mismo patrón exacto que
+        // ChatViewModel.kt (chat 1:1).
+        ch.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
+            table = "group_message_reactions"
+            filter("group_chat_id", io.github.jan.supabase.postgrest.query.filter.FilterOperator.EQ, groupChatId)
+        }.onEach { insert ->
+            val reaction = Json.decodeFromJsonElement(GroupMessageReaction.serializer(), insert.record)
+            _reactions.update { map ->
+                val current = map[reaction.groupMessageId].orEmpty()
+                if (current.any { it.id == reaction.id }) map
+                else map + (reaction.groupMessageId to (current + reaction))
+            }
+        }.launchIn(viewModelScope)
+
+        ch.postgresChangeFlow<PostgresAction.Delete>(schema = "public") {
+            table = "group_message_reactions"
+            filter("group_chat_id", io.github.jan.supabase.postgrest.query.filter.FilterOperator.EQ, groupChatId)
+        }.onEach { delete ->
+            val id = delete.oldRecord["id"]?.toString()?.trim('"') ?: return@onEach
+            _reactions.update { map -> map.mapValues { (_, list) -> list.filter { it.id != id } } }
+        }.launchIn(viewModelScope)
+
         viewModelScope.launch { ch.subscribe() }
     }
 
