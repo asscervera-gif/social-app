@@ -59,6 +59,13 @@ class CommentsViewModel(private val postId: String) : ViewModel() {
     private val _postAuthorId = MutableStateFlow<String?>(null)
     val postAuthorId: StateFlow<String?> = _postAuthorId.asStateFlow()
 
+    // Desactivar los comentarios de una publicación, comparado con
+    // Instagram/TikTok -- la propia hoja necesita saberlo para ocultar el
+    // campo de escribir uno nuevo (0086_disable_comments.sql, el servidor
+    // ya lo garantiza en RLS de todas formas).
+    private val _commentsDisabled = MutableStateFlow(false)
+    val commentsDisabled: StateFlow<Boolean> = _commentsDisabled.asStateFlow()
+
     fun load() {
         viewModelScope.launch {
             _isLoading.value = true
@@ -72,9 +79,11 @@ class CommentsViewModel(private val postId: String) : ViewModel() {
                 _comments.value = sortPinnedFirst(loaded)
 
                 try {
-                    _postAuthorId.value = SupabaseManager.client.from("posts")
-                        .select(columns = Columns.raw("author_id")) { filter { eq("id", postId) } }
-                        .decodeSingleOrNull<PostAuthorRow>()?.authorId
+                    val postRow = SupabaseManager.client.from("posts")
+                        .select(columns = Columns.raw("author_id,comments_disabled")) { filter { eq("id", postId) } }
+                        .decodeSingleOrNull<PostAuthorRow>()
+                    _postAuthorId.value = postRow?.authorId
+                    _commentsDisabled.value = postRow?.commentsDisabled ?: false
                 } catch (e: Exception) {
                     // No crítico: sin esto solo no se muestra el botón de
                     // fijar, el resto de la hoja sigue funcionando.
@@ -120,7 +129,10 @@ class CommentsViewModel(private val postId: String) : ViewModel() {
     }
 
     @Serializable
-    private data class PostAuthorRow(@SerialName("author_id") val authorId: String)
+    private data class PostAuthorRow(
+        @SerialName("author_id") val authorId: String,
+        @SerialName("comments_disabled") val commentsDisabled: Boolean = false
+    )
 
     private fun sortPinnedFirst(list: List<Comment>) =
         list.sortedWith(compareByDescending<Comment> { it.isPinned }.thenBy { it.createdAt })

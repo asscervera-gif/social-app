@@ -59,7 +59,11 @@ data class Post(
     @SerialName("tagged_profile_id") val taggedProfileId: String? = null,
     // Archivar publicaciones real (0076_archive_posts.sql), comparado con
     // Instagram/Facebook -- null significa visible con normalidad.
-    @SerialName("archived_at") val archivedAt: String? = null
+    @SerialName("archived_at") val archivedAt: String? = null,
+    // Desactivar los comentarios de una publicación, comparado con
+    // Instagram/TikTok -- los comentarios previos se quedan, solo se
+    // cierra la puerta a comentarios NUEVOS (0086_disable_comments.sql).
+    @SerialName("comments_disabled") val commentsDisabled: Boolean = false
 )
 
 @Serializable

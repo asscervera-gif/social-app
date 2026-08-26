@@ -30,7 +30,11 @@ data class Reel(
     @SerialName("like_count") val likeCount: Int = 0,
     @SerialName("comment_count") val commentCount: Int = 0,
     @SerialName("view_count") val viewCount: Int = 0,
-    @SerialName("created_at") val createdAt: String = ""
+    @SerialName("created_at") val createdAt: String = "",
+    // Desactivar los comentarios de un reel, comparado con Instagram/
+    // TikTok -- los comentarios previos se quedan, solo se cierra la
+    // puerta a comentarios NUEVOS (0086_disable_comments.sql).
+    @SerialName("comments_disabled") val commentsDisabled: Boolean = false
 )
 
 /**
@@ -176,6 +180,27 @@ class ReelsViewModel : ViewModel() {
                 // Restricción unique(reel_id, user_id): si ya existía el
                 // like, Postgrest devuelve un 409 -- el estado deseado ya
                 // se cumple, mismo criterio que HomeViewModel.toggleLike().
+            }
+        }
+    }
+
+    /** Desactivar los comentarios de un reel propio real, comparado con
+     * Instagram/TikTok -- los comentarios que ya existían se quedan tal
+     * cual, solo se cierra la puerta a comentarios NUEVOS
+     * (`reel_comments_insert_own`, 0086_disable_comments.sql, lo
+     * garantiza también del lado del servidor). `reels_write_own` ya es
+     * `for all`, mismo criterio que toggleArchive() en posts: sin
+     * política RLS nueva. */
+    fun toggleCommentsDisabled(reel: Reel) {
+        val newValue = !reel.commentsDisabled
+        _reels.update { list -> list.map { if (it.id == reel.id) it.copy(commentsDisabled = newValue) else it } }
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("reels")
+                    .update({ set("comments_disabled", newValue) }) { filter { eq("id", reel.id) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo cambiar el estado de los comentarios."
+                load()
             }
         }
     }

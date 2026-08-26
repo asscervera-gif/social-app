@@ -23,6 +23,10 @@ struct Reel: Codable, Identifiable {
     var commentCount: Int
     var viewCount: Int
     var createdAt: String
+    // Desactivar los comentarios de un reel, comparado con Instagram/
+    // TikTok -- los comentarios previos se quedan, solo se cierra la
+    // puerta a comentarios NUEVOS (0086_disable_comments.sql).
+    var commentsDisabled: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -35,6 +39,7 @@ struct Reel: Codable, Identifiable {
         case commentCount = "comment_count"
         case viewCount = "view_count"
         case createdAt = "created_at"
+        case commentsDisabled = "comments_disabled"
     }
 }
 

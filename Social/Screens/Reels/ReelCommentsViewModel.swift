@@ -46,6 +46,11 @@ final class ReelCommentsViewModel: ObservableObject {
     // resuelve aparte con un solo select, mismo criterio que
     // authorProfiles.
     @Published var reelAuthorID: UUID?
+    // Desactivar los comentarios de un reel, comparado con Instagram/
+    // TikTok -- la propia hoja necesita saberlo para ocultar el campo de
+    // escribir uno nuevo (0086_disable_comments.sql, el servidor ya lo
+    // garantiza en RLS de todas formas).
+    @Published var commentsDisabled = false
 
     init(reelID: UUID) {
         self.reelID = reelID
@@ -71,15 +76,16 @@ final class ReelCommentsViewModel: ObservableObject {
                 .value
             comments = sortPinnedFirst(loaded)
 
-            struct ReelAuthorRow: Decodable { let author_id: UUID }
+            struct ReelAuthorRow: Decodable { let author_id: UUID; let comments_disabled: Bool }
             if let row: ReelAuthorRow = try? await SupabaseManager.shared.client
                 .from("reels")
-                .select("author_id")
+                .select("author_id,comments_disabled")
                 .eq("id", value: reelID)
                 .single()
                 .execute()
                 .value {
                 reelAuthorID = row.author_id
+                commentsDisabled = row.comments_disabled
             }
 
             let authorIDs = Array(Set(loaded.map { $0.author_id }))

@@ -67,6 +67,13 @@ class ReelCommentsViewModel(private val reelId: String) : ViewModel() {
     private val _reelAuthorId = MutableStateFlow<String?>(null)
     val reelAuthorId: StateFlow<String?> = _reelAuthorId.asStateFlow()
 
+    // Desactivar los comentarios de un reel, comparado con Instagram/
+    // TikTok -- la propia hoja necesita saberlo para ocultar el campo de
+    // escribir uno nuevo (0086_disable_comments.sql, el servidor ya lo
+    // garantiza en RLS de todas formas).
+    private val _commentsDisabled = MutableStateFlow(false)
+    val commentsDisabled: StateFlow<Boolean> = _commentsDisabled.asStateFlow()
+
     fun load() {
         viewModelScope.launch {
             _isLoading.value = true
@@ -80,9 +87,11 @@ class ReelCommentsViewModel(private val reelId: String) : ViewModel() {
                 _comments.value = sortPinnedFirst(loaded)
 
                 try {
-                    _reelAuthorId.value = SupabaseManager.client.from("reels")
-                        .select(columns = Columns.raw("author_id")) { filter { eq("id", reelId) } }
-                        .decodeSingleOrNull<ReelAuthorRow>()?.authorId
+                    val reelRow = SupabaseManager.client.from("reels")
+                        .select(columns = Columns.raw("author_id,comments_disabled")) { filter { eq("id", reelId) } }
+                        .decodeSingleOrNull<ReelAuthorRow>()
+                    _reelAuthorId.value = reelRow?.authorId
+                    _commentsDisabled.value = reelRow?.commentsDisabled ?: false
                 } catch (e: Exception) {
                     // No crítico: sin esto solo no se muestra el botón de
                     // fijar, el resto de la hoja sigue funcionando.
@@ -126,7 +135,10 @@ class ReelCommentsViewModel(private val reelId: String) : ViewModel() {
     }
 
     @Serializable
-    private data class ReelAuthorRow(@SerialName("author_id") val authorId: String)
+    private data class ReelAuthorRow(
+        @SerialName("author_id") val authorId: String,
+        @SerialName("comments_disabled") val commentsDisabled: Boolean = false
+    )
 
     private fun sortPinnedFirst(list: List<ReelComment>) =
         list.sortedWith(compareByDescending<ReelComment> { it.isPinned }.thenBy { it.createdAt })

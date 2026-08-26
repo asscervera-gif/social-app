@@ -1601,6 +1601,37 @@ async function main() {
   const stillPinnedByReelCommenter = (await db.query(`select is_pinned from reel_comments where id = $1`, [reelCommentToPin.id])).rows[0];
   check('reel_comments_update_pin: quien escribió el comentario de reel (u2) NO puede desfijarlo -- solo el autor real del reel puede (0 filas afectadas, no un error)', stillPinnedByReelCommenter.is_pinned === true);
 
+  // --- posts.comments_disabled/reels.comments_disabled
+  // (0086_disable_comments.sql): desactivar los comentarios de una
+  // publicación real, comparado con Instagram/TikTok -- los comentarios
+  // que ya existían se quedan, solo se cierra la puerta a comentarios
+  // NUEVOS. Reutiliza mutedWordsPost (autor real u1) del bloque de más
+  // arriba, que ya tiene comentarios reales de u2. ---
+  await asUser(u1);
+  await db.query(`update posts set comments_disabled = true where id = $1`, [mutedWordsPost.id]);
+  await asUser(u2);
+  await expectFail('comments_insert_own: con comentarios reales desactivados, u2 NO puede comentar una publicación ajena', async () => {
+    await db.query(`insert into comments (post_id, author_id, body) values ($1, $2, 'intento con comentarios cerrados')`, [mutedWordsPost.id, u2]);
+  });
+  const commentsStillVisibleWhileDisabled = (await db.query(`select id from comments where post_id = $1`, [mutedWordsPost.id])).rows;
+  check('comments_disabled: los comentarios reales previos SIGUEN existiendo, no se borran al desactivar', commentsStillVisibleWhileDisabled.length === 2);
+
+  await asUser(u1);
+  await db.query(`update posts set comments_disabled = false where id = $1`, [mutedWordsPost.id]);
+  await asUser(u2);
+  await expectOk('comments_insert_own: al reactivarlos de verdad, u2 SÍ vuelve a poder comentar', async () => {
+    await db.query(`insert into comments (post_id, author_id, body) values ($1, $2, 'ya reactivado')`, [mutedWordsPost.id, u2]);
+  });
+
+  // Mismo espejo real en reel_comments -- reutiliza mutedWordsReel (autor
+  // real u1) del bloque de más arriba.
+  await asUser(u1);
+  await db.query(`update reels set comments_disabled = true where id = $1`, [mutedWordsReel.id]);
+  await asUser(u2);
+  await expectFail('reel_comments_insert_own: con comentarios reales desactivados, u2 NO puede comentar un reel ajeno', async () => {
+    await db.query(`insert into reel_comments (reel_id, author_id, body) values ($1, $2, 'intento con comentarios cerrados')`, [mutedWordsReel.id, u2]);
+  });
+
   // --- calls (0079_calls.sql): videollamada/llamada de voz 1:1 real
   // desde un chat, comparado con WhatsApp/Messenger/Instagram. ---
   await asUser(u1);

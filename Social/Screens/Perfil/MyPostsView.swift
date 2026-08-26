@@ -72,6 +72,30 @@ final class MyPostsViewModel: ObservableObject {
         }
     }
 
+    /// Desactivar los comentarios de una publicación real, comparado con
+    /// Instagram/TikTok -- los comentarios que ya existían se quedan tal
+    /// cual, solo se cierra la puerta a comentarios NUEVOS
+    /// (`comments_insert_own`, 0086_disable_comments.sql, lo garantiza
+    /// también del lado del servidor). `posts_write_own` ya es `for all`,
+    /// mismo criterio que toggleArchive(): sin política RLS nueva.
+    /// Equivalente de MyPostsViewModel.kt.toggleCommentsDisabled().
+    func toggleCommentsDisabled(_ post: Post) async {
+        let newValue = !post.commentsDisabled
+        if let index = posts.firstIndex(where: { $0.id == post.id }) {
+            posts[index].commentsDisabled = newValue
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("posts")
+                .update(["comments_disabled": newValue])
+                .eq("id", value: post.id)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo cambiar el estado de los comentarios."
+            await load()
+        }
+    }
+
     /// Hallazgo real, comparado con Instagram: no había forma de editar el
     /// caption de una publicación ya hecha, solo borrarla entera --
     /// `posts_write_own` (0002_rls.sql) ya es `for all`, así que editar la
@@ -211,6 +235,14 @@ struct MyPostsView: View {
                         Task { await viewModel.toggleArchive(post) }
                     }
                     .tint(.gray)
+                    // Desactivar los comentarios de esta publicación real,
+                    // comparado con Instagram/TikTok -- los comentarios
+                    // previos se quedan, solo se cierra la puerta a
+                    // comentarios nuevos (0086_disable_comments.sql).
+                    Button(post.commentsDisabled ? "Activar comentarios" : "Desactivar comentarios") {
+                        Task { await viewModel.toggleCommentsDisabled(post) }
+                    }
+                    .tint(.indigo)
                 }
             }
         }

@@ -63,6 +63,7 @@ fun ReelCommentsSheet(
     val authorProfiles by viewModel.authorProfiles.collectAsState()
     val likedCommentIds by viewModel.likedCommentIds.collectAsState()
     val reelAuthorId by viewModel.reelAuthorId.collectAsState()
+    val commentsDisabled by viewModel.commentsDisabled.collectAsState()
     var draft by remember { mutableStateOf("") }
     val sheetState = rememberModalBottomSheetState()
     val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
@@ -160,21 +161,34 @@ fun ReelCommentsSheet(
                 }
             }
 
-            Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = draft,
-                    onValueChange = { draft = it },
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("Escribe un comentario…") }
+            // Desactivar los comentarios de un reel, comparado con
+            // Instagram/TikTok -- el autor real cerró la puerta a
+            // comentarios nuevos (0086_disable_comments.sql); los que ya
+            // existían se siguen viendo con normalidad arriba.
+            if (commentsDisabled) {
+                Text(
+                    "El autor ha desactivado los comentarios en este reel.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp)
                 )
-                Button(
-                    onClick = {
-                        viewModel.addComment(draft) { onCommentAdded() }
-                        draft = ""
-                    },
-                    modifier = Modifier.padding(start = 8.dp)
-                ) {
-                    Text("➤")
+            } else {
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = draft,
+                        onValueChange = { draft = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("Escribe un comentario…") }
+                    )
+                    Button(
+                        onClick = {
+                            viewModel.addComment(draft) { onCommentAdded() }
+                            draft = ""
+                        },
+                        modifier = Modifier.padding(start = 8.dp)
+                    ) {
+                        Text("➤")
+                    }
                 }
             }
         }

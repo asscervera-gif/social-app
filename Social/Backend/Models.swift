@@ -84,6 +84,10 @@ struct Post: Codable, Identifiable {
     // Archivar publicaciones real (0076_archive_posts.sql), comparado con
     // Instagram/Facebook -- nil significa visible con normalidad.
     var archivedAt: String?
+    // Desactivar los comentarios de una publicación, comparado con
+    // Instagram/TikTok -- los comentarios previos se quedan, solo se
+    // cierra la puerta a comentarios NUEVOS (0086_disable_comments.sql).
+    var commentsDisabled: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -96,6 +100,7 @@ struct Post: Codable, Identifiable {
         case createdAt = "created_at"
         case taggedProfileID = "tagged_profile_id"
         case archivedAt = "archived_at"
+        case commentsDisabled = "comments_disabled"
     }
 }
 

@@ -51,6 +51,11 @@ final class CommentsViewModel: ObservableObject {
     // la publicación embebido, se resuelve aparte con un solo select,
     // mismo criterio que authorProfiles.
     @Published var postAuthorID: UUID?
+    // Desactivar los comentarios de una publicación, comparado con
+    // Instagram/TikTok -- la propia hoja necesita saberlo para ocultar el
+    // campo de escribir uno nuevo (0086_disable_comments.sql, el servidor
+    // ya lo garantiza en RLS de todas formas).
+    @Published var commentsDisabled = false
 
     init(postID: UUID) {
         self.postID = postID
@@ -76,15 +81,16 @@ final class CommentsViewModel: ObservableObject {
                 .value
             comments = sortPinnedFirst(loaded)
 
-            struct PostAuthorRow: Decodable { let author_id: UUID }
+            struct PostAuthorRow: Decodable { let author_id: UUID; let comments_disabled: Bool }
             if let row: PostAuthorRow = try? await SupabaseManager.shared.client
                 .from("posts")
-                .select("author_id")
+                .select("author_id,comments_disabled")
                 .eq("id", value: postID)
                 .single()
                 .execute()
                 .value {
                 postAuthorID = row.author_id
+                commentsDisabled = row.comments_disabled
             }
 
             let authorIDs = Array(Set(loaded.map { $0.author_id }))

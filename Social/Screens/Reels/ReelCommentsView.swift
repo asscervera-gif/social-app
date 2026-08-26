@@ -114,17 +114,28 @@ struct ReelCommentsView: View {
                 }
                 .listStyle(.plain)
 
-                HStack {
-                    TextField("Escribe un comentario…", text: $draft)
-                        .textFieldStyle(.roundedBorder)
-                    Button("➤") {
-                        Task {
-                            await viewModel.addComment(draft, onCommentAdded: onCommentAdded)
-                            draft = ""
+                // Desactivar los comentarios de un reel, comparado con
+                // Instagram/TikTok -- el autor real cerró la puerta a
+                // comentarios nuevos (0086_disable_comments.sql); los que
+                // ya existían se siguen viendo con normalidad arriba.
+                if viewModel.commentsDisabled {
+                    Text("El autor ha desactivado los comentarios en este reel.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding()
+                } else {
+                    HStack {
+                        TextField("Escribe un comentario…", text: $draft)
+                            .textFieldStyle(.roundedBorder)
+                        Button("➤") {
+                            Task {
+                                await viewModel.addComment(draft, onCommentAdded: onCommentAdded)
+                                draft = ""
+                            }
                         }
                     }
+                    .padding()
                 }
-                .padding()
             }
             .navigationTitle("Comentarios")
             .task {

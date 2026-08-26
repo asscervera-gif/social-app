@@ -107,6 +107,26 @@ class MyPostsViewModel : ViewModel() {
         }
     }
 
+    /** Desactivar los comentarios de una publicación real, comparado con
+     * Instagram/TikTok -- los comentarios que ya existían se quedan tal
+     * cual, solo se cierra la puerta a comentarios NUEVOS
+     * (`comments_insert_own`, 0086_disable_comments.sql, lo garantiza
+     * también del lado del servidor). `posts_write_own` ya es `for all`,
+     * mismo criterio que toggleArchive(): sin política RLS nueva. */
+    fun toggleCommentsDisabled(post: Post) {
+        val newValue = !post.commentsDisabled
+        _posts.value = _posts.value.map { if (it.id == post.id) it.copy(commentsDisabled = newValue) else it }
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("posts")
+                    .update({ set("comments_disabled", newValue) }) { filter { eq("id", post.id) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo cambiar el estado de los comentarios."
+                load()
+            }
+        }
+    }
+
     fun editCaption(post: Post, newCaption: String) {
         if (newCaption.length > 2200) {
             _errorMessage.value = "El texto no puede tener más de 2200 caracteres."
@@ -263,6 +283,16 @@ fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
                                     onClick = { viewModel.toggleArchive(post) },
                                     modifier = Modifier.padding(end = 8.dp)
                                 ) { Text(if (post.archivedAt != null) "Desarchivar" else "Archivar") }
+                                // Desactivar los comentarios de esta
+                                // publicación real, comparado con
+                                // Instagram/TikTok -- los comentarios
+                                // previos se quedan, solo se cierra la
+                                // puerta a comentarios nuevos
+                                // (0086_disable_comments.sql).
+                                OutlinedButton(
+                                    onClick = { viewModel.toggleCommentsDisabled(post) },
+                                    modifier = Modifier.padding(end = 8.dp)
+                                ) { Text(if (post.commentsDisabled) "Activar comentarios" else "Desactivar comentarios") }
                                 OutlinedButton(onClick = { viewModel.delete(post) }) { Text("Borrar") }
                             }
                         }

@@ -40,6 +40,10 @@ struct ReelsView: View {
     // AvisosView.swift.
     var initialReelID: UUID? = nil
     @State private var hasJumpedToInitial = false
+    // Desactivar los comentarios de un reel propio, comparado con
+    // Instagram/TikTok -- el control solo tiene sentido sobre el reel
+    // propio (0086_disable_comments.sql).
+    @State private var myID: UUID?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -61,8 +65,14 @@ struct ReelsView: View {
                             reel: reel,
                             author: viewModel.authorProfiles[reel.authorID],
                             isLiked: viewModel.likedReelIDs.contains(reel.id),
+                            isMine: reel.authorID == myID,
                             onLike: { Task { await viewModel.toggleLike(reel) } },
-                            onOpenComments: { commentingReelID = reel.id }
+                            onOpenComments: { commentingReelID = reel.id },
+                            // Desactivar los comentarios de este reel
+                            // propio, comparado con Instagram/TikTok -- ver
+                            // ReelsViewModel.toggleCommentsDisabled(),
+                            // 0086_disable_comments.sql.
+                            onToggleCommentsDisabled: { Task { await viewModel.toggleCommentsDisabled(reel) } }
                         )
                         .id(reel.id)
                     }
@@ -92,6 +102,7 @@ struct ReelsView: View {
             }
         }
         .task { await viewModel.load(pinnedReelID: initialReelID) }
+        .task { myID = try? await SupabaseManager.shared.client.auth.session.user.id }
         .refreshable { await viewModel.load() }
         .sheet(isPresented: $showUpload) {
             UploadReelView(isUploading: viewModel.isUploading) { data, ext, caption, isSocialOnly in
@@ -118,8 +129,13 @@ private struct ReelRow: View {
     let reel: Reel
     let author: Profile?
     let isLiked: Bool
+    // Desactivar los comentarios de un reel propio, comparado con
+    // Instagram/TikTok -- el control solo tiene sentido sobre el reel
+    // propio (0086_disable_comments.sql).
+    let isMine: Bool
     let onLike: () -> Void
     let onOpenComments: () -> Void
+    let onToggleCommentsDisabled: () -> Void
     @State private var player: AVPlayer?
     // Nombre de usuario único real (@handle, 0073_profile_username.sql) +
     // notificación real de mención (0074_mentions.sql), comparado con
@@ -164,6 +180,16 @@ private struct ReelRow: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
+                // Desactivar los comentarios de este reel propio, comparado
+                // con Instagram/TikTok -- los comentarios previos se
+                // quedan, solo se cierra la puerta a comentarios nuevos
+                // (0086_disable_comments.sql).
+                if isMine {
+                    Button(action: onToggleCommentsDisabled) {
+                        Text(reel.commentsDisabled ? "🔕" : "🔔")
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
         .padding()

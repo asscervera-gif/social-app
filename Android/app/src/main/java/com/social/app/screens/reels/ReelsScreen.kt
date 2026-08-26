@@ -45,6 +45,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import io.github.jan.supabase.gotrue.auth
 import com.social.app.util.MentionHashtagText
 import com.social.app.util.MentionResolver
 import com.social.app.util.relativeTime
@@ -76,6 +77,7 @@ fun ReelsScreen(
     var commentingReelId by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     var hasJumpedToInitial by remember { mutableStateOf(false) }
+    val myId = com.social.app.backend.SupabaseManager.client.auth.currentUserOrNull()?.id
 
     LaunchedEffect(Unit) { viewModel.load(pinnedReelId = initialReelId) }
 
@@ -138,11 +140,17 @@ fun ReelsScreen(
                         author = authorProfiles[reel.authorId],
                         isLiked = likedReelIds.contains(reel.id),
                         isCurrent = page == pagerState.currentPage,
+                        isMine = reel.authorId == myId,
                         player = exoPlayer,
                         onLike = { viewModel.toggleLike(reel) },
                         onOpenProfile = { onOpenProfile(reel.authorId) },
                         onOpenMentionProfile = onOpenProfile,
-                        onOpenComments = { commentingReelId = reel.id }
+                        onOpenComments = { commentingReelId = reel.id },
+                        // Desactivar los comentarios de este reel propio,
+                        // comparado con Instagram/TikTok -- ver
+                        // ReelsViewModel.toggleCommentsDisabled(),
+                        // 0086_disable_comments.sql.
+                        onToggleCommentsDisabled = { viewModel.toggleCommentsDisabled(reel) }
                     )
                 }
             }
@@ -181,6 +189,10 @@ private fun ReelPage(
     author: com.social.app.backend.model.Profile?,
     isLiked: Boolean,
     isCurrent: Boolean,
+    // Desactivar los comentarios de un reel propio, comparado con
+    // Instagram/TikTok -- el control solo tiene sentido sobre el reel
+    // propio (0086_disable_comments.sql).
+    isMine: Boolean,
     player: ExoPlayer,
     onLike: () -> Unit,
     onOpenProfile: () -> Unit,
@@ -189,7 +201,8 @@ private fun ReelPage(
     // Instagram/TikTok -- mismo criterio que
     // HomeScreen.kt.PostCard.onOpenMentionProfile.
     onOpenMentionProfile: (String) -> Unit = {},
-    onOpenComments: () -> Unit
+    onOpenComments: () -> Unit,
+    onToggleCommentsDisabled: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val mentionResolver = remember { MentionResolver() }
@@ -256,6 +269,19 @@ private fun ReelPage(
                     modifier = Modifier.clickable(onClick = onOpenComments),
                     color = androidx.compose.ui.graphics.Color.White
                 )
+                // Desactivar los comentarios de este reel propio,
+                // comparado con Instagram/TikTok -- los comentarios
+                // previos se quedan, solo se cierra la puerta a
+                // comentarios nuevos (0086_disable_comments.sql).
+                if (isMine) {
+                    Text(
+                        if (reel.commentsDisabled) "🔕💬" else "🔔💬",
+                        modifier = Modifier
+                            .padding(start = 10.dp)
+                            .clickable(onClick = onToggleCommentsDisabled),
+                        color = androidx.compose.ui.graphics.Color.White
+                    )
+                }
             }
         }
     }
