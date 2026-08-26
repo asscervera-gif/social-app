@@ -6,12 +6,14 @@
 //  Messenger/Facebook -- ver GroupChatViewModel.swift para el hallazgo
 //  completo. Mismo patrón visual que ChatView.swift (1:1). Reacciones
 //  (0060_group_message_reactions.sql), "visto por"
-//  (0061_group_message_reads.sql) y notas de voz
-//  (0062_group_message_audio.sql) reales. Equivalente de GroupChatScreen.kt.
+//  (0061_group_message_reads.sql), notas de voz
+//  (0062_group_message_audio.sql) y fotos (media_url, ya en el esquema
+//  desde 0057_group_chats.sql) reales. Equivalente de GroupChatScreen.kt.
 //
 
 import SwiftUI
 import AVFoundation
+import PhotosUI
 
 struct GroupChatView: View {
     @StateObject private var viewModel: GroupChatViewModel
@@ -24,6 +26,10 @@ struct GroupChatView: View {
     // exacto que ChatView.swift (1:1).
     @State private var voiceRecorder = VoiceRecorder()
     @State private var isRecording = false
+    // Fotos reales en un chat de grupo, comparado con WhatsApp/Instagram/
+    // Messenger/Facebook -- mismo patrón exacto que ChatView.swift (1:1).
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var fullScreenURL: URL?
 
     init(groupChatID: UUID, groupName: String) {
         self._viewModel = StateObject(wrappedValue: GroupChatViewModel(groupChatID: groupChatID))
@@ -50,7 +56,8 @@ struct GroupChatView: View {
                                 readCount: (viewModel.reads[message.id] ?? []).filter { $0 != myID }.count,
                                 onToggleReaction: { emoji in
                                     Task { await viewModel.toggleReaction(groupMessageID: message.id, emoji: emoji) }
-                                }
+                                },
+                                onOpenFullScreen: { url in fullScreenURL = url }
                             )
                             .id(message.id)
                         }
@@ -64,6 +71,19 @@ struct GroupChatView: View {
                 }
             }
             HStack {
+                // Fotos reales en un chat de grupo, comparado con
+                // WhatsApp/Instagram/Messenger/Facebook -- mismo patrón
+                // exacto que ChatView.swift (1:1).
+                PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                    Image(systemName: "camera")
+                }
+                .onChange(of: selectedPhoto) { newValue in
+                    Task {
+                        if let data = try? await newValue?.loadTransferable(type: Data.self) {
+                            await viewModel.sendPhoto(imageData: data)
+                        }
+                    }
+                }
                 // Nota de voz real (0062_group_message_audio.sql), mismo
                 // patrón exacto que ChatView.swift (1:1).
                 Button {
@@ -111,6 +131,17 @@ struct GroupChatView: View {
                         dismiss()
                     }
                 }
+            }
+        }
+        // Fotos reales en un chat de grupo, comparado con WhatsApp/
+        // Instagram/Messenger/Facebook -- mismo patrón Binding(get:set:)
+        // ya usado en ChatView.swift (1:1) para un URL? no Identifiable.
+        .fullScreenCover(isPresented: Binding(
+            get: { fullScreenURL != nil },
+            set: { isPresented in if !isPresented { fullScreenURL = nil } }
+        )) {
+            if let fullScreenURL {
+                FullScreenImageView(url: fullScreenURL, onDismiss: { self.fullScreenURL = nil })
             }
         }
     }
@@ -176,6 +207,7 @@ private struct GroupMessageBubble: View {
     let reactions: [GroupChatViewModel.GroupMessageReaction]
     let readCount: Int
     let onToggleReaction: (String) -> Void
+    var onOpenFullScreen: (URL) -> Void = { _ in }
 
     @State private var showPicker = false
     private let reactionEmojis = ["❤", "😂", "😮", "😢", "👍"]
@@ -193,6 +225,19 @@ private struct GroupMessageBubble: View {
             if let audioURLString = message.audioURL, let audioURL = URL(string: audioURLString) {
                 GroupAudioMessageBubble(url: audioURL, isMine: isMine)
                     .onTapGesture { showPicker.toggle() }
+            } else if let mediaURLString = message.mediaURL, let mediaURL = URL(string: mediaURLString) {
+                // Fotos reales en un chat de grupo, comparado con
+                // WhatsApp/Instagram/Messenger/Facebook -- mediaURL ya
+                // existía en el esquema (0057_group_chats.sql), solo
+                // faltaba la UI.
+                AsyncImage(url: mediaURL) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    ProgressView()
+                }
+                .frame(width: 200, height: 200)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .onTapGesture { onOpenFullScreen(mediaURL) }
             } else {
                 Text(message.body ?? "")
                     .padding(.horizontal, 12)

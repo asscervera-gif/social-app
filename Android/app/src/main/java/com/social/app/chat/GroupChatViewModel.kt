@@ -41,10 +41,11 @@ data class GroupMessage(
 
 /**
  * Hilo de un chat de grupo real -- mismo patrón que ChatViewModel.kt
- * (1:1). Reacciones (0060_group_message_reactions.sql) y "visto por"
- * (0061_group_message_reads.sql) reales -- voz sigue pendiente, hueco
- * real documentado. Mensajes en vivo vía Realtime, mismo mecanismo ya
- * usado en el chat 1:1 (`postgresChangeFlow`).
+ * (1:1). Reacciones (0060_group_message_reactions.sql), "visto por"
+ * (0061_group_message_reads.sql), notas de voz
+ * (0062_group_message_audio.sql) y fotos (media_url) reales. Mensajes en
+ * vivo vía Realtime, mismo mecanismo ya usado en el chat 1:1
+ * (`postgresChangeFlow`).
  */
 class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
 
@@ -285,6 +286,7 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
         @SerialName("group_chat_id") val groupChatId: String,
         @SerialName("sender_id") val senderId: String,
         val body: String? = null,
+        @SerialName("media_url") val mediaUrl: String? = null,
         @SerialName("audio_url") val audioUrl: String? = null
     )
 
@@ -308,6 +310,29 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo enviar el mensaje."
+            }
+        }
+    }
+
+    /** Fotos en un chat de grupo, comparado con WhatsApp/Instagram/
+     * Messenger/Facebook -- `group_messages.media_url` ya existía en el
+     * esquema desde 0057_group_chats.sql, solo faltaba la UI. Reutiliza
+     * tal cual `StorageUploader.uploadImage` ya construido para el chat
+     * 1:1, sin infraestructura nueva. Equivalente de
+     * ChatViewModel.kt.sendPhoto(). */
+    fun sendPhoto(context: android.content.Context, uri: android.net.Uri) {
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                val url = com.social.app.backend.StorageUploader.uploadImage(context, uri, userId)
+                val inserted = SupabaseManager.client.from("group_messages")
+                    .insert(NewGroupMessage(groupChatId, userId, mediaUrl = url)) { select() }
+                    .decodeSingle<GroupMessage>()
+                if (_messages.value.none { it.id == inserted.id }) {
+                    _messages.update { it + inserted }
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo enviar la foto."
             }
         }
     }

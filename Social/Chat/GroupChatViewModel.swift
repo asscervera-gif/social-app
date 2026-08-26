@@ -4,10 +4,10 @@
 //
 //  Hilo de un chat de grupo real -- mismo patrón que ChatViewModel.swift
 //  (1:1). Reacciones (0060_group_message_reactions.sql), "visto por"
-//  (0061_group_message_reads.sql) y notas de voz
-//  (0062_group_message_audio.sql) reales. Mensajes en vivo vía Realtime,
-//  mismo mecanismo ya usado en el chat 1:1. Equivalente de
-//  GroupChatViewModel.kt.
+//  (0061_group_message_reads.sql), notas de voz
+//  (0062_group_message_audio.sql) y fotos (media_url) reales. Mensajes en
+//  vivo vía Realtime, mismo mecanismo ya usado en el chat 1:1. Equivalente
+//  de GroupChatViewModel.kt.
 //
 
 import Foundation
@@ -311,6 +311,36 @@ final class GroupChatViewModel: ObservableObject {
             }
         } catch {
             errorMessage = "No se pudo enviar el mensaje."
+        }
+    }
+
+    /// Fotos reales en un chat de grupo, comparado con WhatsApp/Instagram/
+    /// Messenger/Facebook -- `group_messages.media_url` ya existía en el
+    /// esquema desde 0057_group_chats.sql, solo faltaba la UI. Reutiliza
+    /// tal cual `StorageUploader.uploadImage` ya construido para el chat
+    /// 1:1, sin infraestructura nueva. Equivalente de
+    /// ChatViewModel.swift.sendPhoto().
+    func sendPhoto(imageData: Data) async {
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        struct NewGroupPhotoMessage: Encodable {
+            let group_chat_id: UUID
+            let sender_id: UUID
+            let media_url: String
+        }
+        do {
+            let url = try await StorageUploader.uploadImage(data: imageData, fileExtension: "jpg", userID: userID)
+            let inserted: GroupMessage = try await SupabaseManager.shared.client
+                .from("group_messages")
+                .insert(NewGroupPhotoMessage(group_chat_id: groupChatID, sender_id: userID, media_url: url))
+                .select()
+                .single()
+                .execute()
+                .value
+            if !messages.contains(where: { $0.id == inserted.id }) {
+                messages.append(inserted)
+            }
+        } catch {
+            errorMessage = "No se pudo enviar la foto."
         }
     }
 

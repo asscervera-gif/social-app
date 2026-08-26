@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -44,9 +45,10 @@ import kotlinx.coroutines.launch
  * Hilo de un chat de grupo real, comparado con WhatsApp/Instagram/
  * Messenger/Facebook -- ver GroupChatViewModel.kt para el hallazgo
  * completo. Mismo patrón visual que ChatScreen.kt (1:1). Reacciones
- * (0060_group_message_reactions.sql) y "visto por"
- * (0061_group_message_reads.sql) reales -- voz sigue pendiente, hueco
- * real documentado.
+ * (0060_group_message_reactions.sql), "visto por"
+ * (0061_group_message_reads.sql), notas de voz
+ * (0062_group_message_audio.sql) y fotos (media_url, ya en el esquema
+ * desde 0057_group_chats.sql) reales.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,6 +77,13 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
             isRecording = true
         }
     }
+
+    // Fotos reales en un chat de grupo, comparado con WhatsApp/Instagram/
+    // Messenger/Facebook -- mismo patrón exacto que ChatScreen.kt (1:1).
+    var fullScreenImageUrl by remember { mutableStateOf<String?>(null) }
+    val pickImage = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri -> uri?.let { viewModel.sendPhoto(context, it) } }
 
     LaunchedEffect(groupChatId) { viewModel.load() }
     LaunchedEffect(messages.size) {
@@ -120,8 +129,23 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
                         // comparado con WhatsApp/Messenger/Telegram --
                         // mismo reproductor nativo que ChatScreen.kt (1:1).
                         val audioUrl = message.audioUrl
+                        val mediaUrl = message.mediaUrl
                         if (audioUrl != null) {
                             GroupAudioMessageBubble(url = audioUrl, isMine = isMine)
+                        } else if (mediaUrl != null) {
+                            // Fotos reales en un chat de grupo, comparado
+                            // con WhatsApp/Instagram/Messenger/Facebook --
+                            // mediaUrl ya existía en el esquema
+                            // (0057_group_chats.sql), solo faltaba la UI.
+                            androidx.compose.foundation.Image(
+                                painter = coil.compose.rememberAsyncImagePainter(mediaUrl),
+                                contentDescription = null,
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(200.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { fullScreenImageUrl = mediaUrl }
+                            )
                         } else {
                             Text(
                                 message.body ?: "",
@@ -183,6 +207,12 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
                 }
             }
             Row(modifier = Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                // Fotos reales en un chat de grupo, comparado con
+                // WhatsApp/Instagram/Messenger/Facebook -- mismo patrón
+                // exacto que ChatScreen.kt (1:1).
+                OutlinedButton(onClick = { pickImage.launch("image/*") }, modifier = Modifier.padding(end = 8.dp)) {
+                    Text("📷")
+                }
                 // Nota de voz real (0062_group_message_audio.sql), mismo
                 // patrón exacto que ChatScreen.kt (1:1): MediaRecorder
                 // nativo vía VoiceRecorder.kt, sin SDK de terceros.
@@ -218,6 +248,10 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
                 }
             }
         }
+    }
+
+    fullScreenImageUrl?.let { url ->
+        com.social.app.util.FullScreenImageViewer(url = url, onDismiss = { fullScreenImageUrl = null })
     }
 
     if (showMembers) {
