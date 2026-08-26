@@ -18,6 +18,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -61,6 +62,20 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
     val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
     val listState = rememberLazyListState()
 
+    // Nota de voz real (0062_group_message_audio.sql) -- mismo patrón
+    // exacto que ChatScreen.kt (1:1).
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val voiceRecorder = remember { VoiceRecorder(context) }
+    var isRecording by remember { mutableStateOf(false) }
+    val recordPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            voiceRecorder.start()
+            isRecording = true
+        }
+    }
+
     LaunchedEffect(groupChatId) { viewModel.load() }
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
@@ -101,17 +116,25 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Text(
-                            message.body ?: "",
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(
-                                    if (isMine) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                                    else MaterialTheme.colorScheme.surfaceVariant
-                                )
-                                .clickable { showPicker = !showPicker }
-                                .padding(horizontal = 12.dp, vertical = 8.dp)
-                        )
+                        // Nota de voz real (0062_group_message_audio.sql),
+                        // comparado con WhatsApp/Messenger/Telegram --
+                        // mismo reproductor nativo que ChatScreen.kt (1:1).
+                        val audioUrl = message.audioUrl
+                        if (audioUrl != null) {
+                            GroupAudioMessageBubble(url = audioUrl, isMine = isMine)
+                        } else {
+                            Text(
+                                message.body ?: "",
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(
+                                        if (isMine) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                        else MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                    .clickable { showPicker = !showPicker }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                            )
+                        }
                         val messageReactions = reactions[message.id].orEmpty()
                         if (messageReactions.isNotEmpty()) {
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 2.dp)) {
@@ -160,18 +183,36 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
                 }
             }
             Row(modifier = Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                // Nota de voz real (0062_group_message_audio.sql), mismo
+                // patrón exacto que ChatScreen.kt (1:1): MediaRecorder
+                // nativo vía VoiceRecorder.kt, sin SDK de terceros.
+                OutlinedButton(
+                    onClick = {
+                        if (isRecording) {
+                            isRecording = false
+                            voiceRecorder.stop()?.let { viewModel.sendVoiceNote(it) }
+                        } else {
+                            recordPermission.launch(android.Manifest.permission.RECORD_AUDIO)
+                        }
+                    },
+                    modifier = Modifier.padding(end = 8.dp)
+                ) {
+                    Text(if (isRecording) "⏹" else "🎙")
+                }
                 OutlinedTextField(
                     value = draft,
                     onValueChange = { draft = it },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("Mensaje…") }
+                    placeholder = { Text(if (isRecording) "Grabando…" else "Mensaje…") },
+                    enabled = !isRecording
                 )
                 Button(
                     onClick = {
                         viewModel.sendMessage(draft)
                         draft = ""
                     },
-                    modifier = Modifier.padding(start = 8.dp)
+                    modifier = Modifier.padding(start = 8.dp),
+                    enabled = !isRecording
                 ) {
                     Text("➤")
                 }
@@ -240,5 +281,54 @@ private fun MembersSheet(
                 Text("Salir del grupo", color = MaterialTheme.colorScheme.error)
             }
         }
+    }
+}
+
+/** Reproductor de nota de voz de grupo -- `MediaPlayer` nativo, mismo
+ * criterio exacto que `AudioMessageBubble` (ChatScreen.kt, chat 1:1),
+ * duplicado en vez de compartido porque ese composable es privado a su
+ * propio archivo (visibilidad de nivel de archivo en Kotlin). */
+@Composable
+private fun GroupAudioMessageBubble(url: String, isMine: Boolean) {
+    var isPlaying by remember { mutableStateOf(false) }
+    var player by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
+
+    androidx.compose.runtime.DisposableEffect(url) {
+        onDispose {
+            player?.release()
+            player = null
+        }
+    }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                if (isMine) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                else MaterialTheme.colorScheme.surfaceVariant
+            )
+            .clickable {
+                if (isPlaying) {
+                    player?.pause()
+                    isPlaying = false
+                } else {
+                    val p = player ?: android.media.MediaPlayer().apply {
+                        setDataSource(url)
+                        setOnCompletionListener { isPlaying = false }
+                        prepareAsync()
+                        setOnPreparedListener { start() }
+                    }
+                    player = p
+                    if (p.isPlaying.not()) {
+                        try { p.start() } catch (e: Exception) { /* aún preparando */ }
+                    }
+                    isPlaying = true
+                }
+            }
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+        Text(if (isPlaying) "⏸" else "▶")
+        Text(" Nota de voz")
     }
 }

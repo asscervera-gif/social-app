@@ -1048,6 +1048,18 @@ async function main() {
   const groupReadsAsStranger = (await db.query(`select id from group_message_reads where group_message_id = $1`, [groupMsg.id])).rows;
   check('group_message_reads_select: alguien que NO es miembro (u3) NO ve los recibos de lectura', groupReadsAsStranger.length === 0);
 
+  // --- group_messages.audio_url (0062_group_message_audio.sql): nota de
+  // voz real en un chat de grupo, comparado con WhatsApp/Messenger/
+  // Telegram -- un mensaje SOLO con audio_url (sin body ni media_url)
+  // debe seguir pasando el check real de "algo de contenido". ---
+  await asUser(u1);
+  await expectOk('group_messages_has_content: un mensaje SOLO con audio_url (nota de voz, sin body) SÍ se puede insertar', async () => {
+    await db.query(`insert into group_messages (group_chat_id, sender_id, audio_url) values ($1, $2, 'https://media/u1/nota.m4a')`, [group.id, u1]);
+  });
+  await expectFail('group_messages_has_content: un mensaje SIN body, media_url NI audio_url sigue sin poder insertarse', async () => {
+    await db.query(`insert into group_messages (group_chat_id, sender_id) values ($1, $2)`, [group.id, u1]);
+  });
+
   // Salir del grupo real: mismo hallazgo de Postgres/RLS ya documentado
   // para live_stream_viewers -- group_chat_members_select deja ver la
   // propia fila (por reflexividad del exists de autopertenencia), así que

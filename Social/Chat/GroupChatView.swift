@@ -5,12 +5,13 @@
 //  Hilo de un chat de grupo real, comparado con WhatsApp/Instagram/
 //  Messenger/Facebook -- ver GroupChatViewModel.swift para el hallazgo
 //  completo. Mismo patrón visual que ChatView.swift (1:1). Reacciones
-//  (0060_group_message_reactions.sql) y "visto por"
-//  (0061_group_message_reads.sql) reales -- voz sigue pendiente, hueco
-//  real documentado. Equivalente de GroupChatScreen.kt.
+//  (0060_group_message_reactions.sql), "visto por"
+//  (0061_group_message_reads.sql) y notas de voz
+//  (0062_group_message_audio.sql) reales. Equivalente de GroupChatScreen.kt.
 //
 
 import SwiftUI
+import AVFoundation
 
 struct GroupChatView: View {
     @StateObject private var viewModel: GroupChatViewModel
@@ -19,6 +20,10 @@ struct GroupChatView: View {
     @State private var showMembers = false
     @State private var myID: UUID?
     @Environment(\.dismiss) private var dismiss
+    // Nota de voz real (0062_group_message_audio.sql), mismo patrón
+    // exacto que ChatView.swift (1:1).
+    @State private var voiceRecorder = VoiceRecorder()
+    @State private var isRecording = false
 
     init(groupChatID: UUID, groupName: String) {
         self._viewModel = StateObject(wrappedValue: GroupChatViewModel(groupChatID: groupChatID))
@@ -59,13 +64,32 @@ struct GroupChatView: View {
                 }
             }
             HStack {
-                TextField("Mensaje…", text: $draft)
+                // Nota de voz real (0062_group_message_audio.sql), mismo
+                // patrón exacto que ChatView.swift (1:1).
+                Button {
+                    if isRecording {
+                        isRecording = false
+                        if let url = voiceRecorder.stop() {
+                            Task { await viewModel.sendVoiceNote(fileURL: url) }
+                        }
+                    } else {
+                        if (try? voiceRecorder.start()) != nil {
+                            isRecording = true
+                        }
+                    }
+                } label: {
+                    Image(systemName: isRecording ? "stop.circle.fill" : "mic")
+                        .foregroundStyle(isRecording ? .red : .primary)
+                }
+                TextField(isRecording ? "Grabando…" : "Mensaje…", text: $draft)
                     .textFieldStyle(.roundedBorder)
+                    .disabled(isRecording)
                 Button("➤") {
                     let text = draft
                     draft = ""
                     Task { await viewModel.sendMessage(text) }
                 }
+                .disabled(isRecording)
             }
             .padding()
         }
@@ -163,12 +187,20 @@ private struct GroupMessageBubble: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
-            Text(message.body ?? "")
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(isMine ? Color.blue.opacity(0.15) : Color(.systemGray5))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .onTapGesture { showPicker.toggle() }
+            // Nota de voz real (0062_group_message_audio.sql), comparado
+            // con WhatsApp/Messenger/Telegram -- mismo reproductor nativo
+            // que ChatView.swift (1:1).
+            if let audioURLString = message.audioURL, let audioURL = URL(string: audioURLString) {
+                GroupAudioMessageBubble(url: audioURL, isMine: isMine)
+                    .onTapGesture { showPicker.toggle() }
+            } else {
+                Text(message.body ?? "")
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(isMine ? Color.blue.opacity(0.15) : Color(.systemGray5))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .onTapGesture { showPicker.toggle() }
+            }
             if !reactions.isEmpty {
                 HStack(spacing: 4) {
                     ForEach(Array(Dictionary(grouping: reactions, by: { $0.emoji })), id: \.key) { emoji, group in
@@ -204,5 +236,47 @@ private struct GroupMessageBubble: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: isMine ? .trailing : .leading)
+    }
+}
+
+/// Reproductor de nota de voz de grupo -- `AVAudioPlayer` nativo, mismo
+/// criterio exacto que `AudioMessageBubble` (ChatView.swift, chat 1:1),
+/// duplicado en vez de compartido porque ese `struct` es privado a su
+/// propio archivo.
+private struct GroupAudioMessageBubble: View {
+    let url: URL
+    let isMine: Bool
+
+    @State private var player: AVAudioPlayer?
+    @State private var isPlaying = false
+
+    var body: some View {
+        HStack {
+            Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+            Text("Nota de voz")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(isMine ? Color.blue.opacity(0.15) : Color(.systemGray5))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .onTapGesture {
+            if isPlaying {
+                player?.pause()
+                isPlaying = false
+            } else {
+                if player == nil {
+                    Task {
+                        if let data = try? Data(contentsOf: url) {
+                            player = try? AVAudioPlayer(data: data)
+                        }
+                        player?.play()
+                        isPlaying = true
+                    }
+                } else {
+                    player?.play()
+                    isPlaying = true
+                }
+            }
+        }
     }
 }

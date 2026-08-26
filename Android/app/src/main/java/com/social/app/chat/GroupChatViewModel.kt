@@ -32,6 +32,10 @@ data class GroupMessage(
     @SerialName("sender_id") val senderId: String,
     val body: String? = null,
     @SerialName("media_url") val mediaUrl: String? = null,
+    // Nota de voz real (0062_group_message_audio.sql), comparado con
+    // WhatsApp/Messenger/Telegram -- mismo campo separado que
+    // ChatMessage.audioUrl (chat 1:1, 0019_message_audio.sql).
+    @SerialName("audio_url") val audioUrl: String? = null,
     @SerialName("created_at") val createdAt: String = ""
 )
 
@@ -84,7 +88,7 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
             _isLoading.value = true
             try {
                 _messages.value = SupabaseManager.client.from("group_messages")
-                    .select(columns = Columns.raw("id,group_chat_id,sender_id,body,media_url,created_at")) {
+                    .select(columns = Columns.raw("id,group_chat_id,sender_id,body,media_url,audio_url,created_at")) {
                         filter { eq("group_chat_id", groupChatId) }
                         order("created_at", Order.ASCENDING)
                     }
@@ -280,7 +284,8 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
     private data class NewGroupMessage(
         @SerialName("group_chat_id") val groupChatId: String,
         @SerialName("sender_id") val senderId: String,
-        val body: String
+        val body: String? = null,
+        @SerialName("audio_url") val audioUrl: String? = null
     )
 
     fun sendMessage(text: String) {
@@ -296,13 +301,36 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
             try {
                 val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
                 val inserted = SupabaseManager.client.from("group_messages")
-                    .insert(NewGroupMessage(groupChatId, userId, text)) { select() }
+                    .insert(NewGroupMessage(groupChatId, userId, body = text)) { select() }
                     .decodeSingle<GroupMessage>()
                 if (_messages.value.none { it.id == inserted.id }) {
                     _messages.update { it + inserted }
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo enviar el mensaje."
+            }
+        }
+    }
+
+    /** Nota de voz real en un chat de grupo (0062_group_message_audio.sql),
+     * comparado con WhatsApp/Messenger/Telegram -- reutiliza tal cual
+     * `VoiceRecorder`/`StorageUploader.uploadAudioFile` ya construidos
+     * para el chat 1:1, sin infraestructura nueva. Equivalente de
+     * ChatViewModel.kt.sendVoiceNote(). */
+    fun sendVoiceNote(file: java.io.File) {
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                val url = com.social.app.backend.StorageUploader.uploadAudioFile(file, userId)
+                val inserted = SupabaseManager.client.from("group_messages")
+                    .insert(NewGroupMessage(groupChatId, userId, audioUrl = url)) { select() }
+                    .decodeSingle<GroupMessage>()
+                if (_messages.value.none { it.id == inserted.id }) {
+                    _messages.update { it + inserted }
+                }
+                file.delete()
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo enviar la nota de voz."
             }
         }
     }
