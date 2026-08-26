@@ -233,18 +233,34 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
         val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return
         val alreadyRead = _reads.value.filterValues { userId in it }.keys
         val toMark = _messages.value.filter { it.senderId != userId && it.id !in alreadyRead }
-        if (toMark.isEmpty()) return
+        if (toMark.isNotEmpty()) {
+            try {
+                val rows = toMark.map { NewRead(it.id, groupChatId, userId) }
+                SupabaseManager.client.from("group_message_reads").insert(rows)
+                _reads.update { map ->
+                    var result = map
+                    toMark.forEach { msg -> result = result + (msg.id to (result[msg.id].orEmpty() + userId)) }
+                    result
+                }
+            } catch (e: Exception) {
+                // Best-effort -- un recibo de lectura que falla no debe
+                // interrumpir la lectura del chat.
+            }
+        }
+        // Marcar como no leído manualmente (0088_mark_chat_unread.sql) y
+        // la detección real de no leído en la lista de grupos se limpian
+        // solas al volver a abrir el grupo de verdad, mismo criterio real
+        // que el chat 1:1 (ChatViewModel.markMessagesRead()).
         try {
-            val rows = toMark.map { NewRead(it.id, groupChatId, userId) }
-            SupabaseManager.client.from("group_message_reads").insert(rows)
-            _reads.update { map ->
-                var result = map
-                toMark.forEach { msg -> result = result + (msg.id to (result[msg.id].orEmpty() + userId)) }
-                result
+            SupabaseManager.client.from("group_chat_members").update({
+                set("marked_unread", false)
+                set("last_read_at", java.time.Instant.now().toString())
+            }) {
+                filter { eq("group_chat_id", groupChatId); eq("user_id", userId) }
             }
         } catch (e: Exception) {
-            // Best-effort -- un recibo de lectura que falla no debe
-            // interrumpir la lectura del chat.
+            // No crítico: la próxima carga real de la lista reconcilia el
+            // estado con el servidor.
         }
     }
 

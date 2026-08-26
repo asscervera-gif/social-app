@@ -43,6 +43,12 @@ struct ChatListEntry: Identifiable {
     // Fijar un chat arriba de la lista, comparado con
     // WhatsApp/Telegram/Messenger -- ver 0081_pin_chats.sql.
     let isPinnedForMe: Bool
+    // Marcar un chat como no leído manualmente, comparado con WhatsApp/
+    // Telegram/Messenger -- ver 0088_mark_chat_unread.sql. Se guarda
+    // aparte de `hasUnread` (que ya combina esto con el estado real de
+    // lectura) porque el botón de la UI necesita saber CUÁL de los dos
+    // motivos aplica para decidir su propia etiqueta.
+    let markedUnreadForMe: Bool
 }
 
 @MainActor
@@ -138,6 +144,11 @@ final class ChatListViewModel: ObservableObject {
                 let otherID = chat.userAID == userID ? chat.userBID : chat.userAID
                 let otherProfile = await otherProfileInfo(id: otherID)
                 let last = await lastMessage(chatID: chat.id)
+                // Marcar como no leído manualmente, comparado con
+                // WhatsApp/Telegram/Messenger -- capa personal por
+                // encima del estado real de lectura del último mensaje
+                // (0088_mark_chat_unread.sql).
+                let markedUnreadForMe = chat.userAID == userID ? chat.markedUnreadByA : chat.markedUnreadByB
                 entries.append(ChatListEntry(
                     id: chat.id, chat: chat,
                     otherName: otherProfile?.display_name ?? "Perfil",
@@ -145,8 +156,9 @@ final class ChatListViewModel: ObservableObject {
                     lastMessage: last?.body, lastActivity: last?.created_at ?? chat.createdAt,
                     iAmUserA: chat.userAID == userID,
                     isMutedForMe: chat.userAID == userID ? chat.mutedByA : chat.mutedByB,
-                    hasUnread: last != nil && last!.sender_id != userID && last!.read_at == nil,
-                    isPinnedForMe: chat.userAID == userID ? chat.pinnedByA : chat.pinnedByB
+                    hasUnread: (last != nil && last!.sender_id != userID && last!.read_at == nil) || markedUnreadForMe,
+                    isPinnedForMe: chat.userAID == userID ? chat.pinnedByA : chat.pinnedByB,
+                    markedUnreadForMe: markedUnreadForMe
                 ))
             }
             // Fijado primero (mismo criterio que WhatsApp/Telegram),
@@ -250,7 +262,8 @@ final class ChatListViewModel: ObservableObject {
                 id: entry.id, chat: entry.chat, otherName: entry.otherName,
                 otherAvatarConfig: entry.otherAvatarConfig, lastMessage: entry.lastMessage,
                 lastActivity: entry.lastActivity, iAmUserA: entry.iAmUserA, isMutedForMe: true,
-                hasUnread: entry.hasUnread, isPinnedForMe: entry.isPinnedForMe
+                hasUnread: entry.hasUnread, isPinnedForMe: entry.isPinnedForMe,
+                markedUnreadForMe: entry.markedUnreadForMe
             )
         }
         let untilString: String? = until.map { ISO8601DateFormatter().string(from: $0) }
@@ -283,7 +296,8 @@ final class ChatListViewModel: ObservableObject {
                 id: entry.id, chat: entry.chat, otherName: entry.otherName,
                 otherAvatarConfig: entry.otherAvatarConfig, lastMessage: entry.lastMessage,
                 lastActivity: entry.lastActivity, iAmUserA: entry.iAmUserA, isMutedForMe: false,
-                hasUnread: entry.hasUnread, isPinnedForMe: entry.isPinnedForMe
+                hasUnread: entry.hasUnread, isPinnedForMe: entry.isPinnedForMe,
+                markedUnreadForMe: entry.markedUnreadForMe
             )
         }
         let mutedColumn = entry.iAmUserA ? "muted_by_a" : "muted_by_b"
@@ -322,7 +336,8 @@ final class ChatListViewModel: ObservableObject {
                 id: entry.id, chat: entry.chat, otherName: entry.otherName,
                 otherAvatarConfig: entry.otherAvatarConfig, lastMessage: entry.lastMessage,
                 lastActivity: entry.lastActivity, iAmUserA: entry.iAmUserA, isMutedForMe: entry.isMutedForMe,
-                hasUnread: entry.hasUnread, isPinnedForMe: newValue
+                hasUnread: entry.hasUnread, isPinnedForMe: newValue,
+                markedUnreadForMe: entry.markedUnreadForMe
             )
         }
         chats.sort {
@@ -348,6 +363,50 @@ final class ChatListViewModel: ObservableObject {
                 errorMessage = "No se pudo fijar la conversación."
                 await load()
             }
+        }
+    }
+
+    /// Marcar/desmarcar un chat como no leído manualmente, comparado con
+    /// WhatsApp/Telegram/Messenger -- capa puramente personal por encima
+    /// del estado real de lectura del último mensaje, NUNCA toca
+    /// `messages.read_at` (0088_mark_chat_unread.sql, lo garantiza
+    /// también del lado del servidor). Se limpia sola al volver a abrir
+    /// el chat de verdad -- ver ChatViewModel.markMessagesRead(). Sin
+    /// actualización optimista de `hasUnread` a propósito, mismo motivo
+    /// que ChatListViewModel.kt.toggleMarkUnread(): combina dos fuentes
+    /// que no se guardan por separado aquí, `load()` tras escribir es
+    /// simple y siempre correcto. Equivalente de
+    /// ChatListViewModel.kt.toggleMarkUnread().
+    func toggleMarkUnread(_ entry: ChatListEntry) {
+        let newValue = !entry.markedUnreadForMe
+        if let index = chats.firstIndex(where: { $0.id == entry.id }) {
+            chats[index] = ChatListEntry(
+                id: entry.id, chat: entry.chat, otherName: entry.otherName,
+                otherAvatarConfig: entry.otherAvatarConfig, lastMessage: entry.lastMessage,
+                lastActivity: entry.lastActivity, iAmUserA: entry.iAmUserA, isMutedForMe: entry.isMutedForMe,
+                hasUnread: entry.hasUnread, isPinnedForMe: entry.isPinnedForMe,
+                markedUnreadForMe: newValue
+            )
+        }
+        Task {
+            do {
+                if entry.iAmUserA {
+                    try await SupabaseManager.shared.client
+                        .from("chats")
+                        .update(["marked_unread_by_a": newValue])
+                        .eq("id", value: entry.chat.id)
+                        .execute()
+                } else {
+                    try await SupabaseManager.shared.client
+                        .from("chats")
+                        .update(["marked_unread_by_b": newValue])
+                        .eq("id", value: entry.chat.id)
+                        .execute()
+                }
+            } catch {
+                errorMessage = "No se pudo cambiar el estado de leído."
+            }
+            await load()
         }
     }
 }

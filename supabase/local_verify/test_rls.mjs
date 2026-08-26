@@ -1805,6 +1805,38 @@ async function main() {
   const pinnedMembership = (await db.query(`select pinned from group_chat_members where group_chat_id = $1 and user_id = $2`, [pinGroupId, u1])).rows[0];
   check('group_chat_members.pinned: la fila real queda fijada', pinnedMembership.pinned === true);
 
+  // --- chats.marked_unread_by_a/b + group_chat_members.marked_unread
+  // (0088_mark_chat_unread.sql): marcar un chat como no leído
+  // manualmente, comparado con WhatsApp/Telegram/Messenger -- mismo
+  // patrón exacto que protect_chat_pinned_flags/protect_chat_muted_flags,
+  // capa puramente personal por encima del estado real de lectura. ---
+  await asUser(u2);
+  await db.query(`update chats set marked_unread_by_b = true where id = $1`, [chat.id]);
+  const markedUnreadByB = (await db.query(`select marked_unread_by_a, marked_unread_by_b from chats where id = $1`, [chat.id])).rows[0];
+  check('protect_chat_unread_flags: u2 (user_b) SÍ marca su propia copia real como no leída', markedUnreadByB.marked_unread_by_b === true && markedUnreadByB.marked_unread_by_a === false);
+
+  await db.query(`update chats set marked_unread_by_a = true where id = $1`, [chat.id]);
+  const stillNotMarkedByA = (await db.query(`select marked_unread_by_a from chats where id = $1`, [chat.id])).rows[0];
+  check('protect_chat_unread_flags: u2 NO puede marcar la copia real de u1 (revertido en silencio, no lanza)', stillNotMarkedByA.marked_unread_by_a === false);
+
+  await asUser(u1);
+  await db.query(`update chats set marked_unread_by_a = true where id = $1`, [chat.id]);
+  const markedUnreadByA = (await db.query(`select marked_unread_by_a from chats where id = $1`, [chat.id])).rows[0];
+  check('protect_chat_unread_flags: u1 (user_a) SÍ marca su propia copia real como no leída', markedUnreadByA.marked_unread_by_a === true);
+
+  await db.query(`insert into group_chat_members (group_chat_id, user_id) values ($1, $2)`, [pinGroupId, u2]);
+  await asUser(u2);
+  await expectOk('group_chat_members_update_own: u2 SÍ marca su propia fila real de membresía como no leída', async () => {
+    await db.query(`update group_chat_members set marked_unread = true where group_chat_id = $1 and user_id = $2`, [pinGroupId, u2]);
+  });
+  const markedUnreadMembership = (await db.query(`select marked_unread from group_chat_members where group_chat_id = $1 and user_id = $2`, [pinGroupId, u2])).rows[0];
+  check('group_chat_members.marked_unread: la fila real de u2 queda marcada como no leída', markedUnreadMembership.marked_unread === true);
+
+  await asUser(u1);
+  await db.query(`update group_chat_members set marked_unread = false where group_chat_id = $1 and user_id = $2`, [pinGroupId, u2]);
+  const stillMarkedUnreadByCreator = (await db.query(`select marked_unread from group_chat_members where group_chat_id = $1 and user_id = $2`, [pinGroupId, u2])).rows[0];
+  check('group_chat_members_update_own: u1 (creador del grupo) NO puede tocar la fila real de membresía de u2 (0 filas afectadas, no un error)', stillMarkedUnreadByCreator.marked_unread === true);
+
   // --- calls.group_chat_id + call_participants (0083_group_calls.sql):
   // videollamada de GRUPO real, comparado con WhatsApp/Messenger/Telegram
   // -- hueco aplazado explícitamente en 0079_calls.sql ("llamadas de

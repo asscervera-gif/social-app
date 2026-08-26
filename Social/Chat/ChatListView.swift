@@ -100,6 +100,16 @@ struct ChatListView: View {
                         viewModel.togglePin(entry)
                     }
                     .tint(.orange)
+                    // Marcar como no leído manualmente, comparado con
+                    // WhatsApp/Telegram/Messenger -- capa personal por
+                    // encima del estado real de lectura, NUNCA toca el
+                    // recibo de lectura real que ve la otra persona (ver
+                    // ChatListViewModel.toggleMarkUnread(),
+                    // 0088_mark_chat_unread.sql).
+                    Button(entry.markedUnreadForMe ? "Marcar como leído" : "Marcar como no leído") {
+                        viewModel.toggleMarkUnread(entry)
+                    }
+                    .tint(.blue)
                 }
             }
         }

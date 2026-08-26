@@ -46,7 +46,13 @@ data class ChatListEntry(
     val hasUnread: Boolean,
     // Fijar un chat arriba de la lista, comparado con
     // WhatsApp/Telegram/Messenger -- ver 0081_pin_chats.sql.
-    val isPinnedForMe: Boolean
+    val isPinnedForMe: Boolean,
+    // Marcar un chat como no leído manualmente, comparado con WhatsApp/
+    // Telegram/Messenger -- ver 0088_mark_chat_unread.sql. Se guarda
+    // aparte de `hasUnread` (que ya combina esto con el estado real de
+    // lectura) porque el botón de la UI necesita saber CUÁL de los dos
+    // motivos aplica para decidir su propia etiqueta.
+    val markedUnreadForMe: Boolean
 )
 
 // Hallazgo real, comparado con WhatsApp/Instagram/Messenger: la lista de
@@ -87,7 +93,11 @@ private data class ChatRow(
     @SerialName("muted_by_a") val mutedByA: Boolean = false,
     @SerialName("muted_by_b") val mutedByB: Boolean = false,
     @SerialName("pinned_by_a") val pinnedByA: Boolean = false,
-    @SerialName("pinned_by_b") val pinnedByB: Boolean = false
+    @SerialName("pinned_by_b") val pinnedByB: Boolean = false,
+    // Marcar un chat como no leído manualmente, comparado con WhatsApp/
+    // Telegram/Messenger (0088_mark_chat_unread.sql).
+    @SerialName("marked_unread_by_a") val markedUnreadByA: Boolean = false,
+    @SerialName("marked_unread_by_b") val markedUnreadByB: Boolean = false
     // muted_until_a/b (0082_mute_until.sql) deliberadamente NO se decodifican
     // aquí: esta app nunca convierte una fecha real que llega del servidor
     // en un objeto de fecha para compararla contra "ahora" en cliente (ver
@@ -189,7 +199,7 @@ class ChatListViewModel : ViewModel() {
                 // convención del resto del proyecto (mismo patrón
                 // corregido en ChatViewModel.loadHistory() esta pasada).
                 val myChats = SupabaseManager.client.from("chats")
-                    .select(columns = Columns.raw("id,user_a_id,user_b_id,compatibility_score,created_at,hidden_by_a,hidden_by_b,muted_by_a,muted_by_b,pinned_by_a,pinned_by_b")) {
+                    .select(columns = Columns.raw("id,user_a_id,user_b_id,compatibility_score,created_at,hidden_by_a,hidden_by_b,muted_by_a,muted_by_b,pinned_by_a,pinned_by_b,marked_unread_by_a,marked_unread_by_b")) {
                         filter {
                             or {
                                 eq("user_a_id", userId)
@@ -234,6 +244,7 @@ class ChatListViewModel : ViewModel() {
                         null
                     }
 
+                    val markedUnreadForMe = if (row.userAId == userId) row.markedUnreadByA else row.markedUnreadByB
                     ChatListEntry(
                         chat = chat,
                         otherName = otherProfile?.displayName ?: "Perfil",
@@ -242,8 +253,13 @@ class ChatListViewModel : ViewModel() {
                         lastActivity = lastMessage?.createdAt ?: row.createdAt,
                         iAmUserA = row.userAId == userId,
                         isMutedForMe = if (row.userAId == userId) row.mutedByA else row.mutedByB,
-                        hasUnread = lastMessage != null && lastMessage.senderId != userId && lastMessage.readAt == null,
-                        isPinnedForMe = if (row.userAId == userId) row.pinnedByA else row.pinnedByB
+                        // Marcar como no leído manualmente, comparado con
+                        // WhatsApp/Telegram/Messenger -- capa personal por
+                        // encima del estado real de lectura del último
+                        // mensaje (0088_mark_chat_unread.sql).
+                        hasUnread = (lastMessage != null && lastMessage.senderId != userId && lastMessage.readAt == null) || markedUnreadForMe,
+                        isPinnedForMe = if (row.userAId == userId) row.pinnedByA else row.pinnedByB,
+                        markedUnreadForMe = markedUnreadForMe
                     )
                 }
                 // Fijado primero (mismo criterio que WhatsApp/Telegram),
@@ -346,6 +362,38 @@ class ChatListViewModel : ViewModel() {
                     .update({ set(column, newValue) }) { filter { eq("id", entry.chat.id) } }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo fijar la conversación."
+                load()
+            }
+        }
+    }
+
+    /** Marcar/desmarcar un chat como no leído manualmente, comparado con
+     * WhatsApp/Telegram/Messenger -- capa puramente personal (columna
+     * marked_unread_by_a/marked_unread_by_b según corresponda) por
+     * encima del estado real de lectura del último mensaje, NUNCA toca
+     * `messages.read_at` (0088_mark_chat_unread.sql, lo garantiza también
+     * del lado del servidor: nadie puede tocar la copia ajena). Se limpia
+     * sola al volver a abrir el chat de verdad -- ver
+     * ChatViewModel.markMessagesRead(). */
+    fun toggleMarkUnread(entry: ChatListEntry) {
+        val newValue = !entry.markedUnreadForMe
+        // Sin actualización optimista de `hasUnread` aquí a propósito:
+        // combina el estado real de lectura del último mensaje CON este
+        // flag manual, y no se guarda el primero por separado en
+        // ChatListEntry -- `load()` tras la escritura real es más simple
+        // y siempre correcto que intentar reconstruir el estado real a
+        // partir del booleano ya combinado.
+        _chats.update { list ->
+            list.map { if (it.chat.id == entry.chat.id) it.copy(markedUnreadForMe = newValue) else it }
+        }
+        viewModelScope.launch {
+            try {
+                val column = if (entry.iAmUserA) "marked_unread_by_a" else "marked_unread_by_b"
+                SupabaseManager.client.from("chats")
+                    .update({ set(column, newValue) }) { filter { eq("id", entry.chat.id) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo cambiar el estado de leído."
+            } finally {
                 load()
             }
         }

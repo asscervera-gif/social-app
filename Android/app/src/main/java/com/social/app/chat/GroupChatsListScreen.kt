@@ -119,11 +119,36 @@ fun GroupChatsListScreen(viewModel: GroupChatsViewModel = viewModel(), onOpenGro
                                 Text("👥")
                             }
                         }
+                        // Primera vez que la lista de grupos distingue
+                        // visualmente qué chats tienen mensajes sin leer,
+                        // comparado con WhatsApp/Instagram/Messenger --
+                        // mismo tratamiento (negrita + punto) que
+                        // ChatListScreen.kt (chat 1:1), ver
+                        // 0088_mark_chat_unread.sql.
                         Text(
                             group.name,
-                            style = MaterialTheme.typography.labelLarge,
+                            style = if (group.hasUnread) {
+                                MaterialTheme.typography.labelLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                            } else {
+                                MaterialTheme.typography.labelLarge
+                            },
                             modifier = Modifier.padding(start = 12.dp).weight(1f)
                         )
+                        if (group.hasUnread) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(end = 4.dp)
+                                    .size(10.dp)
+                                    .background(MaterialTheme.colorScheme.primary, CircleShape)
+                            )
+                        }
+                        // Marcar como no leído manualmente, comparado con
+                        // WhatsApp/Telegram/Messenger -- ver
+                        // GroupChatsViewModel.toggleMarkUnread(),
+                        // 0088_mark_chat_unread.sql.
+                        androidx.compose.material3.IconButton(onClick = { viewModel.toggleMarkUnread(group) }) {
+                            Text(if (group.markedUnreadForMe) "✅" else "✉️")
+                        }
                         // Silenciar un chat de grupo real
                         // (0064_group_chat_mute.sql), comparado con
                         // WhatsApp/Instagram/Messenger -- mismo patrón

@@ -41,6 +41,14 @@ struct GroupChat: Codable, Identifiable {
     // criterio que isMutedForMe: viene de la propia fila de membresía,
     // fuera de CodingKeys a propósito.
     var isPinnedForMe: Bool = false
+    // Marcar un chat de grupo como no leído manualmente, comparado con
+    // WhatsApp/Telegram/Messenger -- combina el flag manual real con la
+    // detección real de no leído (`group_chat_members.last_read_at`
+    // frente al último mensaje real), primera vez que la lista de grupos
+    // tiene CUALQUIER concepto de no leído (0088_mark_chat_unread.sql).
+    // Fuera de CodingKeys a propósito, mismo criterio que isMutedForMe.
+    var hasUnread: Bool = false
+    var markedUnreadForMe: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case id, name
@@ -61,6 +69,13 @@ final class GroupChatsViewModel: ObservableObject {
         let muted: Bool
         let hidden: Bool
         let pinned: Bool
+        let marked_unread: Bool
+        let last_read_at: String?
+    }
+
+    private struct LastGroupMessageRow: Decodable {
+        let sender_id: UUID
+        let created_at: String
     }
 
     func load() async {
@@ -79,11 +94,13 @@ final class GroupChatsViewModel: ObservableObject {
             // en `group_chats` -- una segunda consulta, filtrada a MI
             // propio user_id (RLS ya solo deja ver la propia igualmente).
             var memberships: [UUID: MyMembership] = [:]
-            if let userID = try? await SupabaseManager.shared.client.auth.session.user.id, !loaded.isEmpty {
+            var userID: UUID?
+            if let uid = try? await SupabaseManager.shared.client.auth.session.user.id, !loaded.isEmpty {
+                userID = uid
                 let rows: [MyMembership] = (try? await SupabaseManager.shared.client
                     .from("group_chat_members")
-                    .select("group_chat_id,muted,hidden,pinned")
-                    .eq("user_id", value: userID)
+                    .select("group_chat_id,muted,hidden,pinned,marked_unread,last_read_at")
+                    .eq("user_id", value: uid)
                     .in("group_chat_id", values: loaded.map { $0.id })
                     .execute()
                     .value) ?? []
@@ -97,15 +114,37 @@ final class GroupChatsViewModel: ObservableObject {
             // Fijar arriba (0081_pin_chats.sql), comparado con
             // WhatsApp/Telegram/Messenger -- mismo criterio de orden que
             // ChatListViewModel.swift.load() (chat 1:1).
-            groups = loaded
-                .filter { memberships[$0.id]?.hidden != true }
-                .map { group in
-                    var group = group
-                    group.isMutedForMe = memberships[group.id]?.muted ?? false
-                    group.isPinnedForMe = memberships[group.id]?.pinned ?? false
-                    return group
-                }
-                .sorted { $0.isPinnedForMe && !$1.isPinnedForMe }
+            let visibleGroups = loaded.filter { memberships[$0.id]?.hidden != true }
+            // Primera vez que la lista de grupos tiene CUALQUIER concepto
+            // de no leído, comparado con WhatsApp/Instagram/Messenger
+            // (0088_mark_chat_unread.sql) -- se compara el último
+            // mensaje REAL de cada grupo contra `last_read_at` de mi
+            // propia membresía, mismo criterio que `messages.read_at`
+            // para el chat 1:1 (ChatListViewModel.swift).
+            var newGroups: [GroupChat] = []
+            for var group in visibleGroups {
+                let membership = memberships[group.id]
+                group.isMutedForMe = membership?.muted ?? false
+                group.isPinnedForMe = membership?.pinned ?? false
+                let markedUnreadForMe = membership?.marked_unread ?? false
+                group.markedUnreadForMe = markedUnreadForMe
+                let lastMessage: LastGroupMessageRow? = try? await SupabaseManager.shared.client
+                    .from("group_messages")
+                    .select("sender_id,created_at")
+                    .eq("group_chat_id", value: group.id)
+                    .order("created_at", ascending: false)
+                    .limit(1)
+                    .single()
+                    .execute()
+                    .value
+                let lastReadAt = membership?.last_read_at
+                let hasRealUnread = lastMessage != nil &&
+                    lastMessage!.sender_id != userID &&
+                    (lastReadAt == nil || lastMessage!.created_at > lastReadAt!)
+                group.hasUnread = hasRealUnread || markedUnreadForMe
+                newGroups.append(group)
+            }
+            groups = newGroups.sorted { $0.isPinnedForMe && !$1.isPinnedForMe }
         } catch {
             errorMessage = "No se pudieron cargar los grupos: \(error.localizedDescription)"
         }
@@ -194,6 +233,34 @@ final class GroupChatsViewModel: ObservableObject {
             errorMessage = "No se pudo fijar el grupo."
             await load()
         }
+    }
+
+    /// Marcar/desmarcar un chat de grupo como no leído manualmente,
+    /// comparado con WhatsApp/Telegram/Messenger -- capa personal por
+    /// encima de la detección real de no leído
+    /// (`group_chat_members.marked_unread`, 0088_mark_chat_unread.sql, ya
+    /// cubierta por la política de UPDATE sobre la propia fila). Sin
+    /// actualización optimista de `hasUnread` por el mismo motivo que
+    /// ChatListViewModel.swift.toggleMarkUnread(): combina dos fuentes y
+    /// `load()` tras escribir es simple y siempre correcto. Equivalente
+    /// de GroupChatsViewModel.kt.toggleMarkUnread().
+    func toggleMarkUnread(_ group: GroupChat) async {
+        let newValue = !group.markedUnreadForMe
+        if let index = groups.firstIndex(where: { $0.id == group.id }) {
+            groups[index].markedUnreadForMe = newValue
+        }
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        do {
+            try await SupabaseManager.shared.client
+                .from("group_chat_members")
+                .update(["marked_unread": newValue])
+                .eq("group_chat_id", value: group.id)
+                .eq("user_id", value: userID)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo cambiar el estado de leído."
+        }
+        await load()
     }
 
     /// Ocultar un chat de grupo real de la lista sin salir de él, comparado

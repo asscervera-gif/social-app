@@ -319,6 +319,19 @@ final class ChatViewModel: ObservableObject {
                 .eq("chat_id", value: chatID)
                 .neq("sender_id", value: currentUserID)
                 .execute()
+            // Marcar como no leído manualmente (0088_mark_chat_unread.sql)
+            // se limpia solo al volver a abrir el chat de verdad, mismo
+            // criterio real que WhatsApp. Escribir `false` en las DOS
+            // columnas a la vez es seguro sin saber si soy user_a o
+            // user_b: `protect_chat_unread_flags` ya revierte en
+            // silencio la columna ajena, dejando pasar solo la propia --
+            // mismo contrato ya verificado en test_rls.mjs. Equivalente
+            // de ChatViewModel.kt.markMessagesRead().
+            try await SupabaseManager.shared.client
+                .from("chats")
+                .update(["marked_unread_by_a": false, "marked_unread_by_b": false])
+                .eq("id", value: chatID)
+                .execute()
         } catch {
             // No es crítico si falla.
         }

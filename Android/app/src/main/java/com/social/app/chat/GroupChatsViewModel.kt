@@ -34,7 +34,14 @@ data class GroupChat(
     // Fijar un chat de grupo arriba de la lista, comparado con
     // WhatsApp/Telegram/Messenger -- ver 0081_pin_chats.sql, mismo
     // criterio que isMutedForMe: viene de la propia fila de membresía.
-    val isPinnedForMe: Boolean = false
+    val isPinnedForMe: Boolean = false,
+    // Marcar un chat de grupo como no leído manualmente, comparado con
+    // WhatsApp/Telegram/Messenger -- combina el flag manual real con la
+    // detección real de no leído (`group_chat_members.last_read_at`
+    // frente al último mensaje real), primera vez que la lista de grupos
+    // tiene CUALQUIER concepto de no leído (0088_mark_chat_unread.sql).
+    val hasUnread: Boolean = false,
+    val markedUnreadForMe: Boolean = false
 )
 
 /**
@@ -79,11 +86,37 @@ class GroupChatsViewModel : ViewModel() {
                 val userId = SupabaseManager.client.auth.currentUserOrNull()?.id
                 val myMemberships = if (userId != null && groups.isNotEmpty()) {
                     SupabaseManager.client.from("group_chat_members")
-                        .select(columns = Columns.raw("group_chat_id,muted,hidden,pinned")) {
+                        .select(columns = Columns.raw("group_chat_id,muted,hidden,pinned,marked_unread,last_read_at")) {
                             filter { eq("user_id", userId); isIn("group_chat_id", groups.map { it.id }) }
                         }
                         .decodeList<MyMembership>()
                         .associateBy { it.groupChatId }
+                } else {
+                    emptyMap()
+                }
+                // Primera vez que la lista de grupos tiene CUALQUIER
+                // concepto de no leído, comparado con WhatsApp/Instagram/
+                // Messenger (0088_mark_chat_unread.sql) -- se compara el
+                // último mensaje REAL de cada grupo contra
+                // `last_read_at` de mi propia membresía, mismo criterio
+                // que `messages.read_at` para el chat 1:1
+                // (ChatListViewModel.kt).
+                val visibleGroups = groups.filter { myMemberships[it.id]?.hidden != true }
+                val lastMessages = if (userId != null) {
+                    visibleGroups.associate { group ->
+                        val lastMessage = try {
+                            SupabaseManager.client.from("group_messages")
+                                .select(columns = Columns.raw("sender_id,created_at")) {
+                                    filter { eq("group_chat_id", group.id) }
+                                    order("created_at", Order.DESCENDING)
+                                    limit(1)
+                                }
+                                .decodeSingleOrNull<LastGroupMessageRow>()
+                        } catch (e: Exception) {
+                            null
+                        }
+                        group.id to lastMessage
+                    }
                 } else {
                     emptyMap()
                 }
@@ -96,9 +129,22 @@ class GroupChatsViewModel : ViewModel() {
                 // Fijar arriba (0081_pin_chats.sql), comparado con
                 // WhatsApp/Telegram/Messenger -- mismo criterio de orden
                 // que ChatListViewModel.kt.load() (chat 1:1).
-                _groups.value = groups
-                    .filter { myMemberships[it.id]?.hidden != true }
-                    .map { it.copy(isMutedForMe = myMemberships[it.id]?.muted ?: false, isPinnedForMe = myMemberships[it.id]?.pinned ?: false) }
+                _groups.value = visibleGroups
+                    .map { group ->
+                        val membership = myMemberships[group.id]
+                        val markedUnreadForMe = membership?.markedUnread ?: false
+                        val lastMessage = lastMessages[group.id]
+                        val lastReadAt = membership?.lastReadAt
+                        val hasRealUnread = lastMessage != null &&
+                            lastMessage.senderId != userId &&
+                            (lastReadAt == null || lastMessage.createdAt > lastReadAt)
+                        group.copy(
+                            isMutedForMe = membership?.muted ?: false,
+                            isPinnedForMe = membership?.pinned ?: false,
+                            hasUnread = hasRealUnread || markedUnreadForMe,
+                            markedUnreadForMe = markedUnreadForMe
+                        )
+                    }
                     .sortedByDescending { it.isPinnedForMe }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudieron cargar los grupos: ${e.message}"
@@ -113,7 +159,18 @@ class GroupChatsViewModel : ViewModel() {
         @SerialName("group_chat_id") val groupChatId: String,
         val muted: Boolean,
         val hidden: Boolean = false,
-        val pinned: Boolean = false
+        val pinned: Boolean = false,
+        // Marcar como no leído manualmente + detección real de no leído,
+        // comparado con WhatsApp/Telegram/Messenger
+        // (0088_mark_chat_unread.sql).
+        @SerialName("marked_unread") val markedUnread: Boolean = false,
+        @SerialName("last_read_at") val lastReadAt: String? = null
+    )
+
+    @Serializable
+    private data class LastGroupMessageRow(
+        @SerialName("sender_id") val senderId: String,
+        @SerialName("created_at") val createdAt: String
     )
 
     /** Silenciar un grupo real con una duración real elegida (8 horas / 1
@@ -178,6 +235,32 @@ class GroupChatsViewModel : ViewModel() {
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo fijar el grupo."
+                load()
+            }
+        }
+    }
+
+    /** Marcar/desmarcar un chat de grupo como no leído manualmente,
+     * comparado con WhatsApp/Telegram/Messenger -- capa personal por
+     * encima de la detección real de no leído
+     * (`group_chat_members.marked_unread`, 0088_mark_chat_unread.sql, ya
+     * cubierta por `group_chat_members_update_own`). Sin actualización
+     * optimista de `hasUnread` por el mismo motivo que
+     * ChatListViewModel.toggleMarkUnread(): combina dos fuentes y no
+     * vale la pena reconstruirlo en cliente, `load()` tras escribir es
+     * simple y siempre correcto. */
+    fun toggleMarkUnread(group: GroupChat) {
+        val newValue = !group.markedUnreadForMe
+        _groups.update { list -> list.map { if (it.id == group.id) it.copy(markedUnreadForMe = newValue) else it } }
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                SupabaseManager.client.from("group_chat_members").update({ set("marked_unread", newValue) }) {
+                    filter { eq("group_chat_id", group.id); eq("user_id", userId) }
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo cambiar el estado de leído."
+            } finally {
                 load()
             }
         }

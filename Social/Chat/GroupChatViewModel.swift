@@ -182,19 +182,46 @@ final class GroupChatViewModel: ObservableObject {
         guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
         let alreadyRead = Set(reads.filter { $0.value.contains(userID) }.keys)
         let toMark = messages.filter { $0.senderID != userID && !alreadyRead.contains($0.id) }
-        guard !toMark.isEmpty else { return }
-        do {
-            let rows = toMark.map { NewRead(group_message_id: $0.id, group_chat_id: groupChatID, user_id: userID) }
-            try await SupabaseManager.shared.client
-                .from("group_message_reads")
-                .insert(rows)
-                .execute()
-            for message in toMark {
-                reads[message.id, default: []].append(userID)
+        if !toMark.isEmpty {
+            do {
+                let rows = toMark.map { NewRead(group_message_id: $0.id, group_chat_id: groupChatID, user_id: userID) }
+                try await SupabaseManager.shared.client
+                    .from("group_message_reads")
+                    .insert(rows)
+                    .execute()
+                for message in toMark {
+                    reads[message.id, default: []].append(userID)
+                }
+            } catch {
+                // Best-effort -- un recibo de lectura que falla no debe
+                // interrumpir la lectura del chat.
             }
+        }
+        // Marcar como no leído manualmente (0088_mark_chat_unread.sql) y
+        // la detección real de no leído en la lista de grupos se limpian
+        // solas al volver a abrir el grupo de verdad, mismo criterio real
+        // que el chat 1:1 (ChatViewModel.markMessagesRead()).
+        do {
+            // Dos `.update()` seguidos, no uno con ambas columnas
+            // mezcladas -- un diccionario de Swift necesita un tipo de
+            // valor homogéneo (Bool por un lado, String por otro), mismo
+            // motivo ya documentado en
+            // ChatListViewModel.swift.muteChatFor().
+            try await SupabaseManager.shared.client
+                .from("group_chat_members")
+                .update(["marked_unread": false])
+                .eq("group_chat_id", value: groupChatID)
+                .eq("user_id", value: userID)
+                .execute()
+            try await SupabaseManager.shared.client
+                .from("group_chat_members")
+                .update(["last_read_at": ISO8601DateFormatter().string(from: Date())])
+                .eq("group_chat_id", value: groupChatID)
+                .eq("user_id", value: userID)
+                .execute()
         } catch {
-            // Best-effort -- un recibo de lectura que falla no debe
-            // interrumpir la lectura del chat.
+            // No crítico: la próxima carga real de la lista reconcilia el
+            // estado con el servidor.
         }
     }
 

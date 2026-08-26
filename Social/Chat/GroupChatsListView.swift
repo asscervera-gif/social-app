@@ -72,7 +72,17 @@ struct GroupChatsListView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        Text(group.name).font(.subheadline.bold())
+                        // Primera vez que la lista de grupos distingue
+                        // visualmente qué chats tienen mensajes sin leer,
+                        // comparado con WhatsApp/Instagram/Messenger --
+                        // mismo tratamiento (negrita) que
+                        // ChatListView.swift (chat 1:1), ver
+                        // 0088_mark_chat_unread.sql.
+                        Text(group.name)
+                            .font(group.hasUnread ? .subheadline.bold() : .subheadline)
+                        if group.hasUnread {
+                            Circle().fill(.pink).frame(width: 8, height: 8)
+                        }
                     }
                 }
                 .buttonStyle(.plain)
@@ -103,6 +113,14 @@ struct GroupChatsListView: View {
                         Task { await viewModel.togglePin(group) }
                     }
                     .tint(.orange)
+                    // Marcar como no leído manualmente, comparado con
+                    // WhatsApp/Telegram/Messenger -- ver
+                    // GroupChatsViewModel.toggleMarkUnread(),
+                    // 0088_mark_chat_unread.sql.
+                    Button(group.markedUnreadForMe ? "Marcar como leído" : "Marcar como no leído") {
+                        Task { await viewModel.toggleMarkUnread(group) }
+                    }
+                    .tint(.blue)
                 }
             }
         }

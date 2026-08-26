@@ -157,6 +157,10 @@ struct Chat: Codable, Identifiable {
     // WhatsApp/Telegram/Messenger -- ver 0081_pin_chats.sql.
     var pinnedByA: Bool = false
     var pinnedByB: Bool = false
+    // Marcar un chat como no leído manualmente, comparado con WhatsApp/
+    // Telegram/Messenger -- ver 0088_mark_chat_unread.sql.
+    var markedUnreadByA: Bool = false
+    var markedUnreadByB: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -170,6 +174,8 @@ struct Chat: Codable, Identifiable {
         case mutedByB = "muted_by_b"
         case pinnedByA = "pinned_by_a"
         case pinnedByB = "pinned_by_b"
+        case markedUnreadByA = "marked_unread_by_a"
+        case markedUnreadByB = "marked_unread_by_b"
     }
 }
 

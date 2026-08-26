@@ -144,6 +144,15 @@ fun ChatListScreen(viewModel: ChatListViewModel = viewModel(), onOpenChat: (Stri
                     androidx.compose.material3.IconButton(onClick = { viewModel.togglePin(entry) }) {
                         Text(if (entry.isPinnedForMe) "📌" else "📍")
                     }
+                    // Marcar como no leído manualmente, comparado con
+                    // WhatsApp/Telegram/Messenger -- capa personal por
+                    // encima del estado real de lectura, NUNCA toca el
+                    // recibo de lectura real que ve la otra persona (ver
+                    // ChatListViewModel.toggleMarkUnread(),
+                    // 0088_mark_chat_unread.sql).
+                    androidx.compose.material3.IconButton(onClick = { viewModel.toggleMarkUnread(entry) }) {
+                        Text(if (entry.markedUnreadForMe) "✅" else "✉️")
+                    }
                     // Silenciar con una duración real elegida (8 horas / 1
                     // semana / siempre), comparado con WhatsApp/Telegram --
                     // antes solo existía un interruptor sin expiración (ver
