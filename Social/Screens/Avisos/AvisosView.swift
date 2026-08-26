@@ -41,36 +41,7 @@ struct AvisosView: View {
             List(viewModel.notifications) { entry in
                 Button {
                     Task { await viewModel.markRead(entry) }
-                    if entry.kind == "message",
-                       let chatIDString = entry.payload["chat_id"],
-                       let chatID = UUID(uuidString: chatIDString) {
-                        selectedChatID = chatID
-                        showOpenedChat = true
-                    } else if (entry.kind == "like" || entry.kind == "comment" || entry.kind == "comment_like"),
-                              let postIDString = entry.payload["post_id"],
-                              let postID = UUID(uuidString: postIDString) {
-                        // "comment_like" real (0070_notify_comment_like_post_reference.sql):
-                        // mismo hueco exacto que like/comment, pero para un
-                        // like a un COMENTARIO -- payload.post_id no
-                        // existía hasta esa migración.
-                        selectedPostID = postID
-                        showOpenedPost = true
-                    } else if entry.kind == "group_message",
-                              let groupChatIDString = entry.payload["group_chat_id"],
-                              let groupChatID = UUID(uuidString: groupChatIDString) {
-                        selectedGroupChatID = groupChatID
-                        showOpenedGroupChat = true
-                    } else if (entry.kind == "reel_like" || entry.kind == "reel_comment" || entry.kind == "reel_comment_like"),
-                              let reelIDString = entry.payload["reel_id"],
-                              let reelID = UUID(uuidString: reelIDString) {
-                        // Abrir un reel concreto real, comparado con
-                        // Instagram/TikTok -- cierra el hueco documentado
-                        // dos rondas atrás.
-                        selectedReelID = reelID
-                        showOpenedReel = true
-                    } else {
-                        viewModel.selected = entry
-                    }
+                    handleTap(on: entry)
                 } label: {
                     HStack(spacing: 14) {
                         // Hallazgo real, mismo hueco raíz ya cerrado en el
@@ -151,6 +122,52 @@ struct AvisosView: View {
                     .presentationDetents([.medium, .large])
             }
         }
+    }
+
+    /// Decide a dónde lleva tocar un aviso real, según su `kind` y los
+    /// datos reales de su `payload`. Extraído de `body` a propósito --
+    /// hallazgo real de compilador (CI real, GitHub Actions, 2026-08-26):
+    /// con cinco ramas `if/else if` encadenadas (varias con `||` y
+    /// múltiples `let` en la misma condición) DENTRO del closure de
+    /// `Button` en un result builder de SwiftUI, el type-checker no
+    /// terminaba ("unable to type-check this expression in reasonable
+    /// time") -- un método normal, fuera de cualquier result builder,
+    /// type-checka cada rama por separado sin ese límite combinatorio.
+    private func handleTap(on entry: AvisosViewModel.NotificationEntry) {
+        if entry.kind == "message",
+           let chatIDString = entry.payload["chat_id"],
+           let chatID = UUID(uuidString: chatIDString) {
+            selectedChatID = chatID
+            showOpenedChat = true
+            return
+        }
+        // "comment_like" real (0070_notify_comment_like_post_reference.sql):
+        // mismo hueco exacto que like/comment, pero para un like a un
+        // COMENTARIO -- payload.post_id no existía hasta esa migración.
+        if entry.kind == "like" || entry.kind == "comment" || entry.kind == "comment_like",
+           let postIDString = entry.payload["post_id"],
+           let postID = UUID(uuidString: postIDString) {
+            selectedPostID = postID
+            showOpenedPost = true
+            return
+        }
+        if entry.kind == "group_message",
+           let groupChatIDString = entry.payload["group_chat_id"],
+           let groupChatID = UUID(uuidString: groupChatIDString) {
+            selectedGroupChatID = groupChatID
+            showOpenedGroupChat = true
+            return
+        }
+        // Abrir un reel concreto real, comparado con Instagram/TikTok --
+        // cierra el hueco documentado dos rondas atrás.
+        if entry.kind == "reel_like" || entry.kind == "reel_comment" || entry.kind == "reel_comment_like",
+           let reelIDString = entry.payload["reel_id"],
+           let reelID = UUID(uuidString: reelIDString) {
+            selectedReelID = reelID
+            showOpenedReel = true
+            return
+        }
+        viewModel.selected = entry
     }
 }
 
