@@ -136,7 +136,10 @@ data class ChatMessage(
     @SerialName("shared_post_id") val sharedPostId: String? = null,
     // Responder a una historia real (0071_message_story_reply.sql),
     // comparado con Instagram/WhatsApp Status/Snapchat.
-    @SerialName("story_id") val storyId: String? = null
+    @SerialName("story_id") val storyId: String? = null,
+    // Reenviar un mensaje real (0072_message_forward.sql), comparado con
+    // WhatsApp/Telegram/Messenger.
+    @SerialName("is_forwarded") val isForwarded: Boolean = false
 )
 
 /** Hallazgo de integridad corregido (ver duel-ai/index.ts): antes incluía

@@ -32,6 +32,9 @@ struct GroupMessage: Codable, Identifiable {
     // (0069_message_shared_post.sql), comparado con Instagram/TikTok/
     // Twitter/Snapchat.
     var sharedPostID: UUID?
+    // Reenviar un mensaje real (0072_message_forward.sql), comparado con
+    // WhatsApp/Telegram/Messenger.
+    var isForwarded: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -43,6 +46,7 @@ struct GroupMessage: Codable, Identifiable {
         case createdAt = "created_at"
         case editedAt = "edited_at"
         case sharedPostID = "shared_post_id"
+        case isForwarded = "is_forwarded"
     }
 }
 

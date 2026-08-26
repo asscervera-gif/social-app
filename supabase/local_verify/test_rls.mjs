@@ -1264,6 +1264,19 @@ async function main() {
   const storyReplyAsRecipient = (await db.query(`select story_id from messages where chat_id = $1 and story_id = $2`, [chat.id, story.id])).rows;
   check('messages_select: el destinatario real (u1) SÍ ve el mensaje con la respuesta a la historia', storyReplyAsRecipient.length === 1);
 
+  // --- messages.is_forwarded / group_messages.is_forwarded
+  // (0072_message_forward.sql): reenviar un mensaje real a otro chat,
+  // comparado con WhatsApp/Telegram/Messenger. Contexto ya asUser(u1). ---
+  await expectOk('messages_insert: un mensaje real con is_forwarded SÍ se puede insertar en el chat 1:1', async () => {
+    await db.query(`insert into messages (chat_id, sender_id, body, is_forwarded) values ($1, $2, 'mensaje reenviado', true)`, [chat.id, u1]);
+  });
+  await expectOk('group_messages_insert: un mensaje real con is_forwarded SÍ se puede insertar en un grupo', async () => {
+    await db.query(`insert into group_messages (group_chat_id, sender_id, body, is_forwarded) values ($1, $2, 'mensaje reenviado', true)`, [group.id, u1]);
+  });
+  await asUser(u2);
+  const forwardedInChatAsRecipient = (await db.query(`select is_forwarded from messages where chat_id = $1 and body = 'mensaje reenviado'`, [chat.id])).rows;
+  check('messages_select: el destinatario real (u2) SÍ ve el mensaje reenviado, con is_forwarded real', forwardedInChatAsRecipient.length === 1 && forwardedInChatAsRecipient[0].is_forwarded === true);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

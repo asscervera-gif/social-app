@@ -177,6 +177,9 @@ struct ChatMessage: Codable, Identifiable {
     // Responder a una historia real (0071_message_story_reply.sql),
     // comparado con Instagram/WhatsApp Status/Snapchat.
     var storyID: UUID?
+    // Reenviar un mensaje real (0072_message_forward.sql), comparado con
+    // WhatsApp/Telegram/Messenger.
+    var isForwarded: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -190,6 +193,7 @@ struct ChatMessage: Codable, Identifiable {
         case editedAt = "edited_at"
         case sharedPostID = "shared_post_id"
         case storyID = "story_id"
+        case isForwarded = "is_forwarded"
     }
 }
 

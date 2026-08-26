@@ -47,7 +47,10 @@ data class GroupMessage(
     // Enviar una publicación a un chat de grupo real
     // (0069_message_shared_post.sql), comparado con Instagram/TikTok/
     // Twitter/Snapchat.
-    @SerialName("shared_post_id") val sharedPostId: String? = null
+    @SerialName("shared_post_id") val sharedPostId: String? = null,
+    // Reenviar un mensaje real (0072_message_forward.sql), comparado con
+    // WhatsApp/Telegram/Messenger.
+    @SerialName("is_forwarded") val isForwarded: Boolean = false
 )
 
 /**
@@ -177,7 +180,7 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
             _isLoading.value = true
             try {
                 _messages.value = SupabaseManager.client.from("group_messages")
-                    .select(columns = Columns.raw("id,group_chat_id,sender_id,body,media_url,audio_url,created_at,edited_at,shared_post_id")) {
+                    .select(columns = Columns.raw("id,group_chat_id,sender_id,body,media_url,audio_url,created_at,edited_at,shared_post_id,is_forwarded")) {
                         filter { eq("group_chat_id", groupChatId) }
                         order("created_at", Order.ASCENDING)
                     }

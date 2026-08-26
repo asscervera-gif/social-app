@@ -105,6 +105,9 @@ fun ChatScreen(
     var managingMessage by remember { mutableStateOf<com.social.app.backend.model.ChatMessage?>(null) }
     var editingMessage by remember { mutableStateOf<com.social.app.backend.model.ChatMessage?>(null) }
     var editedMessageText by remember { mutableStateOf("") }
+    // Reenviar un mensaje real (0072_message_forward.sql), comparado con
+    // WhatsApp/Telegram/Messenger.
+    var forwardingMessage by remember { mutableStateOf<com.social.app.backend.model.ChatMessage?>(null) }
     val context = LocalContext.current
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) viewModel.sendPhoto(context, uri)
@@ -347,6 +350,30 @@ fun ChatScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    // Reenviar un mensaje real (0072_message_forward.sql),
+                    // comparado con WhatsApp/Telegram/Messenger --
+                    // etiqueta real cuando corresponde, y un tap target
+                    // siempre visible (no solo con mantener pulsado, ya
+                    // usado para editar/borrar/denunciar) para reenviar
+                    // cualquier mensaje real (propio o ajeno) con
+                    // contenido real (texto/foto/audio) -- las publicaciones
+                    // compartidas/respuestas a historias quedan fuera de
+                    // alcance a propósito (sin body/media/audio propios).
+                    if (message.isForwarded) {
+                        Text(
+                            "Reenviado",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (message.body != null || message.mediaUrl != null || message.audioUrl != null) {
+                        Text(
+                            "↪ Reenviar",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.clickable { forwardingMessage = message }
+                        )
+                    }
                     if (isMine) {
                         Text(
                             if (message.readAt != null) "Leído ✓✓" else "Enviado ✓",
@@ -454,6 +481,16 @@ fun ChatScreen(
                 onDismiss = { reportMessageId = null }
             )
         }
+    }
+    // Reenviar un mensaje real (0072_message_forward.sql), comparado con
+    // WhatsApp/Telegram/Messenger.
+    forwardingMessage?.let { message ->
+        ForwardMessageSheet(
+            body = message.body,
+            mediaUrl = message.mediaUrl,
+            audioUrl = message.audioUrl,
+            onDismiss = { forwardingMessage = null }
+        )
     }
     // Hallazgo real, comparado con WhatsApp/Telegram/Messenger: mantener
     // pulsado un mensaje propio lo borraba al instante sin confirmación --

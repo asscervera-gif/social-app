@@ -99,6 +99,9 @@ fun GroupChatScreen(
     // (chat 1:1), pero aquí el denunciado es quien ESCRIBIÓ ese mensaje en
     // concreto, no un único "oponente" fijo como en el 1:1.
     var reportMessage by remember { mutableStateOf<GroupMessage?>(null) }
+    // Reenviar un mensaje real (0072_message_forward.sql), comparado con
+    // WhatsApp/Telegram/Messenger.
+    var forwardingMessage by remember { mutableStateOf<GroupMessage?>(null) }
     val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
     val listState = rememberLazyListState()
 
@@ -278,6 +281,24 @@ fun GroupChatScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                        // Reenviar un mensaje real (0072_message_forward.sql),
+                        // comparado con WhatsApp/Telegram/Messenger --
+                        // mismo patrón exacto que ChatScreen.kt (chat 1:1).
+                        if (message.isForwarded) {
+                            Text(
+                                "Reenviado",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (message.body != null || message.mediaUrl != null || message.audioUrl != null) {
+                            Text(
+                                "↪ Reenviar",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.clickable { forwardingMessage = message }
+                            )
+                        }
                         // "Visto por" real (0061_group_message_reads.sql),
                         // comparado con WhatsApp/Messenger -- solo en los
                         // propios mensajes, igual que esas apps solo
@@ -447,6 +468,16 @@ fun GroupChatScreen(
                 onDismiss = { reportMessage = null }
             )
         }
+    }
+    // Reenviar un mensaje real (0072_message_forward.sql), comparado con
+    // WhatsApp/Telegram/Messenger.
+    forwardingMessage?.let { message ->
+        ForwardMessageSheet(
+            body = message.body,
+            mediaUrl = message.mediaUrl,
+            audioUrl = message.audioUrl,
+            onDismiss = { forwardingMessage = null }
+        )
     }
 }
 

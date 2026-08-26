@@ -42,6 +42,9 @@ struct GroupChatView: View {
     // (chat 1:1), pero aquí el denunciado es quien ESCRIBIÓ ese mensaje en
     // concreto, no un único "oponente" fijo como en el 1:1.
     @State private var reportMessage: GroupMessage?
+    // Reenviar un mensaje real (0072_message_forward.sql), comparado con
+    // WhatsApp/Telegram/Messenger.
+    @State private var forwardingMessage: GroupMessage?
 
     init(groupChatID: UUID, groupName: String) {
         self._viewModel = StateObject(wrappedValue: GroupChatViewModel(groupChatID: groupChatID))
@@ -85,7 +88,8 @@ struct GroupChatView: View {
                                 },
                                 onOpenFullScreen: { url in fullScreenURL = url },
                                 onManage: { managingMessage = message },
-                                onReport: { reportMessage = message }
+                                onReport: { reportMessage = message },
+                                onForward: { forwardingMessage = message }
                             )
                             .id(message.id)
                         }
@@ -200,6 +204,16 @@ struct GroupChatView: View {
             if let reportMessage, let myID {
                 ReportSheet(userID: myID, reportedID: reportMessage.senderID, groupMessageID: reportMessage.id)
             }
+        }
+        // Reenviar un mensaje real (0072_message_forward.sql), comparado
+        // con WhatsApp/Telegram/Messenger.
+        .sheet(item: $forwardingMessage) { message in
+            ForwardMessageView(
+                messageBody: message.body,
+                mediaURL: message.mediaURL,
+                audioURL: message.audioURL,
+                onDismiss: { forwardingMessage = nil }
+            )
         }
         // Editar/borrar un mensaje ya enviado en un grupo real
         // (0065_group_messages_edit_delete.sql), comparado con WhatsApp/
@@ -387,6 +401,9 @@ private struct GroupMessageBubble: View {
     // (ChatView.swift, chat 1:1): mantener pulsado el propio mensaje.
     var onManage: () -> Void = {}
     var onReport: () -> Void = {}
+    // Reenviar un mensaje real (0072_message_forward.sql), comparado con
+    // WhatsApp/Telegram/Messenger.
+    var onForward: () -> Void = {}
 
     @State private var showPicker = false
     private let reactionEmojis = ["❤", "😂", "😮", "😢", "👍"]
@@ -485,6 +502,19 @@ private struct GroupMessageBubble: View {
             // ChatView.swift (chat 1:1).
             if message.editedAt != nil {
                 Text("Editado")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            // Reenviar un mensaje real (0072_message_forward.sql),
+            // comparado con WhatsApp/Telegram/Messenger -- mismo patrón
+            // exacto que ChatView.swift (chat 1:1).
+            if message.isForwarded {
+                Text("Reenviado")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            if message.body != nil || message.mediaURL != nil || message.audioURL != nil {
+                Button("↪ Reenviar", action: onForward)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

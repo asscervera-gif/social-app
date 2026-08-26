@@ -39,6 +39,9 @@ struct ChatView: View {
     @State private var managingMessage: ChatMessage?
     @State private var editingMessage: ChatMessage?
     @State private var editedMessageText = ""
+    // Reenviar un mensaje real (0072_message_forward.sql), comparado con
+    // WhatsApp/Telegram/Messenger.
+    @State private var forwardingMessage: ChatMessage?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -72,6 +75,16 @@ struct ChatView: View {
                         set: { if !$0 { reportMessageID = nil } }
                     )) {
                         ReportSheet(userID: currentUserID, reportedID: opponentID, messageID: reportMessageID)
+                    }
+                    // Reenviar un mensaje real (0072_message_forward.sql),
+                    // comparado con WhatsApp/Telegram/Messenger.
+                    .sheet(item: $forwardingMessage) { message in
+                        ForwardMessageView(
+                            messageBody: message.body,
+                            mediaURL: message.mediaURL,
+                            audioURL: message.audioURL,
+                            onDismiss: { forwardingMessage = nil }
+                        )
                     }
             }
 
@@ -113,6 +126,9 @@ struct ChatView: View {
                                 },
                                 onReport: {
                                     reportMessageID = message.id
+                                },
+                                onForward: {
+                                    forwardingMessage = message
                                 }
                             )
                             .id(message.id)
@@ -341,6 +357,9 @@ private struct MessageBubble: View {
     // forma de denunciar un MENSAJE concreto -- ver
     // 0048_reports_message_reference.sql.
     var onReport: () -> Void = {}
+    // Reenviar un mensaje real (0072_message_forward.sql), comparado con
+    // WhatsApp/Telegram/Messenger.
+    var onForward: () -> Void = {}
 
     @State private var showPicker = false
     // Hallazgo real, comparado con Instagram/Twitter/WhatsApp: no había
@@ -479,6 +498,23 @@ private struct MessageBubble: View {
             // corrigió después de enviarse -- ver 0049_messages_edit.sql.
             if message.editedAt != nil {
                 Text("Editado")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            // Reenviar un mensaje real (0072_message_forward.sql),
+            // comparado con WhatsApp/Telegram/Messenger -- etiqueta real
+            // cuando corresponde, y un tap target siempre visible (no
+            // solo con mantener pulsado) para reenviar cualquier mensaje
+            // real (propio o ajeno) con contenido real (texto/foto/audio)
+            // -- las publicaciones compartidas/respuestas a historias
+            // quedan fuera de alcance a propósito.
+            if message.isForwarded {
+                Text("Reenviado")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            if message.body != nil || message.mediaURL != nil || message.audioURL != nil {
+                Button("↪ Reenviar", action: onForward)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
