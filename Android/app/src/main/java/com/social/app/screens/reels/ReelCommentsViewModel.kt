@@ -25,7 +25,10 @@ data class ReelComment(
     @SerialName("created_at") val createdAt: String = "",
     // Comparado con Instagram/Twitter/Facebook: dar like a un comentario
     // concreto (0054_comment_likes.sql).
-    @SerialName("like_count") val likeCount: Int = 0
+    @SerialName("like_count") val likeCount: Int = 0,
+    // Fijar un comentario, comparado con Instagram/Twitter -- solo el
+    // autor real del reel puede cambiarlo (0084_pin_comments.sql).
+    @SerialName("is_pinned") val isPinned: Boolean = false
 )
 
 /**
@@ -55,17 +58,35 @@ class ReelCommentsViewModel(private val reelId: String) : ViewModel() {
     private val _likedCommentIds = MutableStateFlow<Set<String>>(emptySet())
     val likedCommentIds: StateFlow<Set<String>> = _likedCommentIds.asStateFlow()
 
+    // Fijar un comentario, comparado con Instagram/Twitter -- solo el
+    // autor real del reel puede fijar/desfijar (0084_pin_comments.sql), la
+    // propia hoja necesita saber quién es para mostrar el botón solo a esa
+    // persona. `reel_comments` no trae el autor del reel embebido, se
+    // resuelve aparte con un solo select, mismo criterio que
+    // authorProfiles.
+    private val _reelAuthorId = MutableStateFlow<String?>(null)
+    val reelAuthorId: StateFlow<String?> = _reelAuthorId.asStateFlow()
+
     fun load() {
         viewModelScope.launch {
             _isLoading.value = true
             try {
                 val loaded = SupabaseManager.client.from("reel_comments")
-                    .select(columns = Columns.raw("id,reel_id,author_id,body,created_at,like_count")) {
+                    .select(columns = Columns.raw("id,reel_id,author_id,body,created_at,like_count,is_pinned")) {
                         filter { eq("reel_id", reelId) }
                         order("created_at", Order.ASCENDING)
                     }
                     .decodeList<ReelComment>()
-                _comments.value = loaded
+                _comments.value = sortPinnedFirst(loaded)
+
+                try {
+                    _reelAuthorId.value = SupabaseManager.client.from("reels")
+                        .select(columns = Columns.raw("author_id")) { filter { eq("id", reelId) } }
+                        .decodeSingleOrNull<ReelAuthorRow>()?.authorId
+                } catch (e: Exception) {
+                    // No crítico: sin esto solo no se muestra el botón de
+                    // fijar, el resto de la hoja sigue funcionando.
+                }
 
                 val authorIds = loaded.map { it.authorId }.distinct()
                 if (authorIds.isNotEmpty()) {
@@ -100,6 +121,31 @@ class ReelCommentsViewModel(private val reelId: String) : ViewModel() {
                 _errorMessage.value = "No se pudieron cargar los comentarios: ${e.message}"
             } finally {
                 _isLoading.value = false
+            }
+        }
+    }
+
+    @Serializable
+    private data class ReelAuthorRow(@SerialName("author_id") val authorId: String)
+
+    private fun sortPinnedFirst(list: List<ReelComment>) =
+        list.sortedWith(compareByDescending<ReelComment> { it.isPinned }.thenBy { it.createdAt })
+
+    /** Fijar/desfijar un comentario real, comparado con Instagram/Twitter
+     * -- solo el autor real del reel puede hacerlo (`reel_comments_update_pin`,
+     * 0084_pin_comments.sql, lo garantiza también del lado del servidor:
+     * un intento ajeno afecta 0 filas, revertido en silencio por la propia
+     * UI al no ofrecerle el botón). */
+    fun togglePin(comment: ReelComment) {
+        val newValue = !comment.isPinned
+        _comments.update { list -> sortPinnedFirst(list.map { if (it.id == comment.id) it.copy(isPinned = newValue) else it }) }
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("reel_comments")
+                    .update({ set("is_pinned", newValue) }) { filter { eq("id", comment.id) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo fijar el comentario."
+                load()
             }
         }
     }
@@ -166,7 +212,7 @@ class ReelCommentsViewModel(private val reelId: String) : ViewModel() {
                 val inserted = SupabaseManager.client.from("reel_comments")
                     .insert(NewReelComment(reelId, userId, trimmed)) { select() }
                     .decodeSingle<ReelComment>()
-                _comments.update { it + inserted }
+                _comments.update { sortPinnedFirst(it + inserted) }
                 if (!_authorProfiles.value.containsKey(userId)) {
                     try {
                         val me = SupabaseManager.client.from("profiles")

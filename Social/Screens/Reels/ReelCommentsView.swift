@@ -55,6 +55,13 @@ struct ReelCommentsView: View {
                                 )
                                 Text(viewModel.authorProfiles[comment.author_id]?.displayName ?? "…")
                                     .font(.caption.bold())
+                                // Fijar un comentario, comparado con
+                                // Instagram/Twitter -- ver
+                                // ReelCommentsViewModel.togglePin(),
+                                // 0084_pin_comments.sql.
+                                if comment.is_pinned {
+                                    Text("📌").font(.caption)
+                                }
                             }
                         }
                         .buttonStyle(.plain)
@@ -82,6 +89,17 @@ struct ReelCommentsView: View {
                             }
                             .buttonStyle(.plain)
                             .font(.caption)
+                            // Fijar un comentario (propio o ajeno),
+                            // comparado con Instagram/Twitter -- solo
+                            // visible para el autor real del reel, mismo
+                            // criterio que `reel_comments_update_pin` en
+                            // RLS.
+                            if let reelAuthorID = viewModel.reelAuthorID, reelAuthorID == myID {
+                                Button(comment.is_pinned ? "Desfijar" : "Fijar") {
+                                    Task { await viewModel.togglePin(comment) }
+                                }
+                                .font(.caption)
+                            }
                             if comment.author_id == myID {
                                 Button("Borrar", role: .destructive) {
                                     Task { await viewModel.deleteComment(comment, onCommentRemoved: onCommentRemoved) }

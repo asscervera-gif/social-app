@@ -55,6 +55,7 @@ fun CommentsSheet(
     val errorMessage by viewModel.errorMessage.collectAsState()
     val authorProfiles by viewModel.authorProfiles.collectAsState()
     val likedCommentIds by viewModel.likedCommentIds.collectAsState()
+    val postAuthorId by viewModel.postAuthorId.collectAsState()
     var draft by remember { mutableStateOf("") }
     val sheetState = rememberModalBottomSheetState()
     val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
@@ -98,6 +99,14 @@ fun CommentsSheet(
                                 style = MaterialTheme.typography.labelMedium,
                                 modifier = Modifier.padding(start = 6.dp)
                             )
+                            // Fijar un comentario, comparado con Instagram/
+                            // Twitter -- ver CommentsViewModel.togglePin(),
+                            // 0084_pin_comments.sql. El propio icono ya
+                            // comunica el estado, visible para cualquiera
+                            // (mismo criterio que WhatsApp con "Fijado").
+                            if (comment.isPinned) {
+                                Text("📌", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(start = 6.dp))
+                            }
                         }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -131,6 +140,15 @@ fun CommentsSheet(
                                         style = MaterialTheme.typography.labelSmall,
                                         modifier = Modifier.padding(start = 2.dp)
                                     )
+                                }
+                            }
+                            // Fijar un comentario (propio o ajeno), comparado
+                            // con Instagram/Twitter -- solo visible para el
+                            // autor real de la publicación, mismo criterio
+                            // que `comments_update_pin` en RLS.
+                            if (postAuthorId != null && postAuthorId == myId) {
+                                TextButton(onClick = { viewModel.togglePin(comment) }) {
+                                    Text(if (comment.isPinned) "Desfijar" else "Fijar")
                                 }
                             }
                             // Hallazgo real: no había forma de borrar el propio

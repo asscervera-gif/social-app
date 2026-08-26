@@ -50,17 +50,35 @@ class CommentsViewModel(private val postId: String) : ViewModel() {
     private val _likedCommentIds = MutableStateFlow<Set<String>>(emptySet())
     val likedCommentIds: StateFlow<Set<String>> = _likedCommentIds.asStateFlow()
 
+    // Fijar un comentario, comparado con Instagram/Twitter -- solo el
+    // autor real de la publicación puede fijar/desfijar
+    // (0084_pin_comments.sql), la propia hoja necesita saber quién es para
+    // mostrar el botón solo a esa persona. `comments` no trae el autor de
+    // la publicación embebido, se resuelve aparte con un solo select,
+    // mismo criterio que authorProfiles.
+    private val _postAuthorId = MutableStateFlow<String?>(null)
+    val postAuthorId: StateFlow<String?> = _postAuthorId.asStateFlow()
+
     fun load() {
         viewModelScope.launch {
             _isLoading.value = true
             try {
                 val loaded = SupabaseManager.client.from("comments")
-                    .select(columns = Columns.raw("id,post_id,author_id,body,created_at,like_count")) {
+                    .select(columns = Columns.raw("id,post_id,author_id,body,created_at,like_count,is_pinned")) {
                         filter { eq("post_id", postId) }
                         order("created_at", Order.ASCENDING)
                     }
                     .decodeList<Comment>()
-                _comments.value = loaded
+                _comments.value = sortPinnedFirst(loaded)
+
+                try {
+                    _postAuthorId.value = SupabaseManager.client.from("posts")
+                        .select(columns = Columns.raw("author_id")) { filter { eq("id", postId) } }
+                        .decodeSingleOrNull<PostAuthorRow>()?.authorId
+                } catch (e: Exception) {
+                    // No crítico: sin esto solo no se muestra el botón de
+                    // fijar, el resto de la hoja sigue funcionando.
+                }
 
                 val authorIds = loaded.map { it.authorId }.distinct()
                 if (authorIds.isNotEmpty()) {
@@ -97,6 +115,31 @@ class CommentsViewModel(private val postId: String) : ViewModel() {
                 _errorMessage.value = "No se pudieron cargar los comentarios: ${e.message}"
             } finally {
                 _isLoading.value = false
+            }
+        }
+    }
+
+    @Serializable
+    private data class PostAuthorRow(@SerialName("author_id") val authorId: String)
+
+    private fun sortPinnedFirst(list: List<Comment>) =
+        list.sortedWith(compareByDescending<Comment> { it.isPinned }.thenBy { it.createdAt })
+
+    /** Fijar/desfijar un comentario real, comparado con Instagram/Twitter
+     * -- solo el autor real de la publicación puede hacerlo
+     * (`comments_update_pin`, 0084_pin_comments.sql, lo garantiza también
+     * del lado del servidor: un intento ajeno afecta 0 filas, revertido en
+     * silencio por la propia UI al no ofrecerle el botón). */
+    fun togglePin(comment: Comment) {
+        val newValue = !comment.isPinned
+        _comments.update { list -> sortPinnedFirst(list.map { if (it.id == comment.id) it.copy(isPinned = newValue) else it }) }
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("comments")
+                    .update({ set("is_pinned", newValue) }) { filter { eq("id", comment.id) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo fijar el comentario."
+                load()
             }
         }
     }
@@ -170,7 +213,7 @@ class CommentsViewModel(private val postId: String) : ViewModel() {
                 val inserted = SupabaseManager.client.from("comments")
                     .insert(NewComment(postId, userId, trimmed)) { select() }
                     .decodeSingle<Comment>()
-                _comments.update { it + inserted }
+                _comments.update { sortPinnedFirst(it + inserted) }
                 // Si es el primer comentario propio en este post, mi
                 // perfil todavía no está en authorProfiles (solo se cargó
                 // el de quienes ya habían comentado) -- sin esto, mi

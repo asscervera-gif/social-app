@@ -71,7 +71,10 @@ data class Comment(
     @SerialName("created_at") val createdAt: String,
     // Comparado con Instagram/Twitter/Facebook: dar like a un comentario
     // concreto, no solo a la publicación entera (0054_comment_likes.sql).
-    @SerialName("like_count") val likeCount: Int = 0
+    @SerialName("like_count") val likeCount: Int = 0,
+    // Fijar un comentario, comparado con Instagram/Twitter -- solo el
+    // autor real de la publicación puede cambiarlo (0084_pin_comments.sql).
+    @SerialName("is_pinned") val isPinned: Boolean = false
 )
 
 // Comparado con Instagram/Facebook: publicaciones con varias fotos

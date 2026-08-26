@@ -62,6 +62,7 @@ fun ReelCommentsSheet(
     val errorMessage by viewModel.errorMessage.collectAsState()
     val authorProfiles by viewModel.authorProfiles.collectAsState()
     val likedCommentIds by viewModel.likedCommentIds.collectAsState()
+    val reelAuthorId by viewModel.reelAuthorId.collectAsState()
     var draft by remember { mutableStateOf("") }
     val sheetState = rememberModalBottomSheetState()
     val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
@@ -97,6 +98,12 @@ fun ReelCommentsSheet(
                                 style = MaterialTheme.typography.labelMedium,
                                 modifier = Modifier.padding(start = 6.dp)
                             )
+                            // Fijar un comentario, comparado con Instagram/
+                            // Twitter -- ver ReelCommentsViewModel.togglePin(),
+                            // 0084_pin_comments.sql.
+                            if (comment.isPinned) {
+                                Text("📌", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(start = 6.dp))
+                            }
                         }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -128,6 +135,15 @@ fun ReelCommentsSheet(
                                         style = MaterialTheme.typography.labelSmall,
                                         modifier = Modifier.padding(start = 2.dp)
                                     )
+                                }
+                            }
+                            // Fijar un comentario (propio o ajeno), comparado
+                            // con Instagram/Twitter -- solo visible para el
+                            // autor real del reel, mismo criterio que
+                            // `reel_comments_update_pin` en RLS.
+                            if (reelAuthorId != null && reelAuthorId == myId) {
+                                TextButton(onClick = { viewModel.togglePin(comment) }) {
+                                    Text(if (comment.isPinned) "Desfijar" else "Fijar")
                                 }
                             }
                             if (comment.authorId == myId) {

@@ -21,6 +21,9 @@ struct ReelComment: Identifiable, Decodable {
     // Comparado con Instagram/Twitter/Facebook: dar like a un comentario
     // concreto de un reel (0054_comment_likes.sql).
     var like_count: Int = 0
+    // Fijar un comentario, comparado con Instagram/Twitter -- solo el
+    // autor real del reel puede cambiarlo (0084_pin_comments.sql).
+    var is_pinned: Bool = false
 }
 
 @MainActor
@@ -36,9 +39,23 @@ final class ReelCommentsViewModel: ObservableObject {
     // concreto de un reel (0054_comment_likes.sql), mismo patrón que
     // CommentsViewModel.likedCommentIDs (posts).
     @Published var likedCommentIDs: Set<UUID> = []
+    // Fijar un comentario, comparado con Instagram/Twitter -- solo el
+    // autor real del reel puede fijar/desfijar (0084_pin_comments.sql), la
+    // propia hoja necesita saber quién es para mostrar el botón solo a esa
+    // persona. `reel_comments` no trae el autor del reel embebido, se
+    // resuelve aparte con un solo select, mismo criterio que
+    // authorProfiles.
+    @Published var reelAuthorID: UUID?
 
     init(reelID: UUID) {
         self.reelID = reelID
+    }
+
+    private func sortPinnedFirst(_ list: [ReelComment]) -> [ReelComment] {
+        list.sorted { lhs, rhs in
+            if lhs.is_pinned != rhs.is_pinned { return lhs.is_pinned }
+            return lhs.created_at < rhs.created_at
+        }
     }
 
     func load() async {
@@ -52,7 +69,18 @@ final class ReelCommentsViewModel: ObservableObject {
                 .order("created_at", ascending: true)
                 .execute()
                 .value
-            comments = loaded
+            comments = sortPinnedFirst(loaded)
+
+            struct ReelAuthorRow: Decodable { let author_id: UUID }
+            if let row: ReelAuthorRow = try? await SupabaseManager.shared.client
+                .from("reels")
+                .select("author_id")
+                .eq("id", value: reelID)
+                .single()
+                .execute()
+                .value {
+                reelAuthorID = row.author_id
+            }
 
             let authorIDs = Array(Set(loaded.map { $0.author_id }))
             if !authorIDs.isEmpty,
@@ -123,6 +151,31 @@ final class ReelCommentsViewModel: ObservableObject {
         }
     }
 
+    /// Fijar/desfijar un comentario real, comparado con Instagram/Twitter
+    /// -- solo el autor real del reel puede hacerlo
+    /// (`reel_comments_update_pin`, 0084_pin_comments.sql, lo garantiza
+    /// también del lado del servidor: un intento ajeno afecta 0 filas,
+    /// revertido en silencio por la propia UI al no ofrecerle el botón).
+    /// Equivalente de ReelCommentsViewModel.kt.togglePin().
+    func togglePin(_ comment: ReelComment) async {
+        let newValue = !comment.is_pinned
+        if let index = comments.firstIndex(where: { $0.id == comment.id }) {
+            comments[index].is_pinned = newValue
+        }
+        comments = sortPinnedFirst(comments)
+        do {
+            struct PinUpdate: Encodable { let is_pinned: Bool }
+            try await SupabaseManager.shared.client
+                .from("reel_comments")
+                .update(PinUpdate(is_pinned: newValue))
+                .eq("id", value: comment.id)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo fijar el comentario."
+            await load()
+        }
+    }
+
     struct NewReelComment: Encodable {
         let reel_id: UUID
         let author_id: UUID
@@ -148,7 +201,7 @@ final class ReelCommentsViewModel: ObservableObject {
                 .single()
                 .execute()
                 .value
-            comments.append(inserted)
+            comments = sortPinnedFirst(comments + [inserted])
             if authorProfiles[userID] == nil {
                 if let me: Profile = try? await SupabaseManager.shared.client
                     .from("profiles")

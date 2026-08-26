@@ -1516,6 +1516,54 @@ async function main() {
   const reelCommentsAsStranger = (await db.query(`select id from reel_comments where reel_id = $1`, [mutedWordsReel.id])).rows;
   check('reel_comments_select: un tercero real (u4) SÍ ve el comentario de reel con la palabra silenciada de OTRO', reelCommentsAsStranger.length === 1);
 
+  // --- comments.is_pinned/reel_comments.is_pinned (0084_pin_comments.sql):
+  // fijar un comentario, comparado con Instagram/Twitter -- primer caso
+  // real de esta sesión donde alguien DISTINTO del autor de la fila
+  // (aquí, el autor de la publicación) puede tocarla vía RLS directa.
+  // Reutiliza mutedWordsPost (autor real u1) y cleanComment (de u2, sin
+  // palabra silenciada) del bloque de arriba. ---
+  await asUser(u1);
+  await expectOk('comments_update_pin: el autor real de la publicación (u1) SÍ puede fijar un comentario ajeno', async () => {
+    await db.query(`update comments set is_pinned = true where id = $1`, [cleanComment.id]);
+  });
+  const pinnedComment = (await db.query(`select is_pinned from comments where id = $1`, [cleanComment.id])).rows[0];
+  check('comments_update_pin: el comentario real queda fijado', pinnedComment.is_pinned === true);
+
+  await asUser(u1);
+  await db.query(`update comments set is_pinned = false, body = 'hackeado' where id = $1`, [cleanComment.id]);
+  const afterPinAttack = (await db.query(`select is_pinned, body from comments where id = $1`, [cleanComment.id])).rows[0];
+  check('comments_update_pin: is_pinned real SÍ cambia (desfijado)', afterPinAttack.is_pinned === false);
+  check('protect_comment_pin_only: el body real NO se puede tocar por esta vía, aunque venga en la misma sentencia', afterPinAttack.body === 'qué buena foto');
+
+  await asUser(u2); // u2 escribió el comentario, pero NO es el autor real de la publicación
+  await db.query(`update comments set is_pinned = true where id = $1`, [cleanComment.id]);
+  const stillNotPinnedByCommenter = (await db.query(`select is_pinned from comments where id = $1`, [cleanComment.id])).rows[0];
+  check('comments_update_pin: quien escribió el comentario (u2) NO puede fijarlo -- solo el autor real de la publicación puede (0 filas afectadas, no un error)', stillNotPinnedByCommenter.is_pinned === false);
+
+  await asUser(u4); // tercero real, ni autor de la publicación ni del comentario
+  await db.query(`update comments set is_pinned = true where id = $1`, [cleanComment.id]);
+  const stillNotPinnedByStranger = (await db.query(`select is_pinned from comments where id = $1`, [cleanComment.id])).rows[0];
+  check('comments_update_pin: un tercero real (u4) NO puede fijar un comentario ajeno (0 filas afectadas, no un error)', stillNotPinnedByStranger.is_pinned === false);
+
+  // Mismo espejo real en reel_comments -- comentario propio para no
+  // depender del estado del comentario de reel ya usado arriba (que
+  // nunca capturó su id con RETURNING).
+  await asUser(u2);
+  const reelCommentToPin = (await db.query(
+    `insert into reel_comments (reel_id, author_id, body) values ($1, $2, 'buen reel') returning id`, [mutedWordsReel.id, u2]
+  )).rows[0];
+  await asUser(u1); // u1 es el autor real del reel (mutedWordsReel)
+  await expectOk('reel_comments_update_pin: el autor real del reel (u1) SÍ puede fijar un comentario ajeno', async () => {
+    await db.query(`update reel_comments set is_pinned = true where id = $1`, [reelCommentToPin.id]);
+  });
+  const pinnedReelComment = (await db.query(`select is_pinned from reel_comments where id = $1`, [reelCommentToPin.id])).rows[0];
+  check('reel_comments_update_pin: el comentario de reel real queda fijado', pinnedReelComment.is_pinned === true);
+
+  await asUser(u2);
+  await db.query(`update reel_comments set is_pinned = false where id = $1`, [reelCommentToPin.id]);
+  const stillPinnedByReelCommenter = (await db.query(`select is_pinned from reel_comments where id = $1`, [reelCommentToPin.id])).rows[0];
+  check('reel_comments_update_pin: quien escribió el comentario de reel (u2) NO puede desfijarlo -- solo el autor real del reel puede (0 filas afectadas, no un error)', stillPinnedByReelCommenter.is_pinned === true);
+
   // --- calls (0079_calls.sql): videollamada/llamada de voz 1:1 real
   // desde un chat, comparado con WhatsApp/Messenger/Instagram. ---
   await asUser(u1);

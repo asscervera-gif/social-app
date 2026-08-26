@@ -21,6 +21,9 @@ struct Comment: Identifiable, Decodable {
     // Comparado con Instagram/Twitter/Facebook: dar like a un comentario
     // concreto, no solo a la publicación entera (0054_comment_likes.sql).
     var like_count: Int = 0
+    // Fijar un comentario, comparado con Instagram/Twitter -- solo el
+    // autor real de la publicación puede cambiarlo (0084_pin_comments.sql).
+    var is_pinned: Bool = false
 }
 
 @MainActor
@@ -41,9 +44,23 @@ final class CommentsViewModel: ObservableObject {
     // concreto (0054_comment_likes.sql) -- mismo patrón que
     // HomeViewModel.likedPostIDs, aquí a nivel de comentario individual.
     @Published var likedCommentIDs: Set<UUID> = []
+    // Fijar un comentario, comparado con Instagram/Twitter -- solo el
+    // autor real de la publicación puede fijar/desfijar
+    // (0084_pin_comments.sql), la propia hoja necesita saber quién es para
+    // mostrar el botón solo a esa persona. `comments` no trae el autor de
+    // la publicación embebido, se resuelve aparte con un solo select,
+    // mismo criterio que authorProfiles.
+    @Published var postAuthorID: UUID?
 
     init(postID: UUID) {
         self.postID = postID
+    }
+
+    private func sortPinnedFirst(_ list: [Comment]) -> [Comment] {
+        list.sorted { lhs, rhs in
+            if lhs.is_pinned != rhs.is_pinned { return lhs.is_pinned }
+            return lhs.created_at < rhs.created_at
+        }
     }
 
     func load() async {
@@ -57,7 +74,18 @@ final class CommentsViewModel: ObservableObject {
                 .order("created_at", ascending: true)
                 .execute()
                 .value
-            comments = loaded
+            comments = sortPinnedFirst(loaded)
+
+            struct PostAuthorRow: Decodable { let author_id: UUID }
+            if let row: PostAuthorRow = try? await SupabaseManager.shared.client
+                .from("posts")
+                .select("author_id")
+                .eq("id", value: postID)
+                .single()
+                .execute()
+                .value {
+                postAuthorID = row.author_id
+            }
 
             let authorIDs = Array(Set(loaded.map { $0.author_id }))
             if !authorIDs.isEmpty,
@@ -130,6 +158,31 @@ final class CommentsViewModel: ObservableObject {
         }
     }
 
+    /// Fijar/desfijar un comentario real, comparado con Instagram/Twitter
+    /// -- solo el autor real de la publicación puede hacerlo
+    /// (`comments_update_pin`, 0084_pin_comments.sql, lo garantiza también
+    /// del lado del servidor: un intento ajeno afecta 0 filas, revertido
+    /// en silencio por la propia UI al no ofrecerle el botón).
+    /// Equivalente de CommentsViewModel.kt.togglePin().
+    func togglePin(_ comment: Comment) async {
+        let newValue = !comment.is_pinned
+        if let index = comments.firstIndex(where: { $0.id == comment.id }) {
+            comments[index].is_pinned = newValue
+        }
+        comments = sortPinnedFirst(comments)
+        do {
+            struct PinUpdate: Encodable { let is_pinned: Bool }
+            try await SupabaseManager.shared.client
+                .from("comments")
+                .update(PinUpdate(is_pinned: newValue))
+                .eq("id", value: comment.id)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo fijar el comentario."
+            await load()
+        }
+    }
+
     struct NewComment: Encodable {
         let post_id: UUID
         let author_id: UUID
@@ -165,7 +218,7 @@ final class CommentsViewModel: ObservableObject {
                 .single()
                 .execute()
                 .value
-            comments.append(inserted)
+            comments = sortPinnedFirst(comments + [inserted])
             // Si es el primer comentario propio en este post, mi perfil
             // todavía no está en authorProfiles (solo se cargó el de
             // quienes ya habían comentado) -- sin esto, mi propio

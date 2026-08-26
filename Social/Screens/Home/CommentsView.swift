@@ -55,6 +55,16 @@ struct CommentsView: View {
                                 )
                                 Text(viewModel.authorProfiles[comment.author_id]?.displayName ?? "…")
                                     .font(.caption.bold())
+                                // Fijar un comentario, comparado con
+                                // Instagram/Twitter -- ver
+                                // CommentsViewModel.togglePin(),
+                                // 0084_pin_comments.sql. El propio icono ya
+                                // comunica el estado, visible para
+                                // cualquiera (mismo criterio que WhatsApp
+                                // con "Fijado").
+                                if comment.is_pinned {
+                                    Text("📌").font(.caption)
+                                }
                             }
                         }
                         .buttonStyle(.plain)
@@ -83,6 +93,17 @@ struct CommentsView: View {
                             }
                             .buttonStyle(.plain)
                             .font(.caption)
+                            // Fijar un comentario (propio o ajeno),
+                            // comparado con Instagram/Twitter -- solo
+                            // visible para el autor real de la
+                            // publicación, mismo criterio que
+                            // `comments_update_pin` en RLS.
+                            if let postAuthorID = viewModel.postAuthorID, postAuthorID == myID {
+                                Button(comment.is_pinned ? "Desfijar" : "Fijar") {
+                                    Task { await viewModel.togglePin(comment) }
+                                }
+                                .font(.caption)
+                            }
                             if comment.author_id == myID {
                                 Button("Borrar", role: .destructive) {
                                     Task { await viewModel.deleteComment(comment, onCommentRemoved: onCommentRemoved) }
