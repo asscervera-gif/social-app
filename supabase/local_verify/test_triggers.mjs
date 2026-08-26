@@ -153,6 +153,51 @@ async function main() {
   )).rows;
   check('notify_mentions_in_post: mencionar a alguien que te bloqueó NO genera aviso', blockedMentionNotif.length === 0);
 
+  // --- Prueba 6: @menciones reales dentro de un chat de GRUPO
+  // (0090_group_message_mentions.sql), comparado con WhatsApp/Messenger/
+  // Telegram -- a diferencia de un mensaje normal, salta el silencio real
+  // del grupo, y solo notifica si el mencionado es de verdad miembro.
+  // Usuarios NUEVOS a propósito (no u1/u2): más arriba en este mismo
+  // archivo u2 ya bloqueó a u1 (prueba de "mencionar a alguien que te
+  // bloqueó"), y private.is_blocked() comprueba las dos direcciones --
+  // reutilizar u1/u2 aquí habría filtrado la mención por ese bloqueo real
+  // ya existente, no por ningún fallo del trigger nuevo (confirmado con
+  // una reproducción aislada: la misma inserción, sin ese bloqueo previo,
+  // sí generaba el aviso correctamente). ---
+  const u4 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const u5 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const u6 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name, username) values ($1, 'Cuatro', 'cuatro_test'), ($2, 'Cinco', 'cinco_test'), ($3, 'Seis', 'seis_test')
+     on conflict (id) do update set display_name = excluded.display_name, username = excluded.username`,
+    [u4, u5, u6]
+  );
+  const mentionGroup = (await db.query(`insert into group_chats (name, created_by) values ('Grupo mención', $1) returning id`, [u4])).rows[0];
+  await db.query(`insert into group_chat_members (group_chat_id, user_id) values ($1, $2)`, [mentionGroup.id, u5]);
+  await db.query(`update group_chat_members set muted = true where group_chat_id = $1 and user_id = $2`, [mentionGroup.id, u5]);
+
+  const mentionGroupMsg = (await db.query(
+    `insert into group_messages (group_chat_id, sender_id, body) values ($1, $2, 'oye @cinco_test, mira esto') returning id`,
+    [mentionGroup.id, u4]
+  )).rows[0];
+  const mentionGroupNotif = (await db.query(
+    `select * from notifications where kind = 'mention' and recipient_id = $1 and payload->>'group_message_id' = $2`,
+    [u5, mentionGroupMsg.id]
+  )).rows;
+  check('notify_mentions_in_group_message: @cinco_test real (silenciado) SÍ recibe el aviso de mención, salta el silencio del grupo', mentionGroupNotif.length === 1);
+  const groupMessageNotifDespiteMute = (await db.query(
+    `select id from notifications where kind = 'group_message' and recipient_id = $1 and payload->>'group_chat_id' = $2`,
+    [u5, mentionGroup.id]
+  )).rows;
+  check('notify_new_group_message: el aviso NORMAL sigue sin llegar (grupo silenciado) -- la mención es la única vía real que lo salta', groupMessageNotifDespiteMute.length === 0);
+
+  await db.query(
+    `insert into group_messages (group_chat_id, sender_id, body) values ($1, $2, 'y tú @seis_test, que ni eres del grupo')`,
+    [mentionGroup.id, u4]
+  );
+  const nonMemberMentionNotif = (await db.query(`select id from notifications where kind = 'mention' and recipient_id = $1`, [u6])).rows;
+  check('notify_mentions_in_group_message: @seis_test real, que NO es miembro del grupo, NO recibe aviso (evita la fuga real de que ese grupo existe)', nonMemberMentionNotif.length === 0);
+
   console.log('\n--- fin de las pruebas funcionales ---');
   if (!allPassed) process.exitCode = 1;
 }

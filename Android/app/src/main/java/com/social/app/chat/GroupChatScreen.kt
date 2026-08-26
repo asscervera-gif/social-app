@@ -281,8 +281,18 @@ fun GroupChatScreen(
                                     .clickable { fullScreenImageUrl = mediaUrl }
                             )
                         } else {
-                            Text(
-                                message.body ?: "",
+                            // @menciones reales dentro de un chat de GRUPO
+                            // (0090_group_message_mentions.sql), comparado
+                            // con WhatsApp/Messenger/Telegram -- resalta
+                            // "@usuario" real igual que en captions/
+                            // comentarios (MentionHashtagText.kt), sin
+                            // navegación al perfil todavía (alcance
+                            // deliberado de esta ronda: el aviso real ya
+                            // funciona, el toque-para-abrir-perfil queda
+                            // pendiente).
+                            com.social.app.util.MentionHashtagText(
+                                text = message.body ?: "",
+                                baseColor = if (isMine) MaterialTheme.colorScheme.onPrimaryContainer else androidx.compose.material3.LocalContentColor.current,
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(

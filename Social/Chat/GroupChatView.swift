@@ -532,7 +532,14 @@ private struct GroupMessageBubble: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .onTapGesture { onOpenFullScreen(mediaURL) }
             } else {
-                Text(message.body ?? "")
+                // @menciones reales dentro de un chat de GRUPO
+                // (0090_group_message_mentions.sql), comparado con
+                // WhatsApp/Messenger/Telegram -- resalta "@usuario" real
+                // igual que en captions/comentarios (MentionHashtagText.swift),
+                // sin navegación al perfil todavía (alcance deliberado de
+                // esta ronda: el aviso real ya funciona, el
+                // toque-para-abrir-perfil queda pendiente).
+                MentionHashtagText(text: message.body ?? "")
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(isMine ? Color.blue.opacity(0.15) : Color(.systemGray5))
