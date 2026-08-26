@@ -39,39 +39,14 @@ struct AvisosView: View {
     var body: some View {
         NavigationStack {
             List(viewModel.notifications) { entry in
-                Button {
-                    Task { await viewModel.markRead(entry) }
-                    handleTap(on: entry)
-                } label: {
-                    HStack(spacing: 14) {
-                        // Hallazgo real, mismo hueco raíz ya cerrado en el
-                        // feed/comentarios/chats/duelos: solo había un
-                        // icono genérico por tipo, nunca el avatar de
-                        // quién disparó el aviso -- comparado con la
-                        // pestaña "Actividad" de Instagram.
-                        let actorAvatar = entry.payload["actor_id"]
-                            .flatMap { UUID(uuidString: $0) }
-                            .flatMap { viewModel.actorProfiles[$0] }
-                        ActiveAvatarProvider.shared.avatarView(config: actorAvatar?.avatarConfig ?? [:], size: 40)
-
-                        Image(systemName: entry.icon)
-                            .frame(width: 20)
-                            .foregroundStyle(entry.readAt == nil ? .pink : .secondary)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(entry.title)
-                                .font(.subheadline.bold())
-                            Text(entry.createdAt, style: .relative)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        if entry.readAt == nil {
-                            Circle().fill(.pink).frame(width: 8, height: 8)
-                        }
+                AvisoRow(
+                    entry: entry,
+                    actorProfile: entry.payload["actor_id"].flatMap { UUID(uuidString: $0) }.flatMap { viewModel.actorProfiles[$0] },
+                    onTap: {
+                        Task { await viewModel.markRead(entry) }
+                        handleTap(on: entry)
                     }
-                }
-                .tint(.primary)
+                )
             }
             .navigationTitle("Avisos")
             // Hallazgo real, comparado con Gmail/Instagram/Twitter:
@@ -88,26 +63,10 @@ struct AvisosView: View {
             }
             .task { await viewModel.start() }
             .task { currentUserID = try? await SupabaseManager.shared.client.auth.session.user.id }
-            .navigationDestination(isPresented: $showOpenedChat) {
-                if let selectedChatID, let currentUserID {
-                    ChatView(chatID: selectedChatID, currentUserID: currentUserID)
-                }
-            }
-            .navigationDestination(isPresented: $showOpenedPost) {
-                if let selectedPostID {
-                    PostDetailView(postID: selectedPostID)
-                }
-            }
-            .navigationDestination(isPresented: $showOpenedGroupChat) {
-                if let selectedGroupChatID {
-                    GroupChatView(groupChatID: selectedGroupChatID, groupName: "Grupo")
-                }
-            }
-            .navigationDestination(isPresented: $showOpenedReel) {
-                if let selectedReelID {
-                    ReelsView(initialReelID: selectedReelID)
-                }
-            }
+            .navigationDestination(isPresented: $showOpenedChat) { chatDestination }
+            .navigationDestination(isPresented: $showOpenedPost) { postDestination }
+            .navigationDestination(isPresented: $showOpenedGroupChat) { groupChatDestination }
+            .navigationDestination(isPresented: $showOpenedReel) { reelDestination }
             .onDisappear { Task { await viewModel.stop() } }
             // Hallazgo real: comparado con Instagram/Twitter/Facebook (y
             // con Home/Match, ya con .refreshable), Avisos no tenía
@@ -115,12 +74,42 @@ struct AvisosView: View {
             // (start() ya lo hizo una vez), evitando un canal duplicado.
             .refreshable { await viewModel.load() }
             .sheet(item: $viewModel.selected) { entry in
-                let actorProfile = entry.payload["actor_id"]
+                let actorProfile: Profile? = entry.payload["actor_id"]
                     .flatMap { UUID(uuidString: $0) }
                     .flatMap { viewModel.actorProfiles[$0] }
                 NotificationActionsSheet(entry: entry, actorProfile: actorProfile)
                     .presentationDetents([.medium, .large])
             }
+        }
+    }
+
+    // Contenido de cada `.navigationDestination(isPresented:)` extraído a
+    // su propia propiedad -- mismo hallazgo real de compilador que
+    // `handleTap(on:)` (ver más abajo): con las CUATRO ramas `if let`
+    // inline dentro de `body` (chat/post/grupo/reel), el type-checker de
+    // Swift tampoco terminaba. Cada propiedad se type-checka por
+    // separado, sin acumularse en la misma expresión que `body`.
+    @ViewBuilder private var chatDestination: some View {
+        if let selectedChatID, let currentUserID {
+            ChatView(chatID: selectedChatID, currentUserID: currentUserID)
+        }
+    }
+
+    @ViewBuilder private var postDestination: some View {
+        if let selectedPostID {
+            PostDetailView(postID: selectedPostID)
+        }
+    }
+
+    @ViewBuilder private var groupChatDestination: some View {
+        if let selectedGroupChatID {
+            GroupChatView(groupChatID: selectedGroupChatID, groupName: "Grupo")
+        }
+    }
+
+    @ViewBuilder private var reelDestination: some View {
+        if let selectedReelID {
+            ReelsView(initialReelID: selectedReelID)
         }
     }
 
@@ -168,6 +157,47 @@ struct AvisosView: View {
             return
         }
         viewModel.selected = entry
+    }
+}
+
+/// Fila de un aviso real -- extraída de `AvisosView.body` a propósito,
+/// mismo hallazgo real de compilador (CI real, GitHub Actions,
+/// 2026-08-26): el type-checker de Swift no terminaba con el `Button`/
+/// `HStack` de la fila inline dentro del `List` de `body`. Una vista
+/// propia se type-checka por separado, sin acumularse en la misma
+/// expresión.
+private struct AvisoRow: View {
+    let entry: AvisosViewModel.NotificationEntry
+    let actorProfile: Profile?
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 14) {
+                // Hallazgo real, mismo hueco raíz ya cerrado en el feed/
+                // comentarios/chats/duelos: solo había un icono genérico
+                // por tipo, nunca el avatar de quién disparó el aviso --
+                // comparado con la pestaña "Actividad" de Instagram.
+                ActiveAvatarProvider.shared.avatarView(config: actorProfile?.avatarConfig ?? [:], size: 40)
+
+                Image(systemName: entry.icon)
+                    .frame(width: 20)
+                    .foregroundStyle(entry.readAt == nil ? .pink : .secondary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(entry.title)
+                        .font(.subheadline.bold())
+                    Text(entry.createdAt, style: .relative)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if entry.readAt == nil {
+                    Circle().fill(.pink).frame(width: 8, height: 8)
+                }
+            }
+        }
+        .tint(.primary)
     }
 }
 
