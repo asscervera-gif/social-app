@@ -61,20 +61,8 @@ struct ReelsView: View {
                             .padding(32)
                     }
                     ForEach(viewModel.reels) { reel in
-                        ReelRow(
-                            reel: reel,
-                            author: viewModel.authorProfiles[reel.authorID],
-                            isLiked: viewModel.likedReelIDs.contains(reel.id),
-                            isMine: reel.authorID == myID,
-                            onLike: { Task { await viewModel.toggleLike(reel) } },
-                            onOpenComments: { commentingReelID = reel.id },
-                            // Desactivar los comentarios de este reel
-                            // propio, comparado con Instagram/TikTok -- ver
-                            // ReelsViewModel.toggleCommentsDisabled(),
-                            // 0086_disable_comments.sql.
-                            onToggleCommentsDisabled: { Task { await viewModel.toggleCommentsDisabled(reel) } }
-                        )
-                        .id(reel.id)
+                        row(for: reel)
+                            .id(reel.id)
                     }
                 }
             }
@@ -122,6 +110,24 @@ struct ReelsView: View {
                 )
             }
         }
+    }
+
+    // Extraído aparte real: el compilador de Swift real (CI, fallo real
+    // visto en el log) no podía type-checkear `body` en tiempo razonable
+    // con esta llamada (7 argumentos, dos closures) inlineada dentro del
+    // `ForEach` -- mismo hallazgo de por qué SwiftUI a veces exige romper
+    // una expresión grande en sub-expresiones más pequeñas, no un error de
+    // lógica.
+    private func row(for reel: Reel) -> some View {
+        ReelRow(
+            reel: reel,
+            author: viewModel.authorProfiles[reel.authorID],
+            isLiked: viewModel.likedReelIDs.contains(reel.id),
+            isMine: reel.authorID == myID,
+            onLike: { Task { await viewModel.toggleLike(reel) } },
+            onOpenComments: { commentingReelID = reel.id },
+            onToggleCommentsDisabled: { Task { await viewModel.toggleCommentsDisabled(reel) } }
+        )
     }
 }
 
