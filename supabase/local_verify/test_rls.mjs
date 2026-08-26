@@ -1191,6 +1191,28 @@ async function main() {
   const u2GoneAfterKick = (await db.query(`select user_id from group_chat_members where group_chat_id = $1 and user_id = $2`, [group.id, u2])).rows;
   check('group_chat_members_delete_by_creator: u2 real queda expulsado del grupo', u2GoneAfterKick.length === 0);
 
+  // --- reports.group_message_id / group_messages_select_admin
+  // (0067_reports_group_message_reference.sql): referencia real al
+  // mensaje de GRUPO denunciado, comparado con Instagram/WhatsApp/
+  // Messenger. u3 sigue siendo admin desde el bloque de moderación de más
+  // arriba; u2 ya no es miembro del grupo (expulsado justo arriba), así
+  // que sirve también como "alguien real que no puede ver el mensaje sin
+  // el bypass de admin". ---
+  const groupMsgToReport = (await db.query(
+    `insert into group_messages (group_chat_id, sender_id, body) values ($1, $2, 'mensaje para denunciar') returning id`,
+    [group.id, u1]
+  )).rows[0];
+  await db.query(
+    `insert into reports (reporter_id, reported_id, reason, group_message_id) values ($1, $2, 'Acoso', $3)`,
+    [u1, u1, groupMsgToReport.id]
+  );
+  await asUser(u2);
+  const reportedGroupMsgAsKickedMember = (await db.query(`select id from group_messages where id = $1`, [groupMsgToReport.id])).rows;
+  check('group_messages_select: u2 (expulsado, no admin) NO ve el mensaje de grupo aunque esté denunciado', reportedGroupMsgAsKickedMember.length === 0);
+  await asUser(u3);
+  const reportedGroupMsgAsAdmin = (await db.query(`select id, body from group_messages where id = $1`, [groupMsgToReport.id])).rows;
+  check('group_messages_select_admin: un admin real (u3, no miembro del grupo) SÍ ve el mensaje de grupo REALMENTE denunciado', reportedGroupMsgAsAdmin.length === 1 && reportedGroupMsgAsAdmin[0].body === 'mensaje para denunciar');
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

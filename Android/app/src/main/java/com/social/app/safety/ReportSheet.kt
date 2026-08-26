@@ -46,7 +46,10 @@ fun ReportSheet(
     // Hallazgo real, comparado con Instagram/WhatsApp/Messenger: mismo
     // hueco exacto que postId/commentId pero en un chat -- ver
     // 0048_reports_message_reference.sql.
-    messageId: String? = null
+    messageId: String? = null,
+    // Mismo hueco exacto que messageId pero en un chat de grupo -- ver
+    // 0067_reports_group_message_reference.sql.
+    groupMessageId: String? = null
 ) {
     var reason by remember { mutableStateOf(REASONS.first()) }
     var details by remember { mutableStateOf(initialDetails) }
@@ -85,7 +88,7 @@ fun ReportSheet(
 
             Button(
                 onClick = {
-                    safety.report(reporterId, reportedId, reason, details.ifBlank { null }, postId, commentId, messageId)
+                    safety.report(reporterId, reportedId, reason, details.ifBlank { null }, postId, commentId, messageId, groupMessageId)
                     onDismiss()
                 },
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp)

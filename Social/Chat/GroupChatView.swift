@@ -36,6 +36,12 @@ struct GroupChatView: View {
     @State private var managingMessage: GroupMessage?
     @State private var editingMessage: GroupMessage?
     @State private var editedMessageText = ""
+    // Denunciar un mensaje concreto de un chat de grupo real
+    // (0067_reports_group_message_reference.sql), comparado con
+    // Instagram/WhatsApp/Messenger -- mismo menú real que ChatView.swift
+    // (chat 1:1), pero aquí el denunciado es quien ESCRIBIÓ ese mensaje en
+    // concreto, no un único "oponente" fijo como en el 1:1.
+    @State private var reportMessage: GroupMessage?
 
     init(groupChatID: UUID, groupName: String) {
         self._viewModel = StateObject(wrappedValue: GroupChatViewModel(groupChatID: groupChatID))
@@ -74,7 +80,8 @@ struct GroupChatView: View {
                                     Task { await viewModel.toggleReaction(groupMessageID: message.id, emoji: emoji) }
                                 },
                                 onOpenFullScreen: { url in fullScreenURL = url },
-                                onManage: { managingMessage = message }
+                                onManage: { managingMessage = message },
+                                onReport: { reportMessage = message }
                             )
                             .id(message.id)
                         }
@@ -175,6 +182,19 @@ struct GroupChatView: View {
         )) {
             if let fullScreenURL {
                 FullScreenImageView(url: fullScreenURL, onDismiss: { self.fullScreenURL = nil })
+            }
+        }
+        // Denunciar un mensaje concreto de un chat de grupo real
+        // (0067_reports_group_message_reference.sql), comparado con
+        // Instagram/WhatsApp/Messenger -- mismo patrón Binding(get:set:)
+        // ya usado en ChatView.swift (1:1) para un valor sin Identifiable
+        // como target completo del sheet.
+        .sheet(isPresented: Binding(
+            get: { reportMessage != nil },
+            set: { if !$0 { reportMessage = nil } }
+        )) {
+            if let reportMessage, let myID {
+                ReportSheet(userID: myID, reportedID: reportMessage.senderID, groupMessageID: reportMessage.id)
             }
         }
         // Editar/borrar un mensaje ya enviado en un grupo real
@@ -357,6 +377,7 @@ private struct GroupMessageBubble: View {
     // Telegram/Messenger -- mismo criterio que MessageBubble
     // (ChatView.swift, chat 1:1): mantener pulsado el propio mensaje.
     var onManage: () -> Void = {}
+    var onReport: () -> Void = {}
 
     @State private var showPicker = false
     private let reactionEmojis = ["❤", "😂", "😮", "😢", "👍"]
@@ -394,7 +415,7 @@ private struct GroupMessageBubble: View {
                     .background(isMine ? Color.blue.opacity(0.15) : Color(.systemGray5))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .onTapGesture { showPicker.toggle() }
-                    .onLongPressGesture { if isMine { onManage() } }
+                    .onLongPressGesture { if isMine { onManage() } else { onReport() } }
             }
             if !reactions.isEmpty {
                 HStack(spacing: 4) {

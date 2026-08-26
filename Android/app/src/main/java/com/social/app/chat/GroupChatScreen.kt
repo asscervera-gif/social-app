@@ -79,6 +79,12 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
     var managingMessage by remember { mutableStateOf<GroupMessage?>(null) }
     var editingMessage by remember { mutableStateOf<GroupMessage?>(null) }
     var editedMessageText by remember { mutableStateOf("") }
+    // Denunciar un mensaje concreto de un chat de grupo real
+    // (0067_reports_group_message_reference.sql), comparado con
+    // Instagram/WhatsApp/Messenger -- mismo menú real que ChatScreen.kt
+    // (chat 1:1), pero aquí el denunciado es quien ESCRIBIÓ ese mensaje en
+    // concreto, no un único "oponente" fijo como en el 1:1.
+    var reportMessage by remember { mutableStateOf<GroupMessage?>(null) }
     val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
     val listState = rememberLazyListState()
 
@@ -187,7 +193,7 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
                                     )
                                     .combinedClickable(
                                         onClick = { showPicker = !showPicker },
-                                        onLongClick = { if (isMine) managingMessage = message }
+                                        onLongClick = { if (isMine) managingMessage = message else reportMessage = message }
                                     )
                                     .padding(horizontal = 12.dp, vertical = 8.dp)
                             )
@@ -388,6 +394,19 @@ fun GroupChatScreen(groupChatId: String, groupName: String, onBack: () -> Unit) 
                 TextButton(onClick = { editingMessage = null }) { Text("Cancelar") }
             }
         )
+    }
+    // Denunciar un mensaje concreto de un chat de grupo real
+    // (0067_reports_group_message_reference.sql), comparado con
+    // Instagram/WhatsApp/Messenger.
+    reportMessage?.let { message ->
+        myId?.let { reporterId ->
+            com.social.app.safety.ReportSheet(
+                reporterId = reporterId,
+                reportedId = message.senderId,
+                groupMessageId = message.id,
+                onDismiss = { reportMessage = null }
+            )
+        }
     }
 }
 

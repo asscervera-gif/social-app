@@ -37,17 +37,21 @@ struct ReportSheet: View {
     // hueco exacto que postID/commentID pero en un chat -- ver
     // 0048_reports_message_reference.sql.
     let messageID: UUID?
+    // Mismo hueco exacto que messageID pero en un chat de grupo -- ver
+    // 0067_reports_group_message_reference.sql.
+    let groupMessageID: UUID?
 
     @State private var reason = "Comportamiento inapropiado"
     @State private var details: String
     let reasons = ["Comportamiento inapropiado", "Perfil falso", "Acoso", "Contenido ofensivo", "Otro"]
 
-    init(userID: UUID, reportedID: UUID? = nil, initialDetails: String = "", postID: UUID? = nil, commentID: UUID? = nil, messageID: UUID? = nil) {
+    init(userID: UUID, reportedID: UUID? = nil, initialDetails: String = "", postID: UUID? = nil, commentID: UUID? = nil, messageID: UUID? = nil, groupMessageID: UUID? = nil) {
         self.userID = userID
         self.reportedID = reportedID ?? userID
         self.postID = postID
         self.commentID = commentID
         self.messageID = messageID
+        self.groupMessageID = groupMessageID
         _details = State(initialValue: initialDetails)
     }
 
@@ -73,7 +77,7 @@ struct ReportSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Enviar") {
                         Task {
-                            await safety.report(reporterID: userID, reportedID: reportedID, reason: reason, details: details.isEmpty ? nil : details, postID: postID, commentID: commentID, messageID: messageID)
+                            await safety.report(reporterID: userID, reportedID: reportedID, reason: reason, details: details.isEmpty ? nil : details, postID: postID, commentID: commentID, messageID: messageID, groupMessageID: groupMessageID)
                             dismiss()
                         }
                     }
