@@ -10,6 +10,7 @@ import io.github.jan.supabase.postgrest.query.Order
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -23,7 +24,13 @@ data class GroupChat(
     @SerialName("created_at") val createdAt: String = "",
     // Nombre editable y foto de grupo real (0063_group_chat_photo.sql),
     // comparado con WhatsApp/Messenger/Telegram.
-    @SerialName("photo_url") val photoUrl: String? = null
+    @SerialName("photo_url") val photoUrl: String? = null,
+    // Silenciar un chat de grupo real (0064_group_chat_mute.sql),
+    // comparado con WhatsApp/Instagram/Messenger -- viene de la propia
+    // fila de membresía (`group_chat_members.muted`), no de esta tabla;
+    // se rellena aparte en load(), nunca decodificado directamente del
+    // select de `group_chats`.
+    val isMutedForMe: Boolean = false
 )
 
 /**
@@ -56,15 +63,56 @@ class GroupChatsViewModel : ViewModel() {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                _groups.value = SupabaseManager.client.from("group_chats")
+                val groups = SupabaseManager.client.from("group_chats")
                     .select(columns = Columns.raw("id,name,created_by,created_at,photo_url")) {
                         order("created_at", Order.DESCENDING)
                     }
                     .decodeList<GroupChat>()
+                // Silenciar un chat de grupo real (0064_group_chat_mute.sql):
+                // `muted` vive en la propia fila de membresía, no en
+                // `group_chats` -- una segunda consulta, filtrada a MI
+                // propio user_id (RLS ya solo deja ver la propia igualmente).
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id
+                val mutedByGroupId = if (userId != null && groups.isNotEmpty()) {
+                    SupabaseManager.client.from("group_chat_members")
+                        .select(columns = Columns.raw("group_chat_id,muted")) {
+                            filter { eq("user_id", userId); isIn("group_chat_id", groups.map { it.id }) }
+                        }
+                        .decodeList<MyMembership>()
+                        .associate { it.groupChatId to it.muted }
+                } else {
+                    emptyMap()
+                }
+                _groups.value = groups.map { it.copy(isMutedForMe = mutedByGroupId[it.id] ?: false) }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudieron cargar los grupos: ${e.message}"
             } finally {
                 _isLoading.value = false
+            }
+        }
+    }
+
+    @Serializable
+    private data class MyMembership(
+        @SerialName("group_chat_id") val groupChatId: String,
+        val muted: Boolean
+    )
+
+    /** Silenciar/activar un grupo real, comparado con WhatsApp/Instagram/
+     * Messenger -- mismo patrón (optimista + revertir con load() si falla)
+     * ya usado en ChatListViewModel.kt.toggleMute() para el chat 1:1. */
+    fun toggleMute(group: GroupChat) {
+        val newValue = !group.isMutedForMe
+        _groups.update { list -> list.map { if (it.id == group.id) it.copy(isMutedForMe = newValue) else it } }
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                SupabaseManager.client.from("group_chat_members").update({ set("muted", newValue) }) {
+                    filter { eq("group_chat_id", group.id); eq("user_id", userId) }
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo cambiar el silencio del grupo."
+                load()
             }
         }
     }

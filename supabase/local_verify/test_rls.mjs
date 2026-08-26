@@ -1098,6 +1098,30 @@ async function main() {
   const groupAfterStrangerUpdate = (await db.query(`select name from group_chats where id = $1`, [group.id])).rows[0];
   check('group_chats_update_own: un miembro real que NO es el creador (u2) no puede renombrar el grupo (RLS real: 0 filas afectadas, no un error)', groupAfterStrangerUpdate?.name === 'Grupo renombrado');
 
+  // --- group_chat_members.muted (0064_group_chat_mute.sql): silenciar un
+  // chat de grupo real, comparado con WhatsApp/Instagram/Messenger.
+  // Contexto ya asUser(u2) desde el bloque de arriba. ---
+  await expectOk('group_chat_members_update_own: u2 SÍ puede silenciar su propia fila de membresía', async () => {
+    await db.query(`update group_chat_members set muted = true where group_chat_id = $1 and user_id = $2`, [group.id, u2]);
+  });
+  // Hallazgo real de RLS, encontrado escribiendo este mismo test: la
+  // política de UPDATE de arriba, necesariamente amplia para poder tocar
+  // `muted`, dejaría a u2 reescribir `group_chat_id` de su propia fila --
+  // "trasladar" su membresía a un grupo ajeno sin haber sido invitado --
+  // si no fuera por `trg_protect_group_chat_member_identity`.
+  const fakeOtherGroupId = crypto.randomUUID();
+  await db.query(`update group_chat_members set group_chat_id = $1 where user_id = $2 and group_chat_id = $3`, [fakeOtherGroupId, u2, group.id]);
+  const membershipAfterIdentityAttempt = (await db.query(`select group_chat_id from group_chat_members where user_id = $1`, [u2])).rows[0];
+  check('trg_protect_group_chat_member_identity: u2 no puede trasladar su propia membresía a otro group_chat_id', membershipAfterIdentityAttempt?.group_chat_id === group.id);
+
+  // u1 escribe un mensaje nuevo con u2 ya silenciado -- u2 NO debe recibir
+  // aviso esta vez (a diferencia del mensaje "hola grupo" de más arriba,
+  // de antes de silenciar, que sí generó aviso real para u1).
+  await asUser(u1);
+  await db.query(`insert into group_messages (group_chat_id, sender_id, body) values ($1, $2, 'mensaje tras silenciar')`, [group.id, u1]);
+  const groupMessageNotifAsMutedU2 = (await db.query(`select id from notifications where recipient_id = $1 and kind = 'group_message'`, [u2])).rows;
+  check('notify_new_group_message: u2 (silenciado) NO recibe aviso del mensaje nuevo de u1', groupMessageNotifAsMutedU2.length === 0);
+
   // Salir del grupo real: mismo hallazgo de Postgres/RLS ya documentado
   // para live_stream_viewers -- group_chat_members_select deja ver la
   // propia fila (por reflexividad del exists de autopertenencia), así que

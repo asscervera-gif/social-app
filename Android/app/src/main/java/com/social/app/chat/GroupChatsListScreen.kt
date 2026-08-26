@@ -107,7 +107,20 @@ fun GroupChatsListScreen(viewModel: GroupChatsViewModel = viewModel(), onOpenGro
                                 Text("👥")
                             }
                         }
-                        Text(group.name, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(start = 12.dp))
+                        Text(
+                            group.name,
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.padding(start = 12.dp).weight(1f)
+                        )
+                        // Silenciar un chat de grupo real
+                        // (0064_group_chat_mute.sql), comparado con
+                        // WhatsApp/Instagram/Messenger -- mismo patrón
+                        // exacto que ChatListScreen.kt (chat 1:1): el
+                        // propio icono ya comunica el estado, sin
+                        // necesitar una insignia aparte.
+                        androidx.compose.material3.IconButton(onClick = { viewModel.toggleMute(group) }) {
+                            Text(if (group.isMutedForMe) "🔕" else "🔔")
+                        }
                     }
                 }
             }

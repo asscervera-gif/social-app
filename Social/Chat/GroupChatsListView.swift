@@ -62,6 +62,16 @@ struct GroupChatsListView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                // Silenciar un chat de grupo real (0064_group_chat_mute.sql),
+                // comparado con WhatsApp/Instagram/Messenger -- mismo
+                // patrón `.swipeActions` ya usado en ChatListView.swift
+                // (chat 1:1).
+                .swipeActions {
+                    Button(group.isMutedForMe ? "Activar" : "Silenciar") {
+                        Task { await viewModel.toggleMute(group) }
+                    }
+                    .tint(.gray)
+                }
             }
         }
         .navigationTitle("Grupos")

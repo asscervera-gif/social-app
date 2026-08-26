@@ -28,6 +28,14 @@ struct GroupChat: Codable, Identifiable {
     // Nombre editable y foto de grupo real (0063_group_chat_photo.sql),
     // comparado con WhatsApp/Messenger/Telegram.
     var photoURL: String?
+    // Silenciar un chat de grupo real (0064_group_chat_mute.sql),
+    // comparado con WhatsApp/Instagram/Messenger -- viene de la propia
+    // fila de membresía (`group_chat_members.muted`), no de esta tabla.
+    // Deliberadamente FUERA de CodingKeys: `group_chats` no tiene esta
+    // columna, así que el decoder sintetizado por Swift simplemente deja
+    // el valor por defecto (false) al decodificar, sin lanzar error por
+    // clave ausente -- se rellena aparte en load().
+    var isMutedForMe: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case id, name
@@ -43,18 +51,64 @@ final class GroupChatsViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
 
+    private struct MyMembership: Decodable {
+        let group_chat_id: UUID
+        let muted: Bool
+    }
+
     func load() async {
         isLoading = true
         defer { isLoading = false }
         do {
-            groups = try await SupabaseManager.shared.client
+            var loaded: [GroupChat] = try await SupabaseManager.shared.client
                 .from("group_chats")
                 .select()
                 .order("created_at", ascending: false)
                 .execute()
                 .value
+            // Silenciar un chat de grupo real (0064_group_chat_mute.sql):
+            // `muted` vive en la propia fila de membresía, no en
+            // `group_chats` -- una segunda consulta, filtrada a MI propio
+            // user_id (RLS ya solo deja ver la propia igualmente).
+            if let userID = try? await SupabaseManager.shared.client.auth.session.user.id, !loaded.isEmpty {
+                let memberships: [MyMembership] = (try? await SupabaseManager.shared.client
+                    .from("group_chat_members")
+                    .select("group_chat_id,muted")
+                    .eq("user_id", value: userID)
+                    .in("group_chat_id", values: loaded.map { $0.id })
+                    .execute()
+                    .value) ?? []
+                let mutedByGroupID = Dictionary(uniqueKeysWithValues: memberships.map { ($0.group_chat_id, $0.muted) })
+                for index in loaded.indices {
+                    loaded[index].isMutedForMe = mutedByGroupID[loaded[index].id] ?? false
+                }
+            }
+            groups = loaded
         } catch {
             errorMessage = "No se pudieron cargar los grupos: \(error.localizedDescription)"
+        }
+    }
+
+    /// Silenciar/activar un grupo real, comparado con WhatsApp/Instagram/
+    /// Messenger -- mismo patrón (optimista + revertir con load() si
+    /// falla) ya usado en ChatListViewModel.swift.toggleMute() para el
+    /// chat 1:1.
+    func toggleMute(_ group: GroupChat) async {
+        let newValue = !group.isMutedForMe
+        if let index = groups.firstIndex(where: { $0.id == group.id }) {
+            groups[index].isMutedForMe = newValue
+        }
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        do {
+            try await SupabaseManager.shared.client
+                .from("group_chat_members")
+                .update(["muted": newValue])
+                .eq("group_chat_id", value: group.id)
+                .eq("user_id", value: userID)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo cambiar el silencio del grupo."
+            await load()
         }
     }
 
