@@ -28,6 +28,9 @@ struct Profile: Codable, Identifiable {
     // Nombre de usuario único real (@handle, 0073_profile_username.sql),
     // comparado con Instagram/Twitter/TikTok.
     var username: String?
+    // Enlace externo real en el perfil ("link in bio",
+    // 0077_profile_website.sql), comparado con Instagram/TikTok/Twitter.
+    var websiteURL: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -43,6 +46,7 @@ struct Profile: Codable, Identifiable {
         case lastLng = "last_lng"
         case createdAt = "created_at"
         case username
+        case websiteURL = "website_url"
     }
 }
 

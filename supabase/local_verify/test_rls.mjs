@@ -1396,6 +1396,17 @@ async function main() {
   const restoredAsStranger = (await db.query(`select id from posts where id = $1`, [archivablePost.id])).rows;
   check('posts_select: tras restaurarla de verdad, un tercero (u4) vuelve a verla', restoredAsStranger.length === 1);
 
+  // --- profiles.website_url (0077_profile_website.sql): enlace externo
+  // real en el perfil ("link in bio"), comparado con
+  // Instagram/TikTok/Twitter. ---
+  await asUser(u1);
+  await expectOk('profiles_update_own: u1 SÍ puede guardar un enlace externo real en su perfil', async () => {
+    await db.query(`update profiles set website_url = 'https://ejemplo.com/juan' where id = $1`, [u1]);
+  });
+  await expectFail('profiles_website_url_length: una URL real de más de 200 caracteres NO se puede guardar', async () => {
+    await db.query(`update profiles set website_url = $2 where id = $1`, [u1, 'https://ejemplo.com/' + 'a'.repeat(200)]);
+  });
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

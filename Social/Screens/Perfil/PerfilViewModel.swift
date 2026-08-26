@@ -110,7 +110,7 @@ final class PerfilViewModel: ObservableObject {
     /// 3D sigue sin un motor real (ver AvatarProvider). `skin`/`hair`/`top`
     /// (busto ilustrado, CartoonAvatarView) sustituyen al `colorSeed`
     /// único de antes de la pasada de fidelidad visual con SOCIAL_APP.html.
-    func updateBasicInfo(displayName: String, bio: String, skin: String, hair: String, top: String) async {
+    func updateBasicInfo(displayName: String, bio: String, skin: String, hair: String, top: String, websiteURL: String) async {
         guard let userID else { return }
         let trimmedName = displayName.trimmingCharacters(in: .whitespaces)
         guard !trimmedName.isEmpty else {
@@ -131,6 +131,27 @@ final class PerfilViewModel: ObservableObject {
             return
         }
 
+        // Enlace externo real en el perfil ("link in bio",
+        // 0077_profile_website.sql), comparado con Instagram/TikTok/
+        // Twitter -- mismo criterio que username: normalización simple en
+        // cliente (antepone "https://" si falta el esquema) en vez de una
+        // validación estricta de URL. Límite real:
+        // profiles_website_url_length. Equivalente de
+        // PerfilViewModel.kt.updateBasicInfo().
+        let trimmedWebsite = websiteURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedWebsite: String?
+        if trimmedWebsite.isEmpty {
+            normalizedWebsite = nil
+        } else if trimmedWebsite.hasPrefix("http://") || trimmedWebsite.hasPrefix("https://") {
+            normalizedWebsite = trimmedWebsite
+        } else {
+            normalizedWebsite = "https://\(trimmedWebsite)"
+        }
+        if let normalizedWebsite, normalizedWebsite.count > 200 {
+            errorMessage = "El enlace no puede tener más de 200 caracteres."
+            return
+        }
+
         var newConfig = profile?.avatarConfig ?? [:]
         newConfig["type"] = "cartoon"
         newConfig["skin"] = skin
@@ -141,16 +162,18 @@ final class PerfilViewModel: ObservableObject {
             let display_name: String
             let bio: String?
             let avatar_config: [String: String]
+            let website_url: String?
         }
 
         profile?.displayName = trimmedName
         profile?.bio = bio.isEmpty ? nil : bio
         profile?.avatarConfig = newConfig
+        profile?.websiteURL = normalizedWebsite
 
         do {
             try await SupabaseManager.shared.client
                 .from("profiles")
-                .update(ProfileUpdate(display_name: trimmedName, bio: bio.isEmpty ? nil : bio, avatar_config: newConfig))
+                .update(ProfileUpdate(display_name: trimmedName, bio: bio.isEmpty ? nil : bio, avatar_config: newConfig, website_url: normalizedWebsite))
                 .eq("id", value: userID)
                 .execute()
         } catch {

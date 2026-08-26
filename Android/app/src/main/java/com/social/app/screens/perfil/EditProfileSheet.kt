@@ -60,8 +60,14 @@ fun EditProfileSheet(
     // su propio mensaje real, no el genérico de nombre/bio/avatar.
     initialUsername: String,
     usernameErrorMessage: String?,
+    // Enlace externo real en el perfil ("link in bio",
+    // 0077_profile_website.sql), comparado con Instagram/TikTok/Twitter
+    // -- guardado junto con nombre/bio/avatar (un solo botón "Guardar"),
+    // a diferencia del username: aquí no hay un fallo de "ya en uso" que
+    // necesite su propio canal de error.
+    initialWebsiteUrl: String,
     onDismiss: () -> Unit,
-    onSave: (String, String, String, String, String) -> Unit,
+    onSave: (String, String, String, String, String, String) -> Unit,
     onSaveUsername: (String) -> Unit
 ) {
     var name by remember { mutableStateOf(initialName) }
@@ -70,6 +76,7 @@ fun EditProfileSheet(
     var hair by remember { mutableStateOf(initialHair) }
     var top by remember { mutableStateOf(initialTop) }
     var username by remember { mutableStateOf(initialUsername) }
+    var websiteUrl by remember { mutableStateOf(initialWebsiteUrl) }
     val sheetState = rememberModalBottomSheetState()
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
@@ -132,6 +139,17 @@ fun EditProfileSheet(
                 Text("Guardar nombre de usuario")
             }
 
+            // Enlace externo real en el perfil ("link in bio",
+            // 0077_profile_website.sql), comparado con Instagram/TikTok/
+            // Twitter.
+            OutlinedTextField(
+                value = websiteUrl,
+                onValueChange = { websiteUrl = it },
+                label = { Text("Enlace (sitio web)") },
+                placeholder = { Text("tusitio.com") },
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+            )
+
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth().padding(top = 18.dp)
@@ -151,7 +169,7 @@ fun EditProfileSheet(
             SwatchRow("Ropa", AvatarLook.TOP_COLORS, top) { top = it }
 
             Button(
-                onClick = { onSave(name, bio, skin, hair, top); onDismiss() },
+                onClick = { onSave(name, bio, skin, hair, top, websiteUrl); onDismiss() },
                 enabled = name.isNotBlank(),
                 modifier = Modifier.fillMaxWidth().padding(top = 20.dp)
             ) {

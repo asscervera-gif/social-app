@@ -1,5 +1,8 @@
 package com.social.app.screens.perfil
 
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.social.app.backend.SupabaseManager
 import com.social.app.backend.model.Profile
@@ -34,6 +38,7 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun ProfileViewerScreen(profileId: String) {
+    val context = LocalContext.current
     var profile by remember { mutableStateOf<Profile?>(null) }
     var sections by remember { mutableStateOf<List<ProfileSection>>(emptyList()) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -60,7 +65,7 @@ fun ProfileViewerScreen(profileId: String) {
             // renderizaba como badge en ningún sitio — dato muerto, mismo
             // patrón que otros hallazgos de esta sesión.
             profile = SupabaseManager.client.from("profiles")
-                .select(columns = Columns.raw("id,display_name,bio,avatar_config,is_verified,username")) { filter { eq("id", profileId) } }
+                .select(columns = Columns.raw("id,display_name,bio,avatar_config,is_verified,username,website_url")) { filter { eq("id", profileId) } }
                 .decodeSingle()
             sections = SupabaseManager.client.from("profile_sections")
                 .select { filter { eq("profile_id", profileId) } }
@@ -99,6 +104,23 @@ fun ProfileViewerScreen(profileId: String) {
                 )
             }
             profile?.bio?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            // Enlace externo real en el perfil ("link in bio",
+            // 0077_profile_website.sql), comparado con Instagram/TikTok/
+            // Twitter.
+            profile?.websiteUrl?.let { url ->
+                Text(
+                    url.removePrefix("https://").removePrefix("http://"),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.clickable {
+                        try {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        } catch (e: Exception) {
+                            // URL malformada o sin app que la maneje -- no crítico.
+                        }
+                    }
+                )
+            }
             errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
             if (myId != null && myId != profileId) {

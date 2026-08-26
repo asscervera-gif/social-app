@@ -36,9 +36,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -93,6 +96,7 @@ fun PerfilScreen(
     onOpenLive: () -> Unit = {},
     onOpenGroupChats: () -> Unit = {}
 ) {
+    val context = LocalContext.current
     val profile by viewModel.profile.collectAsState()
     val sections by viewModel.sections.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
@@ -214,6 +218,25 @@ fun PerfilScreen(
             profile?.bio?.let {
                 Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
             }
+            // Enlace externo real en el perfil ("link in bio",
+            // 0077_profile_website.sql), comparado con Instagram/TikTok/
+            // Twitter.
+            profile?.websiteUrl?.let { url ->
+                Text(
+                    url.removePrefix("https://").removePrefix("http://"),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                        .clickable {
+                            try {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                            } catch (e: Exception) {
+                                // URL malformada o sin app que la maneje -- no crítico.
+                            }
+                        }
+                )
+            }
             errorMessage?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
             }
@@ -324,8 +347,9 @@ fun PerfilScreen(
             initialTop = profile?.avatarConfig?.get("top") ?: com.social.app.avatar.AvatarLook.TOP_COLORS.first(),
             initialUsername = profile?.username ?: "",
             usernameErrorMessage = usernameErrorMessage,
+            initialWebsiteUrl = profile?.websiteUrl ?: "",
             onDismiss = { showEditProfile = false },
-            onSave = { name, bio, skin, hair, top -> viewModel.updateBasicInfo(name, bio, skin, hair, top) },
+            onSave = { name, bio, skin, hair, top, websiteUrl -> viewModel.updateBasicInfo(name, bio, skin, hair, top, websiteUrl) },
             onSaveUsername = { username -> viewModel.updateUsername(username) }
         )
     }

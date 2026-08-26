@@ -23,7 +23,7 @@ struct EditProfileView: View {
     @State private var skin: String
     @State private var hair: String
     @State private var top: String
-    let onSave: (String, String, String, String, String) -> Void
+    let onSave: (String, String, String, String, String, String) -> Void
     // Nombre de usuario único real (@handle, 0073_profile_username.sql),
     // comparado con Instagram/Twitter/TikTok -- guardado aparte del resto
     // (botón propio), porque su fallo más probable (ya en uso) necesita
@@ -31,12 +31,18 @@ struct EditProfileView: View {
     @State private var username: String
     let usernameErrorMessage: String?
     let onSaveUsername: (String) -> Void
+    // Enlace externo real en el perfil ("link in bio",
+    // 0077_profile_website.sql), comparado con Instagram/TikTok/Twitter
+    // -- guardado junto con nombre/bio/avatar (onSave), a diferencia del
+    // username: aquí no hay un fallo de "ya en uso" que necesite su
+    // propio canal de error.
+    @State private var websiteURL: String
     @Environment(\.dismiss) private var dismiss
 
     init(
         initialName: String, initialBio: String, initialSkin: String, initialHair: String, initialTop: String,
-        initialUsername: String, usernameErrorMessage: String?,
-        onSave: @escaping (String, String, String, String, String) -> Void,
+        initialUsername: String, usernameErrorMessage: String?, initialWebsiteURL: String,
+        onSave: @escaping (String, String, String, String, String, String) -> Void,
         onSaveUsername: @escaping (String) -> Void
     ) {
         _name = State(initialValue: initialName)
@@ -45,6 +51,7 @@ struct EditProfileView: View {
         _hair = State(initialValue: initialHair)
         _top = State(initialValue: initialTop)
         _username = State(initialValue: initialUsername)
+        _websiteURL = State(initialValue: initialWebsiteURL)
         self.onSave = onSave
         self.usernameErrorMessage = usernameErrorMessage
         self.onSaveUsername = onSaveUsername
@@ -95,6 +102,14 @@ struct EditProfileView: View {
                 .buttonStyle(.bordered)
                 .disabled(username.trimmingCharacters(in: .whitespaces).isEmpty)
 
+                // Enlace externo real en el perfil ("link in bio",
+                // 0077_profile_website.sql), comparado con Instagram/
+                // TikTok/Twitter.
+                TextField("Enlace (sitio web)", text: $websiteURL)
+                    .textFieldStyle(.roundedBorder)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+
                 HStack(spacing: 12) {
                     CartoonAvatarView(skin: Color(hex: skin), hair: Color(hex: hair), top: Color(hex: top))
                         .frame(width: 64, height: 64)
@@ -109,7 +124,7 @@ struct EditProfileView: View {
                 swatchRow("Ropa", options: AvatarLook.topColors, selected: $top)
 
                 Button("Guardar") {
-                    onSave(name, bio, skin, hair, top)
+                    onSave(name, bio, skin, hair, top, websiteURL)
                     dismiss()
                 }
                 .buttonStyle(.borderedProminent)

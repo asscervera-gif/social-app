@@ -55,6 +55,13 @@ struct ProfileViewerView: View {
                 if let bio = profile?.bio {
                     Text(bio).foregroundStyle(.secondary)
                 }
+                // Enlace externo real en el perfil ("link in bio",
+                // 0077_profile_website.sql), comparado con Instagram/
+                // TikTok/Twitter.
+                if let websiteURLString = profile?.websiteURL, let url = URL(string: websiteURLString) {
+                    Link(websiteURLString.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: ""), destination: url)
+                        .font(.subheadline)
+                }
                 if let errorMessage {
                     Text(errorMessage).font(.footnote).foregroundStyle(.red)
                 }

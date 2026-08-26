@@ -161,7 +161,8 @@ class PerfilViewModel : ViewModel() {
     private data class ProfileUpdate(
         @SerialName("display_name") val displayName: String,
         val bio: String?,
-        @SerialName("avatar_config") val avatarConfig: Map<String, String>
+        @SerialName("avatar_config") val avatarConfig: Map<String, String>,
+        @SerialName("website_url") val websiteUrl: String?
     )
 
     /** Hallazgo real: comparado con cualquier app grande, no había forma de
@@ -173,7 +174,7 @@ class PerfilViewModel : ViewModel() {
      * no dependía de nada más). `skin`/`hair`/`top` (busto ilustrado,
      * CartoonAvatar) sustituyen al `colorSeed` único de antes de la pasada
      * de fidelidad visual con SOCIAL_APP.html. */
-    fun updateBasicInfo(displayName: String, bio: String, skin: String, hair: String, top: String) {
+    fun updateBasicInfo(displayName: String, bio: String, skin: String, hair: String, top: String, websiteUrl: String) {
         val id = userId ?: return
         val trimmedName = displayName.trim()
         if (trimmedName.isBlank()) {
@@ -192,17 +193,33 @@ class PerfilViewModel : ViewModel() {
             _errorMessage.value = "La bio no puede tener más de 300 caracteres."
             return
         }
+        // Enlace externo real en el perfil ("link in bio",
+        // 0077_profile_website.sql), comparado con Instagram/TikTok/
+        // Twitter -- mismo criterio que username: normalización simple en
+        // cliente (antepone "https://" si falta el esquema) en vez de una
+        // validación estricta de URL. Límite real: profiles_website_url_length.
+        val trimmedWebsite = websiteUrl.trim()
+        val normalizedWebsite = when {
+            trimmedWebsite.isEmpty() -> null
+            trimmedWebsite.startsWith("http://") || trimmedWebsite.startsWith("https://") -> trimmedWebsite
+            else -> "https://$trimmedWebsite"
+        }
+        if (normalizedWebsite != null && normalizedWebsite.length > 200) {
+            _errorMessage.value = "El enlace no puede tener más de 200 caracteres."
+            return
+        }
         val currentConfig = _profile.value?.avatarConfig ?: emptyMap()
         val newConfig = currentConfig + mapOf("type" to "cartoon", "skin" to skin, "hair" to hair, "top" to top)
         _profile.value = _profile.value?.copy(
             displayName = trimmedName,
             bio = bio.ifBlank { null },
-            avatarConfig = newConfig
+            avatarConfig = newConfig,
+            websiteUrl = normalizedWebsite
         )
         viewModelScope.launch {
             try {
                 SupabaseManager.client.from("profiles")
-                    .update(ProfileUpdate(trimmedName, bio.ifBlank { null }, newConfig)) { filter { eq("id", id) } }
+                    .update(ProfileUpdate(trimmedName, bio.ifBlank { null }, newConfig, normalizedWebsite)) { filter { eq("id", id) } }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo guardar el perfil."
             }

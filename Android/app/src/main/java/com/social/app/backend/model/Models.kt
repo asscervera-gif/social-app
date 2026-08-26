@@ -34,7 +34,10 @@ data class Profile(
     @SerialName("created_at") val createdAt: String? = null,
     // Nombre de usuario único real (@handle, 0073_profile_username.sql),
     // comparado con Instagram/Twitter/TikTok.
-    val username: String? = null
+    val username: String? = null,
+    // Enlace externo real en el perfil ("link in bio",
+    // 0077_profile_website.sql), comparado con Instagram/TikTok/Twitter.
+    @SerialName("website_url") val websiteUrl: String? = null
 )
 
 @Serializable

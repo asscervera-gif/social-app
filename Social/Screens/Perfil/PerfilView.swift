@@ -121,8 +121,9 @@ struct PerfilView: View {
                     initialTop: viewModel.profile?.avatarConfig?["top"] ?? AvatarLook.topColors[0],
                     initialUsername: viewModel.profile?.username ?? "",
                     usernameErrorMessage: viewModel.usernameErrorMessage,
-                    onSave: { name, bio, skin, hair, top in
-                        Task { await viewModel.updateBasicInfo(displayName: name, bio: bio, skin: skin, hair: hair, top: top) }
+                    initialWebsiteURL: viewModel.profile?.websiteURL ?? "",
+                    onSave: { name, bio, skin, hair, top, websiteURL in
+                        Task { await viewModel.updateBasicInfo(displayName: name, bio: bio, skin: skin, hair: hair, top: top, websiteURL: websiteURL) }
                     },
                     onSaveUsername: { username in
                         Task { await viewModel.updateUsername(username) }
@@ -231,6 +232,13 @@ struct PerfilView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+            }
+            // Enlace externo real en el perfil ("link in bio",
+            // 0077_profile_website.sql), comparado con Instagram/TikTok/
+            // Twitter.
+            if let websiteURLString = viewModel.profile?.websiteURL, let url = URL(string: websiteURLString) {
+                Link(websiteURLString.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: ""), destination: url)
+                    .font(.subheadline)
             }
         }
     }
