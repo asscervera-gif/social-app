@@ -295,6 +295,17 @@ private struct GroupMembersView: View {
                             ActiveAvatarProvider.shared.avatarView(config: member.avatarConfig ?? [:], size: 32)
                             Text(member.displayName)
                         }
+                        // Expulsar a otro miembro real, comparado con
+                        // WhatsApp/Messenger/Telegram -- solo el creador lo
+                        // ve, y nunca sobre sí mismo (para eso ya está
+                        // "Salir del grupo").
+                        .swipeActions {
+                            if isCreator && member.id != myID {
+                                Button("Quitar", role: .destructive) {
+                                    Task { await viewModel.kickMember(member.id) }
+                                }
+                            }
+                        }
                     }
                 }
                 Section {

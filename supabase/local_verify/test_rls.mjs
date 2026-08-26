@@ -1173,6 +1173,24 @@ async function main() {
   const groupAfterLeaving = (await db.query(`select id from group_chats where id = $1`, [group.id])).rows;
   check('group_chats_select: tras salir de verdad, u2 ya NO ve el grupo', groupAfterLeaving.length === 0);
 
+  // --- group_chat_members_delete_by_creator (0066_group_chat_kick_member.sql):
+  // expulsar a un miembro real, comparado con WhatsApp/Messenger/Telegram.
+  // u2 había salido justo arriba -- se le vuelve a añadir para esta
+  // prueba, esta vez para comprobar la expulsión por el creador, no la
+  // salida voluntaria. ---
+  await asUser(u1);
+  await db.query(`insert into group_chat_members (group_chat_id, user_id) values ($1, $2)`, [group.id, u2]);
+  await asUser(u2);
+  await db.query(`delete from group_chat_members where group_chat_id = $1 and user_id = $2`, [group.id, u1]);
+  const u1StillMemberAfterKickAttempt = (await db.query(`select user_id from group_chat_members where group_chat_id = $1 and user_id = $2`, [group.id, u1])).rows;
+  check('group_chat_members_delete_by_creator: un miembro real que NO es el creador (u2) no puede expulsar a nadie (RLS real: 0 filas afectadas, no un error)', u1StillMemberAfterKickAttempt.length === 1);
+  await asUser(u1);
+  await expectOk('group_chat_members_delete_by_creator: el creador real (u1) SÍ puede expulsar a otro miembro (u2)', async () => {
+    await db.query(`delete from group_chat_members where group_chat_id = $1 and user_id = $2`, [group.id, u2]);
+  });
+  const u2GoneAfterKick = (await db.query(`select user_id from group_chat_members where group_chat_id = $1 and user_id = $2`, [group.id, u2])).rows;
+  check('group_chat_members_delete_by_creator: u2 real queda expulsado del grupo', u2GoneAfterKick.length === 0);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

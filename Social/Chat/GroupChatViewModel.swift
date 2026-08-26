@@ -578,6 +578,27 @@ final class GroupChatViewModel: ObservableObject {
         }
     }
 
+    /// Expulsar a otro miembro real, comparado con WhatsApp/Messenger/
+    /// Telegram -- solo el creador puede (RLS
+    /// `group_chat_members_delete_by_creator`, 0066_group_chat_kick_member.sql,
+    /// mismo rol de "admin" ya usado para renombrar/silenciar el grupo). El
+    /// servidor decide de verdad: si quien llama no es el creador, la fila
+    /// simplemente no se borra (0 filas afectadas), por eso se recarga la
+    /// lista de miembros después en vez de asumir éxito.
+    func kickMember(_ profileID: UUID) async {
+        do {
+            try await SupabaseManager.shared.client
+                .from("group_chat_members")
+                .delete()
+                .eq("group_chat_id", value: groupChatID)
+                .eq("user_id", value: profileID)
+                .execute()
+            await loadMembers()
+        } catch {
+            errorMessage = "No se pudo expulsar del grupo."
+        }
+    }
+
     /// Salir del grupo real -- borra la propia fila (RLS
     /// `group_chat_members_delete_own`).
     func leaveGroup() async -> Bool {

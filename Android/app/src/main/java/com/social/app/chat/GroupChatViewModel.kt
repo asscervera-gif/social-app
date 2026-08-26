@@ -576,6 +576,26 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
         }
     }
 
+    /** Expulsar a otro miembro real, comparado con WhatsApp/Messenger/
+     * Telegram -- solo el creador puede (RLS
+     * `group_chat_members_delete_by_creator`, 0066_group_chat_kick_member.sql,
+     * mismo rol de "admin" ya usado para renombrar/silenciar el grupo). El
+     * servidor decide de verdad: si quien llama no es el creador, la fila
+     * simplemente no se borra (0 filas afectadas), por eso se recarga la
+     * lista de miembros después en vez de asumir éxito. */
+    fun kickMember(profileId: String) {
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("group_chat_members").delete {
+                    filter { eq("group_chat_id", groupChatId); eq("user_id", profileId) }
+                }
+                loadMembers()
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo expulsar del grupo."
+            }
+        }
+    }
+
     /** Salir del grupo real -- borra la propia fila (RLS
      * `group_chat_members_delete_own`). */
     fun leaveGroup(onLeft: () -> Unit) {

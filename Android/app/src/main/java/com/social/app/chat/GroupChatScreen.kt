@@ -457,7 +457,16 @@ private fun MembersSheet(
             members.forEach { member ->
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 6.dp)) {
                     com.social.app.avatar.AvatarView(config = member.avatarConfig ?: emptyMap(), size = 32.dp)
-                    Text(member.displayName, modifier = Modifier.padding(start = 10.dp))
+                    Text(member.displayName, modifier = Modifier.padding(start = 10.dp).weight(1f))
+                    // Expulsar a otro miembro real, comparado con
+                    // WhatsApp/Messenger/Telegram -- solo el creador lo ve,
+                    // y nunca sobre sí mismo (para eso ya está "Salir del
+                    // grupo").
+                    if (isCreator && member.id != myId) {
+                        TextButton(onClick = { groupChatViewModel.kickMember(member.id) }) {
+                            Text("Quitar", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
                 }
             }
             TextButton(onClick = { showAddPicker = true }, modifier = Modifier.padding(top = 8.dp)) {
