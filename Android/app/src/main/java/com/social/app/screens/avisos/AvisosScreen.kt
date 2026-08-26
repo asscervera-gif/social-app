@@ -71,6 +71,10 @@ fun AvisosScreen(
     // Hallazgo real de paso: un aviso de mensaje de GRUPO tampoco llevaba
     // a ningún sitio, a diferencia de "message" (chat 1:1).
     onOpenGroupChat: (String) -> Unit = {},
+    // Abrir un reel concreto real desde un aviso de "like"/"comentario",
+    // comparado con Instagram/TikTok -- ver ReelsViewModel.kt.load() para
+    // el hallazgo completo.
+    onOpenReel: (String) -> Unit = {},
     viewModel: AvisosViewModel = viewModel()
 ) {
     val notifications by viewModel.notifications.collectAsState()
@@ -153,6 +157,15 @@ fun AvisosScreen(
                     // group_chat_id desde esa ronda, sin cliente que lo usara).
                     entry.kind == "group_message" && entry.payload["group_chat_id"] != null ->
                         onOpenGroupChat(entry.payload["group_chat_id"]!!)
+                    // Abrir un reel concreto real, comparado con Instagram/
+                    // TikTok -- cierra el hueco documentado dos rondas
+                    // atrás: `reel_like`/`reel_comment` ya llevaban
+                    // `reel_id` desde 0050_reels.sql, y `reel_comment_like`
+                    // lo ganó en 0070_notify_comment_like_post_reference.sql,
+                    // pero ningún cliente sabía saltar a un reel concreto
+                    // hasta ReelsScreen.kt.initialReelId/ReelsViewModel.kt.load().
+                    (entry.kind == "reel_like" || entry.kind == "reel_comment" || entry.kind == "reel_comment_like") &&
+                        entry.payload["reel_id"] != null -> onOpenReel(entry.payload["reel_id"]!!)
                 }
             })
         }

@@ -73,7 +73,21 @@ class ReelsViewModel : ViewModel() {
     @Serializable
     private data class LikedReelRow(@SerialName("reel_id") val reelId: String)
 
-    fun load() {
+    /** Abrir un reel concreto real desde un aviso de "like"/"comentario",
+     * comparado con Instagram/TikTok: `reel_like`/`reel_comment`/
+     * `reel_comment_like` ya llevan `reel_id` real en su payload
+     * (0050_reels.sql / 0070_notify_comment_like_post_reference.sql), pero
+     * tocar el aviso no llevaba a ningún sitio porque `load()` solo trae
+     * los 30 reels más recientes -- el reel real del aviso podría no estar
+     * ahí (o directamente no estarlo nunca, si hay más de 30 reels más
+     * nuevos). Si no aparece en esa ventana, se pide aparte y se antepone
+     * a la lista -- mismo criterio de "solo lo necesario" que
+     * PostDetailViewModel.kt (no reconstruye el feed entero para una sola
+     * pieza de contenido). Sujeto a las mismas reglas RLS/bloqueo reales
+     * que el resto del feed: si la política lo deniega, sencillamente no
+     * se añade (fallo silencioso, no un crash).
+     */
+    fun load(pinnedReelId: String? = null) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
@@ -89,13 +103,27 @@ class ReelsViewModel : ViewModel() {
                 } catch (e: Exception) {
                     emptySet()
                 }
-                _reels.value = SupabaseManager.client.from("reels")
+                val recentReels = SupabaseManager.client.from("reels")
                     .select {
                         order("created_at", Order.DESCENDING)
                         limit(30)
                     }
                     .decodeList<Reel>()
                     .filter { it.authorId !in blockedIds }
+
+                _reels.value = if (pinnedReelId != null && recentReels.none { it.id == pinnedReelId }) {
+                    val pinned = try {
+                        SupabaseManager.client.from("reels")
+                            .select { filter { eq("id", pinnedReelId) } }
+                            .decodeSingle<Reel>()
+                            .takeIf { it.authorId !in blockedIds }
+                    } catch (e: Exception) {
+                        null
+                    }
+                    if (pinned != null) listOf(pinned) + recentReels else recentReels
+                } else {
+                    recentReels
+                }
 
                 val authorIds = _reels.value.map { it.authorId }.distinct()
                 if (authorIds.isNotEmpty()) {

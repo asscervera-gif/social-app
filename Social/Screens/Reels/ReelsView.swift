@@ -27,29 +27,49 @@ struct ReelsView: View {
     // escribirlos. Mismo patrón que ChatListView.swift para un UUID? no
     // Identifiable atado a un .sheet.
     @State private var commentingReelID: UUID?
+    // Abrir un reel concreto real desde un aviso de "like"/"comentario",
+    // comparado con Instagram/TikTok -- ver ReelsViewModel.swift.load()
+    // para el hallazgo completo.
+    let initialReelID: UUID? = nil
+    @State private var hasJumpedToInitial = false
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                if viewModel.isLoading && viewModel.reels.isEmpty {
-                    ProgressView().padding()
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    if viewModel.isLoading && viewModel.reels.isEmpty {
+                        ProgressView().padding()
+                    }
+                    if let error = viewModel.errorMessage {
+                        Text(error).font(.footnote).foregroundStyle(.red).padding()
+                    }
+                    if viewModel.reels.isEmpty && !viewModel.isLoading && viewModel.errorMessage == nil {
+                        Text("Todavía no hay ningún reel. Sé el primero.")
+                            .foregroundStyle(.secondary)
+                            .padding(32)
+                    }
+                    ForEach(viewModel.reels) { reel in
+                        ReelRow(
+                            reel: reel,
+                            author: viewModel.authorProfiles[reel.authorID],
+                            isLiked: viewModel.likedReelIDs.contains(reel.id),
+                            onLike: { Task { await viewModel.toggleLike(reel) } },
+                            onOpenComments: { commentingReelID = reel.id }
+                        )
+                        .id(reel.id)
+                    }
                 }
-                if let error = viewModel.errorMessage {
-                    Text(error).font(.footnote).foregroundStyle(.red).padding()
-                }
-                if viewModel.reels.isEmpty && !viewModel.isLoading && viewModel.errorMessage == nil {
-                    Text("Todavía no hay ningún reel. Sé el primero.")
-                        .foregroundStyle(.secondary)
-                        .padding(32)
-                }
-                ForEach(viewModel.reels) { reel in
-                    ReelRow(
-                        reel: reel,
-                        author: viewModel.authorProfiles[reel.authorID],
-                        isLiked: viewModel.likedReelIDs.contains(reel.id),
-                        onLike: { Task { await viewModel.toggleLike(reel) } },
-                        onOpenComments: { commentingReelID = reel.id }
-                    )
+            }
+            // Salta una sola vez, apenas el reel señalado por el aviso
+            // aparece en la lista (recién cargada, o antepuesta por
+            // ReelsViewModel.swift.load() si no estaba entre los 30 más
+            // recientes) -- sin el guardián `hasJumpedToInitial`, esto
+            // saltaría de nuevo cada vez que `reels` cambia de tamaño por
+            // cualquier otro motivo.
+            .onChange(of: viewModel.reels.count) { _ in
+                if !hasJumpedToInitial, let initialReelID, viewModel.reels.contains(where: { $0.id == initialReelID }) {
+                    withAnimation { proxy.scrollTo(initialReelID, anchor: .top) }
+                    hasJumpedToInitial = true
                 }
             }
         }
@@ -63,7 +83,7 @@ struct ReelsView: View {
                 }
             }
         }
-        .task { await viewModel.load() }
+        .task { await viewModel.load(pinnedReelID: initialReelID) }
         .refreshable { await viewModel.load() }
         .sheet(isPresented: $showUpload) {
             UploadReelView(isUploading: viewModel.isUploading) { data, ext, caption, isSocialOnly in

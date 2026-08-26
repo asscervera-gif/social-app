@@ -93,6 +93,11 @@ private const val FIND_ROUTE = "find"
 // Publicación individual real ("permalink"), comparado con Instagram/
 // Twitter/Facebook -- ver PostDetailScreen.kt para el hallazgo completo.
 private const val POST_ROUTE = "post/{postId}"
+// Abrir un reel concreto real desde un aviso de "like"/"comentario",
+// comparado con Instagram/TikTok -- ver ReelsViewModel.kt.load() para el
+// hallazgo completo. Ruta propia, separada de REELS_ROUTE (sin argumento,
+// para el acceso normal desde la rejilla de Perfil).
+private const val REEL_ROUTE = "reels/{reelId}"
 
 /**
  * Cinco pestañas + navegación real a chat/duelo — equivalente a
@@ -276,7 +281,11 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                         onOpenGroupChat = { groupChatId ->
                             val encodedName = java.net.URLEncoder.encode("Grupo", "UTF-8")
                             navController.navigate("group_chat/$groupChatId/$encodedName")
-                        }
+                        },
+                        // Abrir un reel concreto real, comparado con
+                        // Instagram/TikTok -- ver ReelsViewModel.kt.load()
+                        // para el hallazgo completo.
+                        onOpenReel = { reelId -> navController.navigate("reels/$reelId") }
                     )
                 }
                 composable(Tab.PERFIL.route) {
@@ -303,6 +312,18 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                 composable(REELS_ROUTE) {
                     com.social.app.ui.theme.BackScaffold(title = "Reels", onBack = { navController.popBackStack() }) {
                         com.social.app.screens.reels.ReelsScreen(
+                            onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
+                        )
+                    }
+                }
+                // Abrir un reel concreto real desde un aviso de "like"/
+                // "comentario", comparado con Instagram/TikTok -- ver
+                // ReelsViewModel.kt.load() para el hallazgo completo.
+                composable(REEL_ROUTE) { routeEntry ->
+                    val reelId = routeEntry.arguments?.getString("reelId") ?: return@composable
+                    com.social.app.ui.theme.BackScaffold(title = "Reels", onBack = { navController.popBackStack() }) {
+                        com.social.app.screens.reels.ReelsScreen(
+                            initialReelId = reelId,
                             onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
                         )
                     }

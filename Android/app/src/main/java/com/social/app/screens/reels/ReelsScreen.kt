@@ -57,7 +57,14 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ReelsScreen(viewModel: ReelsViewModel = viewModel(), onOpenProfile: (String) -> Unit = {}) {
+fun ReelsScreen(
+    // Abrir un reel concreto real desde un aviso de "like"/"comentario",
+    // comparado con Instagram/TikTok -- ver ReelsViewModel.kt.load() para
+    // el hallazgo completo.
+    initialReelId: String? = null,
+    viewModel: ReelsViewModel = viewModel(),
+    onOpenProfile: (String) -> Unit = {}
+) {
     val reels by viewModel.reels.collectAsState()
     val authorProfiles by viewModel.authorProfiles.collectAsState()
     val likedReelIds by viewModel.likedReelIds.collectAsState()
@@ -66,8 +73,9 @@ fun ReelsScreen(viewModel: ReelsViewModel = viewModel(), onOpenProfile: (String)
     var showUpload by remember { mutableStateOf(false) }
     var commentingReelId by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
+    var hasJumpedToInitial by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) { viewModel.load() }
+    LaunchedEffect(Unit) { viewModel.load(pinnedReelId = initialReelId) }
 
     val exoPlayer = remember { ExoPlayer.Builder(context).build() }
     DisposableEffect(Unit) {
@@ -97,6 +105,24 @@ fun ReelsScreen(viewModel: ReelsViewModel = viewModel(), onOpenProfile: (String)
             }
             if (reels.isNotEmpty()) {
                 val pagerState = rememberPagerState(pageCount = { reels.size })
+                // Abrir un reel concreto real desde un aviso, comparado
+                // con Instagram/TikTok -- salta una sola vez, apenas el
+                // reel señalado por el aviso aparece en la lista (recién
+                // cargada, o antepuesto por ReelsViewModel.kt.load() si no
+                // estaba entre los 30 más recientes). Sin esto, un
+                // `LaunchedEffect(reels)` saltaría de nuevo cada vez que
+                // `reels` cambia por cualquier otro motivo (dar like,
+                // comentar), devolviendo al usuario al reel del aviso sin
+                // querer.
+                LaunchedEffect(reels) {
+                    if (!hasJumpedToInitial && initialReelId != null) {
+                        val index = reels.indexOfFirst { it.id == initialReelId }
+                        if (index >= 0) {
+                            pagerState.scrollToPage(index)
+                            hasJumpedToInitial = true
+                        }
+                    }
+                }
                 LaunchedEffect(pagerState.currentPage, reels) {
                     val current = reels.getOrNull(pagerState.currentPage) ?: return@LaunchedEffect
                     exoPlayer.setMediaItem(MediaItem.fromUri(current.videoUrl))

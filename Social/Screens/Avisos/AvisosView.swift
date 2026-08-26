@@ -31,6 +31,10 @@ struct AvisosView: View {
     // group_chat_id desde esa ronda, sin cliente que lo usara).
     @State private var selectedGroupChatID: UUID?
     @State private var showOpenedGroupChat = false
+    // Abrir un reel concreto real, comparado con Instagram/TikTok -- ver
+    // ReelsViewModel.swift.load() para el hallazgo completo.
+    @State private var selectedReelID: UUID?
+    @State private var showOpenedReel = false
 
     var body: some View {
         NavigationStack {
@@ -56,6 +60,14 @@ struct AvisosView: View {
                               let groupChatID = UUID(uuidString: groupChatIDString) {
                         selectedGroupChatID = groupChatID
                         showOpenedGroupChat = true
+                    } else if (entry.kind == "reel_like" || entry.kind == "reel_comment" || entry.kind == "reel_comment_like"),
+                              let reelIDString = entry.payload["reel_id"],
+                              let reelID = UUID(uuidString: reelIDString) {
+                        // Abrir un reel concreto real, comparado con
+                        // Instagram/TikTok -- cierra el hueco documentado
+                        // dos rondas atrás.
+                        selectedReelID = reelID
+                        showOpenedReel = true
                     } else {
                         viewModel.selected = entry
                     }
@@ -118,6 +130,11 @@ struct AvisosView: View {
             .navigationDestination(isPresented: $showOpenedGroupChat) {
                 if let selectedGroupChatID {
                     GroupChatView(groupChatID: selectedGroupChatID, groupName: "Grupo")
+                }
+            }
+            .navigationDestination(isPresented: $showOpenedReel) {
+                if let selectedReelID {
+                    ReelsView(initialReelID: selectedReelID)
                 }
             }
             .onDisappear { Task { await viewModel.stop() } }

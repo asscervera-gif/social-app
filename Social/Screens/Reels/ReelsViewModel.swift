@@ -50,7 +50,18 @@ final class ReelsViewModel: ObservableObject {
     private struct BlockRow: Decodable { let blocked_id: UUID }
     private struct LikedReelRow: Decodable { let reel_id: UUID }
 
-    func load() async {
+    /// Abrir un reel concreto real desde un aviso de "like"/"comentario",
+    /// comparado con Instagram/TikTok: `reel_like`/`reel_comment`/
+    /// `reel_comment_like` ya llevan `reel_id` real en su payload
+    /// (0050_reels.sql / 0070_notify_comment_like_post_reference.sql),
+    /// pero tocar el aviso no llevaba a ningún sitio porque `load()` solo
+    /// trae los 30 reels más recientes -- el reel real del aviso podría no
+    /// estar ahí. Si no aparece en esa ventana, se pide aparte y se
+    /// antepone a la lista -- mismo criterio de "solo lo necesario" que
+    /// PostDetailView.swift. Sujeto a las mismas reglas RLS/bloqueo reales
+    /// que el resto del feed: si la política lo deniega, sencillamente no
+    /// se añade. Equivalente de ReelsViewModel.kt.load(pinnedReelId:).
+    func load(pinnedReelID: UUID? = nil) async {
         isLoading = true
         defer { isLoading = false }
         do {
@@ -68,7 +79,20 @@ final class ReelsViewModel: ObservableObject {
                 .limit(30)
                 .execute()
                 .value
-            reels = allReels.filter { !blockedIDs.contains($0.authorID) }
+            var recentReels = allReels.filter { !blockedIDs.contains($0.authorID) }
+
+            if let pinnedReelID, !recentReels.contains(where: { $0.id == pinnedReelID }) {
+                let pinned: Reel? = try? await client.from("reels")
+                    .select()
+                    .eq("id", value: pinnedReelID)
+                    .single()
+                    .execute()
+                    .value
+                if let pinned, !blockedIDs.contains(pinned.authorID) {
+                    recentReels = [pinned] + recentReels
+                }
+            }
+            reels = recentReels
 
             let authorIDs = Array(Set(reels.map { $0.authorID }))
             if !authorIDs.isEmpty {
