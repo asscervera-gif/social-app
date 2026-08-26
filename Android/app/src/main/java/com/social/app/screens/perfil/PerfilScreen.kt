@@ -90,7 +90,8 @@ fun PerfilScreen(
     onOpenFollowing: () -> Unit = {},
     onOpenFollowers: () -> Unit = {},
     onOpenReels: () -> Unit = {},
-    onOpenLive: () -> Unit = {}
+    onOpenLive: () -> Unit = {},
+    onOpenGroupChats: () -> Unit = {}
 ) {
     val profile by viewModel.profile.collectAsState()
     val sections by viewModel.sections.collectAsState()
@@ -122,7 +123,11 @@ fun PerfilScreen(
         ProfileNavItem("🖼", "Tus publicaciones", onOpenMyPosts),
         ProfileNavItem("👥", "Tus socials", onOpenSocials),
         ProfileNavItem("🔖", "Guardados", onOpenSavedPosts),
-        ProfileNavItem("💬", "Tus chats", onOpenChatList)
+        ProfileNavItem("💬", "Tus chats", onOpenChatList),
+        // Chats de grupo (0057_group_chats.sql) -- comparado con WhatsApp/
+        // Instagram/Messenger/Facebook, mismo criterio que Reels/Directos:
+        // se añade sin quitar ninguno de los ya reales.
+        ProfileNavItem("👥", "Grupos", onOpenGroupChats)
     )
     val filledSections = sections.count { it.content["texto"]?.isNotBlank() == true }
     val completion = (filledSections * 100) / PerfilViewModel.SECTION_KEYS.size.coerceAtLeast(1)

@@ -86,6 +86,8 @@ private const val SOCIALS_LIST_ROUTE = "socials_list"
 private const val FOLLOW_LIST_ROUTE = "follow_list/{tab}"
 private const val REELS_ROUTE = "reels"
 private const val LIVE_STREAMS_ROUTE = "live_streams"
+private const val GROUP_CHATS_LIST_ROUTE = "group_chats"
+private const val GROUP_CHAT_ROUTE = "group_chat/{groupId}/{groupName}"
 private const val SEARCH_ROUTE = "search"
 private const val FIND_ROUTE = "find"
 
@@ -267,7 +269,8 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                         onOpenFollowing = { navController.navigate("follow_list/following") },
                         onOpenFollowers = { navController.navigate("follow_list/followers") },
                         onOpenReels = { navController.navigate(REELS_ROUTE) },
-                        onOpenLive = { navController.navigate(LIVE_STREAMS_ROUTE) }
+                        onOpenLive = { navController.navigate(LIVE_STREAMS_ROUTE) },
+                        onOpenGroupChats = { navController.navigate(GROUP_CHATS_LIST_ROUTE) }
                     )
                 }
                 // Reels (0050_reels.sql) -- primera UI de cliente real
@@ -291,6 +294,29 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                     com.social.app.ui.theme.BackScaffold(title = "Directos", onBack = { navController.popBackStack() }) {
                         com.social.app.screens.live.LiveStreamsScreen()
                     }
+                }
+                // Chats de grupo (0057_group_chats.sql) -- comparado con
+                // WhatsApp/Instagram/Messenger/Facebook. Mismo criterio
+                // que Reels/Directos: ruta propia, no una pestaña nueva.
+                composable(GROUP_CHATS_LIST_ROUTE) {
+                    com.social.app.ui.theme.BackScaffold(title = "Grupos", onBack = { navController.popBackStack() }) {
+                        com.social.app.chat.GroupChatsListScreen(
+                            onOpenGroup = { groupId, groupName ->
+                                val encodedName = java.net.URLEncoder.encode(groupName, "UTF-8")
+                                navController.navigate("group_chat/$groupId/$encodedName")
+                            }
+                        )
+                    }
+                }
+                composable(GROUP_CHAT_ROUTE) { routeEntry ->
+                    val groupId = routeEntry.arguments?.getString("groupId") ?: return@composable
+                    val encodedName = routeEntry.arguments?.getString("groupName") ?: ""
+                    val groupName = java.net.URLDecoder.decode(encodedName, "UTF-8")
+                    com.social.app.chat.GroupChatScreen(
+                        groupChatId = groupId,
+                        groupName = groupName,
+                        onBack = { navController.popBackStack() }
+                    )
                 }
                 // Hallazgo real, comparado con Instagram/Twitter/TikTok:
                 // los contadores "Sigo"/"Seguid." de la cabecera del perfil

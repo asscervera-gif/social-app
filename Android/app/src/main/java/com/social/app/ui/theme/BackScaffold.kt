@@ -31,6 +31,12 @@ import androidx.compose.ui.Modifier
 fun BackScaffold(
     title: String,
     onBack: () -> Unit,
+    // Comparado con cualquier app grande: una pantalla con lista (chat de
+    // grupo, directo) suele necesitar una acción real en la barra superior
+    // (ver quién está, terminar/salir), no solo volver -- parámetro
+    // opcional con lambda vacía por defecto para no romper ninguno de los
+    // ~15 sitios que ya usan BackScaffold sin necesitarlo.
+    actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {},
     content: @Composable (androidx.compose.foundation.layout.PaddingValues) -> Unit
 ) {
     Scaffold(
@@ -41,7 +47,8 @@ fun BackScaffold(
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
                     }
-                }
+                },
+                actions = actions
             )
         }
     ) { padding ->

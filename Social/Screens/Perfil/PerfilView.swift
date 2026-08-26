@@ -20,6 +20,7 @@ struct PerfilView: View {
     // Hallazgo real: no había ningún punto de entrada a la lista de chats
     // en ninguna plataforma (ver ChatListViewModel.swift).
     @State private var showChatList = false
+    @State private var showGroupChats = false
     @State private var selectedChatID: UUID?
     @State private var showOpenedChat = false
     // Hallazgo real: "Tus publicaciones" estaba vacío, documentado como
@@ -78,6 +79,12 @@ struct PerfilView: View {
                     Button("Mi perfil completo") { showFullProfile = true }
                         .buttonStyle(.bordered)
                     Button("💬 Tus chats") { showChatList = true }
+                        .buttonStyle(.bordered)
+                    // Chats de grupo (0057_group_chats.sql) -- comparado
+                    // con WhatsApp/Instagram/Messenger/Facebook, mismo
+                    // criterio que "Tus chats": botón propio junto al 1:1,
+                    // no mezclado en la rejilla de subsecciones.
+                    Button("👥 Grupos") { showGroupChats = true }
                         .buttonStyle(.bordered)
                     subsectionsGrid
                 }
@@ -161,6 +168,11 @@ struct PerfilView: View {
             .sheet(isPresented: $showLive) {
                 NavigationStack {
                     LiveStreamsView()
+                }
+            }
+            .sheet(isPresented: $showGroupChats) {
+                NavigationStack {
+                    GroupChatsListView()
                 }
             }
             .sheet(isPresented: $showChatList) {
