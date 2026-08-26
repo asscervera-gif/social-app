@@ -40,6 +40,9 @@ struct ChatListEntry: Identifiable {
     // chats" no distinguía visualmente qué conversaciones tenían mensajes
     // sin leer.
     let hasUnread: Bool
+    // Fijar un chat arriba de la lista, comparado con
+    // WhatsApp/Telegram/Messenger -- ver 0081_pin_chats.sql.
+    let isPinnedForMe: Bool
 }
 
 @MainActor
@@ -142,10 +145,16 @@ final class ChatListViewModel: ObservableObject {
                     lastMessage: last?.body, lastActivity: last?.created_at ?? chat.createdAt,
                     iAmUserA: chat.userAID == userID,
                     isMutedForMe: chat.userAID == userID ? chat.mutedByA : chat.mutedByB,
-                    hasUnread: last != nil && last!.sender_id != userID && last!.read_at == nil
+                    hasUnread: last != nil && last!.sender_id != userID && last!.read_at == nil,
+                    isPinnedForMe: chat.userAID == userID ? chat.pinnedByA : chat.pinnedByB
                 ))
             }
-            chats = entries.sorted { $0.lastActivity > $1.lastActivity }
+            // Fijado primero (mismo criterio que WhatsApp/Telegram),
+            // actividad reciente dentro de cada grupo.
+            chats = entries.sorted {
+                if $0.isPinnedForMe != $1.isPinnedForMe { return $0.isPinnedForMe }
+                return $0.lastActivity > $1.lastActivity
+            }
         } catch {
             errorMessage = "No se pudieron cargar tus chats."
         }
@@ -236,7 +245,7 @@ final class ChatListViewModel: ObservableObject {
                 id: entry.id, chat: entry.chat, otherName: entry.otherName,
                 otherAvatarConfig: entry.otherAvatarConfig, lastMessage: entry.lastMessage,
                 lastActivity: entry.lastActivity, iAmUserA: entry.iAmUserA, isMutedForMe: newValue,
-                hasUnread: entry.hasUnread
+                hasUnread: entry.hasUnread, isPinnedForMe: entry.isPinnedForMe
             )
         }
         Task {
@@ -256,6 +265,49 @@ final class ChatListViewModel: ObservableObject {
                 }
             } catch {
                 errorMessage = "No se pudo cambiar el silencio de la conversación."
+                await load()
+            }
+        }
+    }
+
+    /// Fijar/desfijar -- solo afecta a MI copia (columna
+    /// pinned_by_a/pinned_by_b según corresponda), nunca a la de la otra
+    /// persona (protect_chat_pinned_flags, 0081_pin_chats.sql, lo
+    /// garantiza también del lado del servidor). A diferencia de ocultar,
+    /// un chat fijado NO se desfija solo al llegar un mensaje -- mismo
+    /// criterio que WhatsApp/Telegram. Equivalente de
+    /// ChatListViewModel.kt.togglePin().
+    func togglePin(_ entry: ChatListEntry) {
+        let newValue = !entry.isPinnedForMe
+        if let index = chats.firstIndex(where: { $0.id == entry.id }) {
+            chats[index] = ChatListEntry(
+                id: entry.id, chat: entry.chat, otherName: entry.otherName,
+                otherAvatarConfig: entry.otherAvatarConfig, lastMessage: entry.lastMessage,
+                lastActivity: entry.lastActivity, iAmUserA: entry.iAmUserA, isMutedForMe: entry.isMutedForMe,
+                hasUnread: entry.hasUnread, isPinnedForMe: newValue
+            )
+        }
+        chats.sort {
+            if $0.isPinnedForMe != $1.isPinnedForMe { return $0.isPinnedForMe }
+            return $0.lastActivity > $1.lastActivity
+        }
+        Task {
+            do {
+                if entry.iAmUserA {
+                    try await SupabaseManager.shared.client
+                        .from("chats")
+                        .update(["pinned_by_a": newValue])
+                        .eq("id", value: entry.chat.id)
+                        .execute()
+                } else {
+                    try await SupabaseManager.shared.client
+                        .from("chats")
+                        .update(["pinned_by_b": newValue])
+                        .eq("id", value: entry.chat.id)
+                        .execute()
+                }
+            } catch {
+                errorMessage = "No se pudo fijar la conversación."
                 await load()
             }
         }

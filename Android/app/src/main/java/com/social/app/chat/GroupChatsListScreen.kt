@@ -128,6 +128,12 @@ fun GroupChatsListScreen(viewModel: GroupChatsViewModel = viewModel(), onOpenGro
                         // exacto que ChatListScreen.kt (chat 1:1): el
                         // propio icono ya comunica el estado, sin
                         // necesitar una insignia aparte.
+                        // Fijar un chat de grupo arriba de la lista,
+                        // comparado con WhatsApp/Telegram/Messenger -- ver
+                        // GroupChatsViewModel.togglePin(), 0081_pin_chats.sql.
+                        androidx.compose.material3.IconButton(onClick = { viewModel.togglePin(group) }) {
+                            Text(if (group.isPinnedForMe) "📌" else "📍")
+                        }
                         androidx.compose.material3.IconButton(onClick = { viewModel.toggleMute(group) }) {
                             Text(if (group.isMutedForMe) "🔕" else "🔔")
                         }

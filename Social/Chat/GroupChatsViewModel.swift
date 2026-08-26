@@ -36,6 +36,11 @@ struct GroupChat: Codable, Identifiable {
     // el valor por defecto (false) al decodificar, sin lanzar error por
     // clave ausente -- se rellena aparte en load().
     var isMutedForMe: Bool = false
+    // Fijar un chat de grupo arriba de la lista, comparado con
+    // WhatsApp/Telegram/Messenger -- ver 0081_pin_chats.sql, mismo
+    // criterio que isMutedForMe: viene de la propia fila de membresía,
+    // fuera de CodingKeys a propósito.
+    var isPinnedForMe: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case id, name
@@ -55,6 +60,7 @@ final class GroupChatsViewModel: ObservableObject {
         let group_chat_id: UUID
         let muted: Bool
         let hidden: Bool
+        let pinned: Bool
     }
 
     func load() async {
@@ -76,7 +82,7 @@ final class GroupChatsViewModel: ObservableObject {
             if let userID = try? await SupabaseManager.shared.client.auth.session.user.id, !loaded.isEmpty {
                 let rows: [MyMembership] = (try? await SupabaseManager.shared.client
                     .from("group_chat_members")
-                    .select("group_chat_id,muted,hidden")
+                    .select("group_chat_id,muted,hidden,pinned")
                     .eq("user_id", value: userID)
                     .in("group_chat_id", values: loaded.map { $0.id })
                     .execute()
@@ -87,13 +93,19 @@ final class GroupChatsViewModel: ObservableObject {
             // Instagram/Messenger -- mismo criterio que
             // ChatListViewModel.swift.load() (chat 1:1): un grupo oculto
             // para MÍ desaparece de la lista por completo.
+            //
+            // Fijar arriba (0081_pin_chats.sql), comparado con
+            // WhatsApp/Telegram/Messenger -- mismo criterio de orden que
+            // ChatListViewModel.swift.load() (chat 1:1).
             groups = loaded
                 .filter { memberships[$0.id]?.hidden != true }
                 .map { group in
                     var group = group
                     group.isMutedForMe = memberships[group.id]?.muted ?? false
+                    group.isPinnedForMe = memberships[group.id]?.pinned ?? false
                     return group
                 }
+                .sorted { $0.isPinnedForMe && !$1.isPinnedForMe }
         } catch {
             errorMessage = "No se pudieron cargar los grupos: \(error.localizedDescription)"
         }
@@ -118,6 +130,31 @@ final class GroupChatsViewModel: ObservableObject {
                 .execute()
         } catch {
             errorMessage = "No se pudo cambiar el silencio del grupo."
+            await load()
+        }
+    }
+
+    /// Fijar/desfijar un grupo real arriba de la lista, comparado con
+    /// WhatsApp/Telegram/Messenger -- mismo patrón (optimista + revertir
+    /// con load() si falla) ya usado en toggleMute(). A diferencia de
+    /// ocultar, un grupo fijado NO se desfija solo al llegar un mensaje.
+    /// Equivalente de GroupChatsViewModel.kt.togglePin().
+    func togglePin(_ group: GroupChat) async {
+        let newValue = !group.isPinnedForMe
+        if let index = groups.firstIndex(where: { $0.id == group.id }) {
+            groups[index].isPinnedForMe = newValue
+        }
+        groups.sort { $0.isPinnedForMe && !$1.isPinnedForMe }
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        do {
+            try await SupabaseManager.shared.client
+                .from("group_chat_members")
+                .update(["pinned": newValue])
+                .eq("group_chat_id", value: group.id)
+                .eq("user_id", value: userID)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo fijar el grupo."
             await load()
         }
     }

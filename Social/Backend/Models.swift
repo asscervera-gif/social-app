@@ -148,6 +148,10 @@ struct Chat: Codable, Identifiable {
     // ver 0047_message_notify_mute.sql/ChatListViewModel.muteChat().
     var mutedByA: Bool
     var mutedByB: Bool
+    // Fijar un chat arriba de la lista, comparado con
+    // WhatsApp/Telegram/Messenger -- ver 0081_pin_chats.sql.
+    var pinnedByA: Bool = false
+    var pinnedByB: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -159,6 +163,8 @@ struct Chat: Codable, Identifiable {
         case hiddenByB = "hidden_by_b"
         case mutedByA = "muted_by_a"
         case mutedByB = "muted_by_b"
+        case pinnedByA = "pinned_by_a"
+        case pinnedByB = "pinned_by_b"
     }
 }
 

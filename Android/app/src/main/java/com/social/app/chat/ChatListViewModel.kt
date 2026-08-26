@@ -42,7 +42,10 @@ data class ChatListEntry(
     // Hallazgo real, comparado con WhatsApp/Instagram/Messenger: "Tus
     // chats" no distinguía visualmente qué conversaciones tenían mensajes
     // sin leer.
-    val hasUnread: Boolean
+    val hasUnread: Boolean,
+    // Fijar un chat arriba de la lista, comparado con
+    // WhatsApp/Telegram/Messenger -- ver 0081_pin_chats.sql.
+    val isPinnedForMe: Boolean
 )
 
 // Hallazgo real, comparado con WhatsApp/Instagram/Messenger: la lista de
@@ -81,7 +84,9 @@ private data class ChatRow(
     @SerialName("hidden_by_a") val hiddenByA: Boolean = false,
     @SerialName("hidden_by_b") val hiddenByB: Boolean = false,
     @SerialName("muted_by_a") val mutedByA: Boolean = false,
-    @SerialName("muted_by_b") val mutedByB: Boolean = false
+    @SerialName("muted_by_b") val mutedByB: Boolean = false,
+    @SerialName("pinned_by_a") val pinnedByA: Boolean = false,
+    @SerialName("pinned_by_b") val pinnedByB: Boolean = false
 )
 
 /**
@@ -173,7 +178,7 @@ class ChatListViewModel : ViewModel() {
                 // convención del resto del proyecto (mismo patrón
                 // corregido en ChatViewModel.loadHistory() esta pasada).
                 val myChats = SupabaseManager.client.from("chats")
-                    .select(columns = Columns.raw("id,user_a_id,user_b_id,compatibility_score,created_at,hidden_by_a,hidden_by_b,muted_by_a,muted_by_b")) {
+                    .select(columns = Columns.raw("id,user_a_id,user_b_id,compatibility_score,created_at,hidden_by_a,hidden_by_b,muted_by_a,muted_by_b,pinned_by_a,pinned_by_b")) {
                         filter {
                             or {
                                 eq("user_a_id", userId)
@@ -226,10 +231,13 @@ class ChatListViewModel : ViewModel() {
                         lastActivity = lastMessage?.createdAt ?: row.createdAt,
                         iAmUserA = row.userAId == userId,
                         isMutedForMe = if (row.userAId == userId) row.mutedByA else row.mutedByB,
-                        hasUnread = lastMessage != null && lastMessage.senderId != userId && lastMessage.readAt == null
+                        hasUnread = lastMessage != null && lastMessage.senderId != userId && lastMessage.readAt == null,
+                        isPinnedForMe = if (row.userAId == userId) row.pinnedByA else row.pinnedByB
                     )
                 }
-                _chats.value = entries.sortedByDescending { it.lastActivity }
+                // Fijado primero (mismo criterio que WhatsApp/Telegram),
+                // actividad reciente dentro de cada grupo.
+                _chats.value = entries.sortedWith(compareByDescending<ChatListEntry> { it.isPinnedForMe }.thenByDescending { it.lastActivity })
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudieron cargar tus chats."
             } finally {
@@ -275,6 +283,30 @@ class ChatListViewModel : ViewModel() {
                     .update({ set(column, newValue) }) { filter { eq("id", entry.chat.id) } }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo cambiar el silencio de la conversación."
+                load()
+            }
+        }
+    }
+
+    /** Fijar/desfijar -- solo afecta a MI copia (columna
+     * pinned_by_a/pinned_by_b según corresponda), nunca a la de la otra
+     * persona (protect_chat_pinned_flags, 0081_pin_chats.sql, lo
+     * garantiza también del lado del servidor). A diferencia de ocultar,
+     * un chat fijado NO se desfija solo al llegar un mensaje -- mismo
+     * criterio que WhatsApp/Telegram. */
+    fun togglePin(entry: ChatListEntry) {
+        val newValue = !entry.isPinnedForMe
+        _chats.update { list ->
+            list.map { if (it.chat.id == entry.chat.id) it.copy(isPinnedForMe = newValue) else it }
+                .sortedWith(compareByDescending<ChatListEntry> { it.isPinnedForMe }.thenByDescending { it.lastActivity })
+        }
+        viewModelScope.launch {
+            try {
+                val column = if (entry.iAmUserA) "pinned_by_a" else "pinned_by_b"
+                SupabaseManager.client.from("chats")
+                    .update({ set(column, newValue) }) { filter { eq("id", entry.chat.id) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo fijar la conversación."
                 load()
             }
         }

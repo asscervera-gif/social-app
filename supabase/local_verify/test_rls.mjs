@@ -1532,6 +1532,38 @@ async function main() {
   const stillVerified = (await db.query(`select is_verified from profiles where id = $1`, [u1])).rows[0];
   check('protect_is_verified: un UPDATE directo del propio u1 NO puede quitarse la verificación real', stillVerified.is_verified === true);
 
+  // --- chats.pinned_by_a/b + group_chat_members.pinned (0081_pin_chats.sql):
+  // fijar un chat arriba de la lista, comparado con
+  // WhatsApp/Telegram/Messenger -- mismo patrón exacto que
+  // protect_chat_hidden_flags/protect_chat_muted_flags. ---
+  await asUser(u2);
+  await db.query(`update chats set pinned_by_b = true where id = $1`, [chat.id]);
+  const pinnedByB = (await db.query(`select pinned_by_a, pinned_by_b from chats where id = $1`, [chat.id])).rows[0];
+  check('protect_chat_pinned_flags: u2 (user_b) SÍ fija su propia copia', pinnedByB.pinned_by_b === true && pinnedByB.pinned_by_a === false);
+
+  await db.query(`update chats set pinned_by_a = true where id = $1`, [chat.id]);
+  const stillNotPinnedByA = (await db.query(`select pinned_by_a from chats where id = $1`, [chat.id])).rows[0];
+  check('protect_chat_pinned_flags: u2 NO puede fijar la copia de u1 (revertido en silencio, no lanza)', stillNotPinnedByA.pinned_by_a === false);
+
+  await asUser(u1);
+  await db.query(`update chats set pinned_by_a = true where id = $1`, [chat.id]);
+  const pinnedByA = (await db.query(`select pinned_by_a from chats where id = $1`, [chat.id])).rows[0];
+  check('protect_chat_pinned_flags: u1 (user_a) SÍ fija su propia copia', pinnedByA.pinned_by_a === true);
+
+  // A diferencia de hidden_by_a/b, un mensaje nuevo real NO debe deshacer
+  // el fijado -- mismo criterio que WhatsApp/Telegram.
+  await db.query(`insert into messages (chat_id, sender_id, body) values ($1, $2, 'sigue fijado')`, [chat.id, u1]);
+  const stillPinnedAfterMessage = (await db.query(`select pinned_by_a from chats where id = $1`, [chat.id])).rows[0];
+  check('pinned_by_a/b: un mensaje nuevo real NO deshace el fijado (a diferencia de hidden_by_a/b)', stillPinnedAfterMessage.pinned_by_a === true);
+
+  const pinGroupId = crypto.randomUUID();
+  await db.query(`insert into group_chats (id, name, created_by) values ($1, $2, $3)`, [pinGroupId, 'Grupo para fijar', u1]);
+  await expectOk('group_chat_members_update_own: u1 SÍ puede fijar su propia fila de membresía', async () => {
+    await db.query(`update group_chat_members set pinned = true where group_chat_id = $1 and user_id = $2`, [pinGroupId, u1]);
+  });
+  const pinnedMembership = (await db.query(`select pinned from group_chat_members where group_chat_id = $1 and user_id = $2`, [pinGroupId, u1])).rows[0];
+  check('group_chat_members.pinned: la fila real queda fijada', pinnedMembership.pinned === true);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

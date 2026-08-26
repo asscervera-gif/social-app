@@ -33,6 +33,14 @@ struct ChatListView: View {
                         ActiveAvatarProvider.shared.avatarView(config: entry.otherAvatarConfig ?? [:], size: 44)
                         VStack(alignment: .leading, spacing: 4) {
                             HStack(spacing: 4) {
+                                // Fijar un chat arriba de la lista,
+                                // comparado con WhatsApp/Telegram/
+                                // Messenger -- ver 0081_pin_chats.sql.
+                                if entry.isPinnedForMe {
+                                    Image(systemName: "pin.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
                                 Text(entry.otherName)
                                     .font(entry.hasUnread ? .headline.bold() : .headline)
                                 // Hallazgo real, comparado con WhatsApp/
@@ -74,6 +82,13 @@ struct ChatListView: View {
                         viewModel.toggleMute(entry)
                     }
                     .tint(.gray)
+                    // Fijar un chat arriba de la lista, comparado con
+                    // WhatsApp/Telegram/Messenger -- ver
+                    // ChatListViewModel.togglePin(), 0081_pin_chats.sql.
+                    Button(entry.isPinnedForMe ? "Desfijar" : "Fijar") {
+                        viewModel.togglePin(entry)
+                    }
+                    .tint(.orange)
                 }
             }
         }

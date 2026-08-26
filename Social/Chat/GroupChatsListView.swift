@@ -58,6 +58,14 @@ struct GroupChatsListView: View {
                                 .frame(width: 44, height: 44)
                                 .overlay(Text("👥"))
                         }
+                        // Fijar un chat de grupo arriba de la lista,
+                        // comparado con WhatsApp/Telegram/Messenger -- ver
+                        // 0081_pin_chats.sql.
+                        if group.isPinnedForMe {
+                            Image(systemName: "pin.fill")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                         Text(group.name).font(.subheadline.bold())
                     }
                 }
@@ -78,6 +86,13 @@ struct GroupChatsListView: View {
                         Task { await viewModel.toggleMute(group) }
                     }
                     .tint(.gray)
+                    // Fijar un chat de grupo arriba de la lista, comparado
+                    // con WhatsApp/Telegram/Messenger -- ver
+                    // GroupChatsViewModel.togglePin(), 0081_pin_chats.sql.
+                    Button(group.isPinnedForMe ? "Desfijar" : "Fijar") {
+                        Task { await viewModel.togglePin(group) }
+                    }
+                    .tint(.orange)
                 }
             }
         }

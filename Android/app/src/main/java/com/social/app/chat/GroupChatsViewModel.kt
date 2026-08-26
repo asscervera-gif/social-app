@@ -30,7 +30,11 @@ data class GroupChat(
     // fila de membresía (`group_chat_members.muted`), no de esta tabla;
     // se rellena aparte en load(), nunca decodificado directamente del
     // select de `group_chats`.
-    val isMutedForMe: Boolean = false
+    val isMutedForMe: Boolean = false,
+    // Fijar un chat de grupo arriba de la lista, comparado con
+    // WhatsApp/Telegram/Messenger -- ver 0081_pin_chats.sql, mismo
+    // criterio que isMutedForMe: viene de la propia fila de membresía.
+    val isPinnedForMe: Boolean = false
 )
 
 /**
@@ -75,7 +79,7 @@ class GroupChatsViewModel : ViewModel() {
                 val userId = SupabaseManager.client.auth.currentUserOrNull()?.id
                 val myMemberships = if (userId != null && groups.isNotEmpty()) {
                     SupabaseManager.client.from("group_chat_members")
-                        .select(columns = Columns.raw("group_chat_id,muted,hidden")) {
+                        .select(columns = Columns.raw("group_chat_id,muted,hidden,pinned")) {
                             filter { eq("user_id", userId); isIn("group_chat_id", groups.map { it.id }) }
                         }
                         .decodeList<MyMembership>()
@@ -88,9 +92,14 @@ class GroupChatsViewModel : ViewModel() {
                 // criterio que ChatListViewModel.kt.load() (chat 1:1): un
                 // grupo oculto para MÍ desaparece de la lista por completo,
                 // no se muestra tachado ni aparte.
+                //
+                // Fijar arriba (0081_pin_chats.sql), comparado con
+                // WhatsApp/Telegram/Messenger -- mismo criterio de orden
+                // que ChatListViewModel.kt.load() (chat 1:1).
                 _groups.value = groups
                     .filter { myMemberships[it.id]?.hidden != true }
-                    .map { it.copy(isMutedForMe = myMemberships[it.id]?.muted ?: false) }
+                    .map { it.copy(isMutedForMe = myMemberships[it.id]?.muted ?: false, isPinnedForMe = myMemberships[it.id]?.pinned ?: false) }
+                    .sortedByDescending { it.isPinnedForMe }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudieron cargar los grupos: ${e.message}"
             } finally {
@@ -103,7 +112,8 @@ class GroupChatsViewModel : ViewModel() {
     private data class MyMembership(
         @SerialName("group_chat_id") val groupChatId: String,
         val muted: Boolean,
-        val hidden: Boolean = false
+        val hidden: Boolean = false,
+        val pinned: Boolean = false
     )
 
     /** Silenciar/activar un grupo real, comparado con WhatsApp/Instagram/
@@ -120,6 +130,29 @@ class GroupChatsViewModel : ViewModel() {
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo cambiar el silencio del grupo."
+                load()
+            }
+        }
+    }
+
+    /** Fijar/desfijar un grupo real arriba de la lista, comparado con
+     * WhatsApp/Telegram/Messenger -- mismo patrón (optimista + revertir
+     * con load() si falla) ya usado en toggleMute(). A diferencia de
+     * ocultar, un grupo fijado NO se desfija solo al llegar un mensaje. */
+    fun togglePin(group: GroupChat) {
+        val newValue = !group.isPinnedForMe
+        _groups.update { list ->
+            list.map { if (it.id == group.id) it.copy(isPinnedForMe = newValue) else it }
+                .sortedByDescending { it.isPinnedForMe }
+        }
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                SupabaseManager.client.from("group_chat_members").update({ set("pinned", newValue) }) {
+                    filter { eq("group_chat_id", group.id); eq("user_id", userId) }
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo fijar el grupo."
                 load()
             }
         }

@@ -134,6 +134,12 @@ fun ChatListScreen(viewModel: ChatListViewModel = viewModel(), onOpenChat: (Stri
                     // 0047_message_notify_mute.sql. El propio icono ya
                     // comunica el estado (🔔 activo / 🔕 silenciado), sin
                     // necesitar una insignia aparte junto al nombre.
+                    // Fijar un chat arriba de la lista, comparado con
+                    // WhatsApp/Telegram/Messenger -- ver
+                    // ChatListViewModel.togglePin(), 0081_pin_chats.sql.
+                    androidx.compose.material3.IconButton(onClick = { viewModel.togglePin(entry) }) {
+                        Text(if (entry.isPinnedForMe) "📌" else "📍")
+                    }
                     androidx.compose.material3.IconButton(onClick = { viewModel.toggleMute(entry) }) {
                         Text(if (entry.isMutedForMe) "🔕" else "🔔")
                     }
