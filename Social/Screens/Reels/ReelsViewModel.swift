@@ -161,6 +161,38 @@ final class ReelsViewModel: ObservableObject {
         }
     }
 
+    /// Desactivar los comentarios de un reel propio real, comparado con
+    /// Instagram/TikTok -- los comentarios que ya existían se quedan tal
+    /// cual, solo se cierra la puerta a comentarios NUEVOS
+    /// (`reel_comments_insert_own`, 0086_disable_comments.sql, lo
+    /// garantiza también del lado del servidor). `reels_write_own` ya es
+    /// `for all`, mismo criterio que toggleArchive() en posts: sin
+    /// política RLS nueva. Equivalente de
+    /// ReelsViewModel.kt.toggleCommentsDisabled().
+    ///
+    /// Aviso real de un fallo real: esta función faltaba por completo en
+    /// una pasada anterior -- `ReelsView.swift` ya la llamaba, pero nunca
+    /// se llegó a definir aquí, y sin compilador Swift real en este
+    /// entorno (sin Mac/Xcode) no se detectó hasta que el CI real de
+    /// GitHub Actions lo rechazó con un error real de "no dynamic
+    /// member". Corregido desde ese log real, no adivinado.
+    func toggleCommentsDisabled(_ reel: Reel) async {
+        let newValue = !reel.commentsDisabled
+        if let index = reels.firstIndex(where: { $0.id == reel.id }) {
+            reels[index].commentsDisabled = newValue
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("reels")
+                .update(["comments_disabled": newValue])
+                .eq("id", value: reel.id)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo cambiar el estado de los comentarios."
+            await load()
+        }
+    }
+
     /// Mismo patrón exacto que HomeViewModel.commentAdded()/
     /// commentRemoved(), para que ReelsView refleje el contador sin
     /// recargar todo el feed.
