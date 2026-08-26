@@ -30,7 +30,15 @@ struct ReelsView: View {
     // Abrir un reel concreto real desde un aviso de "like"/"comentario",
     // comparado con Instagram/TikTok -- ver ReelsViewModel.swift.load()
     // para el hallazgo completo.
-    let initialReelID: UUID? = nil
+    // Aviso de honestidad: tiene que ser `var`, no `let` -- una propiedad
+    // `let` CON valor por defecto queda excluida del init memberwise
+    // sintetizado por Swift (se trata como una constante fija, no como un
+    // parámetro con valor por defecto), lo que dejaba el init sin ningún
+    // argumento real utilizable desde fuera -- confirmado con el propio
+    // error real de compilador en CI ("argument passed to call that takes
+    // no arguments") al intentar `ReelsView(initialReelID:)` desde
+    // AvisosView.swift.
+    var initialReelID: UUID? = nil
     @State private var hasJumpedToInitial = false
 
     var body: some View {
