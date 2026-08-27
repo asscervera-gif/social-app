@@ -10,6 +10,7 @@ import SwiftUI
 struct DuelView: View {
 
     @ObservedObject var viewModel: DuelViewModel
+    let opponentSections: [ProfileSection]
 
     var body: some View {
         VStack(spacing: 24) {
@@ -31,7 +32,9 @@ struct DuelView: View {
                 ProgressView("Calculando compatibilidad…")
 
             case .finished:
-                ResultCard(delta: viewModel.delta ?? 0, explanation: viewModel.explanation ?? "")
+                ResultCard(delta: viewModel.delta ?? 0, explanation: viewModel.explanation ?? "") {
+                    Task { await viewModel.start(opponentSections: opponentSections) }
+                }
             }
 
             if let error = viewModel.errorMessage {
@@ -74,6 +77,7 @@ private struct QuestionCard: View {
 private struct ResultCard: View {
     let delta: Int
     let explanation: String
+    let onRematch: () -> Void
 
     var body: some View {
         VStack(spacing: 14) {
@@ -88,6 +92,12 @@ private struct ResultCard: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+
+            // Revancha real, comparado con juegos/apps de citas con
+            // duelos de preguntas -- antes exigía volver a entrar por
+            // ChatView ("⚡ Retar a duelo") desde cero cada vez.
+            Button("🔁 Retar de nuevo", action: onRematch)
+                .buttonStyle(.bordered)
         }
     }
 }

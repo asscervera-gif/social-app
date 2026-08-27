@@ -40,8 +40,22 @@ final class DuelViewModel: ObservableObject {
         self.service = AnthropicDuelService()
     }
 
+    /// Reutilizada tal cual para "🔁 Retar de nuevo" (DuelView.swift,
+    /// stage == .finished) -- hueco real #3 de la auditoría de sistemas
+    /// propios de SOCIAL: antes cada duelo nuevo exigía volver a entrar
+    /// por ChatView desde cero. Hallazgo real al reutilizar este mismo
+    /// ViewModel para la revancha (no uno nuevo): `currentIndex`/
+    /// `answers` no se reiniciaban -- un segundo duelo en la misma
+    /// instancia arrastraba las respuestas y el índice del anterior,
+    /// disparando `finish()` de inmediato en la primera respuesta nueva.
+    /// Mismo bug real ya corregido en la versión Kotlin equivalente.
     func start(opponentSections: [ProfileSection]) async {
         stage = .loading
+        currentIndex = 0
+        answers = []
+        delta = nil
+        explanation = nil
+        errorMessage = nil
         do {
             let response = try await service.generateDuelQuestions(about: opponentSections)
             sessionID = response.sessionId

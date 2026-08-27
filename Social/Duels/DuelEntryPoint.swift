@@ -18,11 +18,16 @@ struct DuelEntryPoint: View {
     let opponentID: UUID
 
     @State private var viewModel: DuelViewModel?
+    // Guardadas para poder reiniciar el mismo duelo real en una revancha
+    // ("🔁 Retar de nuevo", DuelView.swift) sin volver a consultar
+    // profile_sections -- hueco real #3 de la auditoría de sistemas
+    // propios de SOCIAL, mismo fix ya construido en Kotlin.
+    @State private var opponentSections: [ProfileSection] = []
 
     var body: some View {
         Group {
             if let viewModel {
-                DuelView(viewModel: viewModel)
+                DuelView(viewModel: viewModel, opponentSections: opponentSections)
             } else {
                 ProgressView("Preparando el duelo…")
             }
@@ -38,6 +43,7 @@ struct DuelEntryPoint: View {
                 .eq("profile_id", value: opponentID)
                 .execute()
                 .value) ?? []
+            opponentSections = sections
             let newViewModel = DuelViewModel(chatID: chatID, initiatorID: currentUserID, opponentID: opponentID)
             viewModel = newViewModel
             await newViewModel.start(opponentSections: sections)

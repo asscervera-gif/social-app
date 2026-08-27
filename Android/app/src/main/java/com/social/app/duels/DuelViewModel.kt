@@ -40,9 +40,22 @@ class DuelViewModel(private val chatId: String, private val opponentId: String) 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
+    /** Reutilizada tal cual para "🔁 Retar de nuevo" (DuelScreen.kt,
+     * DuelStage.FINISHED) -- hueco real #3 de la auditoría de sistemas
+     * propios de SOCIAL: antes cada duelo nuevo exigía volver a entrar
+     * por ChatScreen desde cero. Hallazgo real al reutilizar este mismo
+     * ViewModel para la revancha (no uno nuevo): `_currentIndex`/
+     * `answers` no se reiniciaban -- un segundo duelo en la misma
+     * instancia arrastraba las respuestas y el índice del anterior,
+     * disparando `finish()` de inmediato en la primera respuesta nueva. */
     fun start(opponentSections: List<Pair<String, Map<String, String>>>) {
         viewModelScope.launch {
             _stage.value = DuelStage.LOADING
+            _currentIndex.value = 0
+            answers.clear()
+            _delta.value = null
+            _explanation.value = null
+            _errorMessage.value = null
             try {
                 val response = service.generateDuelQuestions(opponentSections)
                 sessionId = response.sessionId

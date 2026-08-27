@@ -64,6 +64,12 @@ fun DuelScreen(chatId: String, opponentId: String, opponentSections: List<Pair<S
                 Text(if ((delta ?: 0) >= 0) "📈" else "📉", style = MaterialTheme.typography.headlineLarge)
                 Text("${if ((delta ?: 0) >= 0) "+" else ""}${delta ?: 0} de compatibilidad", style = MaterialTheme.typography.titleMedium)
                 explanation?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                // Revancha real, comparado con juegos/apps de citas con
+                // duelos de preguntas -- antes exigía volver a entrar por
+                // ChatScreen ("⚡ Retar a duelo") desde cero cada vez.
+                Button(onClick = { viewModel.start(opponentSections) }) {
+                    Text("🔁 Retar de nuevo")
+                }
             }
         }
 
