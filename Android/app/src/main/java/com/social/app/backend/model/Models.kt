@@ -71,7 +71,11 @@ data class Post(
     // Etiqueta de ubicación real (texto libre, no geocodificado),
     // comparado con Instagram/Facebook/Twitter/Snapchat -- ver
     // 0095_post_location_tag.sql.
-    @SerialName("location_name") val locationName: String? = null
+    @SerialName("location_name") val locationName: String? = null,
+    // Marcar contenido como sensible, comparado con Instagram/Twitter/
+    // TikTok -- difumina la foto para cualquiera que no sea el autor
+    // hasta que toque para revelarla (0096_sensitive_content.sql).
+    @SerialName("is_sensitive") val isSensitive: Boolean = false
 )
 
 @Serializable

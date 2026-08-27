@@ -295,6 +295,10 @@ private fun PostCard(
     // de "entries" que sobreviva a la recomposición del feed a la que
     // atar el estado "pendiente" real.
     var compatRequestSent by remember(post.id) { mutableStateOf(false) }
+    // Marcar contenido como sensible, comparado con Instagram/Twitter/
+    // TikTok -- estado local de la propia pantalla (no se guarda quién
+    // lo destapó), ver 0096_sensitive_content.sql.
+    var sensitiveRevealed by remember(post.id) { mutableStateOf(false) }
     // Hallazgo real, comparado con Instagram/Twitter/WhatsApp: no había
     // forma de tocar una imagen para verla a tamaño completo, solo el
     // recorte fijo de la miniatura.
@@ -346,6 +350,27 @@ private fun PostCard(
                 )
             }
             post.mediaUrl?.let { firstUrl ->
+                // Marcar contenido como sensible, comparado con
+                // Instagram/Twitter/TikTok -- se sustituye la foto por un
+                // aviso real hasta que quien la ve toca a propósito para
+                // revelarla; el propio autor siempre la ve con
+                // normalidad. Ver 0096_sensitive_content.sql.
+                val needsSensitiveWarning = post.isSensitive && post.authorId != myId && !sensitiveRevealed
+                if (needsSensitiveWarning) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().height(220.dp)
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .padding(bottom = 8.dp)
+                            .clickable { sensitiveRevealed = true },
+                        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text("⚠️ Puede contener contenido sensible", style = MaterialTheme.typography.bodyMedium)
+                        Text("Toca para ver", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    return@let
+                }
                 // Comparado con Instagram/Facebook: publicaciones con varias
                 // fotos (0055_post_media.sql) -- `post.mediaUrl` es siempre
                 // la primera, `extraMedia` trae el resto ya en orden. Con

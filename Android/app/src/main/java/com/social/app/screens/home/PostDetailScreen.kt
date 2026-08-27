@@ -52,6 +52,11 @@ fun PostDetailScreen(postId: String, onOpenProfile: (String) -> Unit) {
     val errorMessage by viewModel.errorMessage.collectAsState()
     var showComments by remember { mutableStateOf(false) }
     var fullScreenUrl by remember { mutableStateOf<String?>(null) }
+    // Marcar contenido como sensible, comparado con Instagram/Twitter/
+    // TikTok -- estado local de la propia pantalla, ver
+    // 0096_sensitive_content.sql.
+    var sensitiveRevealed by remember(postId) { mutableStateOf(false) }
+    val myId = com.social.app.backend.SupabaseManager.client.auth.currentUserOrNull()?.id
     val scope = rememberCoroutineScope()
     val mentionResolver = remember { MentionResolver() }
 
@@ -83,45 +88,64 @@ fun PostDetailScreen(postId: String, onOpenProfile: (String) -> Unit) {
                 )
             }
             post.mediaUrl?.let { firstUrl ->
-                // Carrusel de varias fotos (post_media), mismo patrón exacto
-                // que HomeScreen.kt.PostCard.
-                val allUrls = remember(firstUrl, extraMedia) { listOf(firstUrl) + extraMedia }
-                if (allUrls.size == 1) {
-                    Image(
-                        painter = coil.compose.rememberAsyncImagePainter(firstUrl),
-                        contentDescription = null,
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                // Marcar contenido como sensible, comparado con
+                // Instagram/Twitter/TikTok -- mismo criterio que
+                // HomeScreen.kt.PostCard, ver 0096_sensitive_content.sql.
+                val needsSensitiveWarning = post.isSensitive && post.authorId != myId && !sensitiveRevealed
+                if (needsSensitiveWarning) {
+                    Column(
                         modifier = Modifier.fillMaxWidth().height(320.dp)
                             .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
                             .padding(bottom = 8.dp)
-                            .clickable { fullScreenUrl = firstUrl }
-                    )
+                            .clickable { sensitiveRevealed = true },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text("⚠️ Puede contener contenido sensible", style = MaterialTheme.typography.bodyMedium)
+                        Text("Toca para ver", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 } else {
-                    val pagerState = rememberPagerState(pageCount = { allUrls.size })
-                    Box(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                        HorizontalPager(
-                            state = pagerState,
-                            modifier = Modifier.fillMaxWidth().height(320.dp).clip(RoundedCornerShape(8.dp))
-                        ) { page ->
-                            val url = allUrls[page]
-                            Image(
-                                painter = coil.compose.rememberAsyncImagePainter(url),
-                                contentDescription = null,
-                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize().clickable { fullScreenUrl = url }
+                    // Carrusel de varias fotos (post_media), mismo patrón
+                    // exacto que HomeScreen.kt.PostCard.
+                    val allUrls = remember(firstUrl, extraMedia) { listOf(firstUrl) + extraMedia }
+                    if (allUrls.size == 1) {
+                        Image(
+                            painter = coil.compose.rememberAsyncImagePainter(firstUrl),
+                            contentDescription = null,
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                            modifier = Modifier.fillMaxWidth().height(320.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .padding(bottom = 8.dp)
+                                .clickable { fullScreenUrl = firstUrl }
+                        )
+                    } else {
+                        val pagerState = rememberPagerState(pageCount = { allUrls.size })
+                        Box(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                            HorizontalPager(
+                                state = pagerState,
+                                modifier = Modifier.fillMaxWidth().height(320.dp).clip(RoundedCornerShape(8.dp))
+                            ) { page ->
+                                val url = allUrls[page]
+                                Image(
+                                    painter = coil.compose.rememberAsyncImagePainter(url),
+                                    contentDescription = null,
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize().clickable { fullScreenUrl = url }
+                                )
+                            }
+                            Text(
+                                "${pagerState.currentPage + 1}/${allUrls.size}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White,
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(8.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color.Black.copy(alpha = 0.5f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
-                        Text(
-                            "${pagerState.currentPage + 1}/${allUrls.size}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White,
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(8.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color.Black.copy(alpha = 0.5f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
                     }
                 }
             }
@@ -151,7 +175,6 @@ fun PostDetailScreen(postId: String, onOpenProfile: (String) -> Unit) {
                 // Instagram/Facebook -- el propio autor sigue viendo su
                 // cifra real siempre, solo desaparece para los demás. Ver
                 // 0094_hide_like_count.sql.
-                val myId = com.social.app.backend.SupabaseManager.client.auth.currentUserOrNull()?.id
                 val showLikeCount = !post.hideLikeCount || post.authorId == myId
                 Text(
                     if (showLikeCount) "${if (isLiked) "❤" else "🤍"} ${post.likeCount}" else if (isLiked) "❤" else "🤍",

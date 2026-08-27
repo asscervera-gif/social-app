@@ -38,7 +38,11 @@ data class Reel(
     // Ocultar el número de "me gusta" real, comparado con Instagram/
     // Facebook -- el autor sigue viendo su cifra real siempre, solo
     // desaparece el número para los demás (0094_hide_like_count.sql).
-    @SerialName("hide_like_count") val hideLikeCount: Boolean = false
+    @SerialName("hide_like_count") val hideLikeCount: Boolean = false,
+    // Marcar contenido como sensible, comparado con Instagram/Twitter/
+    // TikTok -- difumina el vídeo para cualquiera que no sea el autor
+    // hasta que toque para revelarlo (0096_sensitive_content.sql).
+    @SerialName("is_sensitive") val isSensitive: Boolean = false
 )
 
 /**
@@ -223,6 +227,24 @@ class ReelsViewModel : ViewModel() {
                     .update({ set("hide_like_count", newValue) }) { filter { eq("id", reel.id) } }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo cambiar la visibilidad del número de me gusta."
+                load()
+            }
+        }
+    }
+
+    /** Marcar contenido como sensible, comparado con Instagram/Twitter/
+     * TikTok -- ver 0096_sensitive_content.sql. `reels_write_own` ya es
+     * `for all`, mismo criterio que toggleHideLikeCount(): sin política
+     * RLS nueva. */
+    fun toggleSensitive(reel: Reel) {
+        val newValue = !reel.isSensitive
+        _reels.update { list -> list.map { if (it.id == reel.id) it.copy(isSensitive = newValue) else it } }
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("reels")
+                    .update({ set("is_sensitive", newValue) }) { filter { eq("id", reel.id) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo cambiar la marca de contenido sensible."
                 load()
             }
         }

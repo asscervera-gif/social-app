@@ -73,6 +73,9 @@ fun NewPostSheet(
     // comparado con Instagram/Facebook/Twitter/Snapchat -- ver
     // NewPostViewModel.post(), 0095_post_location_tag.sql.
     var locationName by remember { mutableStateOf("") }
+    // Marcar contenido como sensible, comparado con Instagram/Twitter/
+    // TikTok -- ver NewPostViewModel.post(), 0096_sensitive_content.sql.
+    var isSensitive by remember { mutableStateOf(false) }
     val socialsViewModel: SocialsListViewModel = viewModel()
     val socials by socialsViewModel.socials.collectAsState()
     LaunchedEffect(Unit) { socialsViewModel.load() }
@@ -150,6 +153,15 @@ fun NewPostSheet(
                 Checkbox(checked = isSocialOnly, onCheckedChange = { isSocialOnly = it })
                 Text("Solo visible para tus socials aceptados")
             }
+            if (imageUris.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(checked = isSensitive, onCheckedChange = { isSensitive = it })
+                    Text("Marcar como contenido sensible")
+                }
+            }
 
             if (socials.isNotEmpty()) {
                 Text(
@@ -179,7 +191,7 @@ fun NewPostSheet(
             Button(
                 onClick = {
                     scope.launch {
-                        if (viewModel.post(context, caption, isSocialOnly, imageUris, taggedProfileId, locationName)) {
+                        if (viewModel.post(context, caption, isSocialOnly, imageUris, taggedProfileId, locationName, isSensitive)) {
                             onPosted()
                             onDismiss()
                         }

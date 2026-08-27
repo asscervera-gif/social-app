@@ -2138,6 +2138,25 @@ async function main() {
     await db.query(`insert into posts (author_id, caption, location_name) values ($1, 'texto', $2)`, [u1, 'x'.repeat(101)]);
   });
 
+  // --- posts.is_sensitive/reels.is_sensitive (0096_sensitive_content.sql):
+  // marcar contenido como sensible, comparado con Instagram/Twitter/
+  // TikTok -- columna normal sin trigger ni política nueva (mismo
+  // criterio que hide_like_count arriba): posts_write_own (ya "for all")
+  // ya deja al autor tocar cualquier columna propia, y la fila sigue
+  // siendo pública para cualquiera -- aquí solo se confirma el valor por
+  // defecto real y que el propio autor de verdad puede activarlo. ---
+  const sensitivePost = (await db.query(
+    `insert into posts (author_id, caption) values ($1, 'publicación real sensible') returning id, is_sensitive`, [u1]
+  )).rows[0];
+  check('posts.is_sensitive: arranca en false por defecto', sensitivePost.is_sensitive === false);
+
+  await expectOk('posts_write_own: u1 SÍ puede marcar su propia publicación como sensible', async () => {
+    await db.query(`update posts set is_sensitive = true where id = $1`, [sensitivePost.id]);
+  });
+  await asUser(u2);
+  const sensitiveSeenByOther = (await db.query(`select is_sensitive from posts where id = $1`, [sensitivePost.id])).rows[0];
+  check('posts_select: u2 real SÍ ve is_sensitive activado (necesario para difuminarlo en su cliente)', sensitiveSeenByOther.is_sensitive === true);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

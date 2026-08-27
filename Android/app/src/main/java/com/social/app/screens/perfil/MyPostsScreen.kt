@@ -146,6 +146,24 @@ class MyPostsViewModel : ViewModel() {
         }
     }
 
+    /** Marcar contenido como sensible, comparado con Instagram/Twitter/
+     * TikTok -- ver 0096_sensitive_content.sql. `posts_write_own` ya es
+     * `for all`, mismo criterio que toggleHideLikeCount(): sin política
+     * RLS nueva. */
+    fun toggleSensitive(post: Post) {
+        val newValue = !post.isSensitive
+        _posts.value = _posts.value.map { if (it.id == post.id) it.copy(isSensitive = newValue) else it }
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("posts")
+                    .update({ set("is_sensitive", newValue) }) { filter { eq("id", post.id) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo cambiar la marca de contenido sensible."
+                load()
+            }
+        }
+    }
+
     fun editCaption(post: Post, newCaption: String) {
         if (newCaption.length > 2200) {
             _errorMessage.value = "El texto no puede tener más de 2200 caracteres."
@@ -321,6 +339,13 @@ fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
                                     onClick = { viewModel.toggleHideLikeCount(post) },
                                     modifier = Modifier.padding(end = 8.dp)
                                 ) { Text(if (post.hideLikeCount) "Mostrar número de me gusta" else "Ocultar número de me gusta") }
+                                // Marcar contenido como sensible,
+                                // comparado con Instagram/Twitter/TikTok
+                                // -- ver 0096_sensitive_content.sql.
+                                OutlinedButton(
+                                    onClick = { viewModel.toggleSensitive(post) },
+                                    modifier = Modifier.padding(end = 8.dp)
+                                ) { Text(if (post.isSensitive) "Quitar aviso de sensible" else "Marcar como sensible") }
                                 OutlinedButton(onClick = { viewModel.delete(post) }) { Text("Borrar") }
                             }
                         }

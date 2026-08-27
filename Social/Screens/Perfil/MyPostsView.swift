@@ -117,6 +117,26 @@ final class MyPostsViewModel: ObservableObject {
         }
     }
 
+    /// Marcar contenido como sensible, comparado con Instagram/Twitter/
+    /// TikTok -- ver 0096_sensitive_content.sql. Equivalente de
+    /// MyPostsViewModel.kt.toggleSensitive().
+    func toggleSensitive(_ post: Post) async {
+        let newValue = !post.isSensitive
+        if let index = posts.firstIndex(where: { $0.id == post.id }) {
+            posts[index].isSensitive = newValue
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("posts")
+                .update(["is_sensitive": newValue])
+                .eq("id", value: post.id)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo cambiar la marca de contenido sensible."
+            await load()
+        }
+    }
+
     /// Hallazgo real, comparado con Instagram: no había forma de editar el
     /// caption de una publicación ya hecha, solo borrarla entera --
     /// `posts_write_own` (0002_rls.sql) ya es `for all`, así que editar la
@@ -272,6 +292,13 @@ struct MyPostsView: View {
                         Task { await viewModel.toggleHideLikeCount(post) }
                     }
                     .tint(.purple)
+                    // Marcar contenido como sensible, comparado con
+                    // Instagram/Twitter/TikTok -- ver
+                    // 0096_sensitive_content.sql.
+                    Button(post.isSensitive ? "Quitar aviso de sensible" : "Marcar como sensible") {
+                        Task { await viewModel.toggleSensitive(post) }
+                    }
+                    .tint(.orange)
                 }
             }
         }

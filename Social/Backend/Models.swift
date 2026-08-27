@@ -96,6 +96,10 @@ struct Post: Codable, Identifiable {
     // comparado con Instagram/Facebook/Twitter/Snapchat -- ver
     // 0095_post_location_tag.sql.
     var locationName: String? = nil
+    // Marcar contenido como sensible, comparado con Instagram/Twitter/
+    // TikTok -- difumina la foto para cualquiera que no sea el autor
+    // hasta que toque para revelarla (0096_sensitive_content.sql).
+    var isSensitive: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -111,6 +115,7 @@ struct Post: Codable, Identifiable {
         case commentsDisabled = "comments_disabled"
         case hideLikeCount = "hide_like_count"
         case locationName = "location_name"
+        case isSensitive = "is_sensitive"
     }
 }
 

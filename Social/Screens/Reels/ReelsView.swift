@@ -127,7 +127,8 @@ struct ReelsView: View {
             onLike: { Task { await viewModel.toggleLike(reel) } },
             onOpenComments: { commentingReelID = reel.id },
             onToggleCommentsDisabled: { Task { await viewModel.toggleCommentsDisabled(reel) } },
-            onToggleHideLikeCount: { Task { await viewModel.toggleHideLikeCount(reel) } }
+            onToggleHideLikeCount: { Task { await viewModel.toggleHideLikeCount(reel) } },
+            onToggleSensitive: { Task { await viewModel.toggleSensitive(reel) } }
         )
     }
 }
@@ -147,6 +148,10 @@ private struct ReelRow: View {
     // Facebook -- el control solo tiene sentido sobre el reel propio
     // (0094_hide_like_count.sql).
     let onToggleHideLikeCount: () -> Void
+    // Marcar contenido como sensible, comparado con Instagram/Twitter/
+    // TikTok -- el control solo tiene sentido sobre el reel propio
+    // (0096_sensitive_content.sql).
+    let onToggleSensitive: () -> Void
     @State private var player: AVPlayer?
     // Nombre de usuario único real (@handle, 0073_profile_username.sql) +
     // notificación real de mención (0074_mentions.sql), comparado con
@@ -155,15 +160,26 @@ private struct ReelRow: View {
     // texto plano; se corrige de paso al construir el componente
     // compartido MentionHashtagText.swift.
     @State private var mentionProfileID: UUID?
+    // Marcar contenido como sensible, comparado con Instagram/Twitter/
+    // TikTok -- estado local de la propia pantalla, ver
+    // 0096_sensitive_content.sql.
+    @State private var sensitiveRevealed = false
 
     var body: some View {
+        let needsSensitiveWarning = reel.isSensitive && !isMine && !sensitiveRevealed
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 ActiveAvatarProvider.shared.avatarView(config: author?.avatarConfig ?? [:], size: 32)
                 Text(author?.displayName ?? "…").font(.subheadline.bold())
             }
             ZStack {
-                if let url = URL(string: reel.videoURL) {
+                if needsSensitiveWarning {
+                    VStack(spacing: 4) {
+                        Text("⚠️ Puede contener contenido sensible").foregroundStyle(.white)
+                        Text("Toca para ver").font(.caption).foregroundStyle(.white.opacity(0.7))
+                    }
+                    .onTapGesture { sensitiveRevealed = true }
+                } else if let url = URL(string: reel.videoURL) {
                     VideoPlayer(player: player ?? AVPlayer(url: url))
                         .onAppear { if player == nil { player = AVPlayer(url: url) } }
                         .onDisappear { player?.pause() }
@@ -208,6 +224,14 @@ private struct ReelRow: View {
                     .buttonStyle(.plain)
                     Button(action: onToggleHideLikeCount) {
                         Text(reel.hideLikeCount ? "🙈❤" : "👁❤")
+                    }
+                    .buttonStyle(.plain)
+                    // Marcar contenido como sensible, comparado con
+                    // Instagram/Twitter/TikTok -- ver
+                    // ReelsViewModel.toggleSensitive(),
+                    // 0096_sensitive_content.sql.
+                    Button(action: onToggleSensitive) {
+                        Text(reel.isSensitive ? "⚠️✅" : "⚠️")
                     }
                     .buttonStyle(.plain)
                 }

@@ -151,7 +151,8 @@ fun ReelsScreen(
                         // ReelsViewModel.toggleCommentsDisabled(),
                         // 0086_disable_comments.sql.
                         onToggleCommentsDisabled = { viewModel.toggleCommentsDisabled(reel) },
-                        onToggleHideLikeCount = { viewModel.toggleHideLikeCount(reel) }
+                        onToggleHideLikeCount = { viewModel.toggleHideLikeCount(reel) },
+                        onToggleSensitive = { viewModel.toggleSensitive(reel) }
                     )
                 }
             }
@@ -204,12 +205,18 @@ private fun ReelPage(
     onOpenMentionProfile: (String) -> Unit = {},
     onOpenComments: () -> Unit,
     onToggleCommentsDisabled: () -> Unit,
-    onToggleHideLikeCount: () -> Unit
+    onToggleHideLikeCount: () -> Unit,
+    onToggleSensitive: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val mentionResolver = remember { MentionResolver() }
+    // Marcar contenido como sensible, comparado con Instagram/Twitter/
+    // TikTok -- estado local de la propia pantalla, ver
+    // 0096_sensitive_content.sql.
+    var sensitiveRevealed by remember(reel.id) { mutableStateOf(false) }
+    val needsSensitiveWarning = reel.isSensitive && !isMine && !sensitiveRevealed
     Box(modifier = Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)) {
-        if (isCurrent) {
+        if (isCurrent && !needsSensitiveWarning) {
             AndroidView(
                 factory = { ctx ->
                     PlayerView(ctx).apply {
@@ -219,6 +226,16 @@ private fun ReelPage(
                 },
                 modifier = Modifier.fillMaxSize()
             )
+        }
+        if (needsSensitiveWarning) {
+            Column(
+                modifier = Modifier.fillMaxSize().clickable { sensitiveRevealed = true },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text("⚠️ Puede contener contenido sensible", color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.bodyMedium)
+                Text("Toca para ver", color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall)
+            }
         }
         Column(
             modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -297,6 +314,17 @@ private fun ReelPage(
                         modifier = Modifier
                             .padding(start = 10.dp)
                             .clickable(onClick = onToggleHideLikeCount),
+                        color = androidx.compose.ui.graphics.Color.White
+                    )
+                    // Marcar contenido como sensible, comparado con
+                    // Instagram/Twitter/TikTok -- ver
+                    // ReelsViewModel.toggleSensitive(),
+                    // 0096_sensitive_content.sql.
+                    Text(
+                        if (reel.isSensitive) "⚠️✅" else "⚠️",
+                        modifier = Modifier
+                            .padding(start = 10.dp)
+                            .clickable(onClick = onToggleSensitive),
                         color = androidx.compose.ui.graphics.Color.White
                     )
                 }

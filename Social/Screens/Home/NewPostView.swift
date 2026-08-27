@@ -30,6 +30,9 @@ struct NewPostView: View {
     // comparado con Instagram/Facebook/Twitter/Snapchat -- ver
     // NewPostViewModel.post(), 0095_post_location_tag.sql.
     @State private var locationName = ""
+    // Marcar contenido como sensible, comparado con Instagram/Twitter/
+    // TikTok -- ver NewPostViewModel.post(), 0096_sensitive_content.sql.
+    @State private var isSensitive = false
     let onDismiss: () -> Void
     let onPosted: () -> Void
 
@@ -85,6 +88,10 @@ struct NewPostView: View {
             TextField("📍 Añadir ubicación (opcional)", text: $locationName)
                 .textFieldStyle(.roundedBorder)
 
+            if !imageDataList.isEmpty {
+                Toggle("Marcar como contenido sensible", isOn: $isSensitive)
+            }
+
             Toggle("Solo visible para tus socials aceptados", isOn: $isSocialOnly)
 
             if !socialsViewModel.socials.isEmpty {
@@ -112,7 +119,7 @@ struct NewPostView: View {
 
             Button {
                 Task {
-                    if await viewModel.post(caption: caption, isSocialOnly: isSocialOnly, imageDataList: imageDataList, taggedProfileID: taggedProfileID, locationName: locationName) {
+                    if await viewModel.post(caption: caption, isSocialOnly: isSocialOnly, imageDataList: imageDataList, taggedProfileID: taggedProfileID, locationName: locationName, isSensitive: isSensitive) {
                         onPosted()
                         onDismiss()
                     }

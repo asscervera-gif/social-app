@@ -286,6 +286,10 @@ private struct PostCard: View {
     @State private var showReport = false
     @State private var myID: UUID?
     @State private var fullScreenURL: URL?
+    // Marcar contenido como sensible, comparado con Instagram/Twitter/
+    // TikTok -- estado local de la propia pantalla, ver
+    // 0096_sensitive_content.sql.
+    @State private var sensitiveRevealed = false
     // Enviar una publicación a un chat real (0069_message_shared_post.sql),
     // comparado con Instagram/TikTok/Twitter/Snapchat -- antes el icono ➤
     // solo abría el share sheet nativo del sistema (ShareLink), sin
@@ -348,6 +352,24 @@ private struct PostCard: View {
             // primera, `extraMedia` trae el resto ya en orden. Con una sola
             // foto (el caso normal hasta ahora) se muestra igual que antes.
             if let firstURL = post.mediaURL {
+                // Marcar contenido como sensible, comparado con
+                // Instagram/Twitter/TikTok -- se sustituye la foto por
+                // un aviso real hasta que quien la ve toca a propósito
+                // para revelarla; el propio autor siempre la ve con
+                // normalidad. Ver 0096_sensitive_content.sql.
+                let needsSensitiveWarning = post.isSensitive && post.authorID != myID && !sensitiveRevealed
+                if needsSensitiveWarning {
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(Color(.systemGray5))
+                        .frame(height: 220)
+                        .overlay(
+                            VStack(spacing: 4) {
+                                Text("⚠️ Puede contener contenido sensible").font(.subheadline)
+                                Text("Toca para ver").font(.caption).foregroundStyle(.secondary)
+                            }
+                        )
+                        .onTapGesture { sensitiveRevealed = true }
+                } else {
                 let allURLs = ([firstURL] + extraMedia).compactMap { URL(string: $0) }
                 if allURLs.count > 1 {
                     ZStack(alignment: .topTrailing) {
@@ -380,6 +402,7 @@ private struct PostCard: View {
                     // no había forma de tocar la imagen para verla a tamaño
                     // completo, solo el recorte fijo de 220pt.
                     .onTapGesture { fullScreenURL = url }
+                }
                 }
             } else {
             RoundedRectangle(cornerRadius: 14)

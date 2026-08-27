@@ -38,6 +38,10 @@ struct PostDetailView: View {
     // Ocultar el número de "me gusta" real, comparado con Instagram/
     // Facebook -- ver 0094_hide_like_count.sql.
     @State private var myID: UUID?
+    // Marcar contenido como sensible, comparado con Instagram/Twitter/
+    // TikTok -- estado local de la propia pantalla, ver
+    // 0096_sensitive_content.sql.
+    @State private var sensitiveRevealed = false
 
     var body: some View {
         ScrollView {
@@ -68,6 +72,23 @@ struct PostDetailView: View {
                     }
 
                     if let firstURL = post.mediaURL {
+                        // Marcar contenido como sensible, comparado con
+                        // Instagram/Twitter/TikTok -- mismo criterio que
+                        // HomeView.swift.PostCard, ver
+                        // 0096_sensitive_content.sql.
+                        let needsSensitiveWarning = post.isSensitive && post.authorID != myID && !sensitiveRevealed
+                        if needsSensitiveWarning {
+                            RoundedRectangle(cornerRadius: 14)
+                                .fill(Color(.systemGray5))
+                                .frame(height: 320)
+                                .overlay(
+                                    VStack(spacing: 4) {
+                                        Text("⚠️ Puede contener contenido sensible").font(.subheadline)
+                                        Text("Toca para ver").font(.caption).foregroundStyle(.secondary)
+                                    }
+                                )
+                                .onTapGesture { sensitiveRevealed = true }
+                        } else {
                         // Carrusel de varias fotos (post_media), mismo
                         // patrón exacto que HomeView.swift.PostCard.
                         let allURLs = ([firstURL] + extraMedia).compactMap { URL(string: $0) }
@@ -97,6 +118,7 @@ struct PostDetailView: View {
                             .clipped()
                             .clipShape(RoundedRectangle(cornerRadius: 14))
                             .onTapGesture { fullScreenURL = url }
+                        }
                         }
                     }
                     if let caption = post.caption {

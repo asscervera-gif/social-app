@@ -31,6 +31,10 @@ struct Reel: Codable, Identifiable {
     // Facebook -- el autor sigue viendo su cifra real siempre, solo
     // desaparece el número para los demás (0094_hide_like_count.sql).
     var hideLikeCount: Bool = false
+    // Marcar contenido como sensible, comparado con Instagram/Twitter/
+    // TikTok -- difumina el vídeo para cualquiera que no sea el autor
+    // hasta que toque para revelarlo (0096_sensitive_content.sql).
+    var isSensitive: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -45,6 +49,7 @@ struct Reel: Codable, Identifiable {
         case createdAt = "created_at"
         case commentsDisabled = "comments_disabled"
         case hideLikeCount = "hide_like_count"
+        case isSensitive = "is_sensitive"
     }
 }
 
@@ -215,6 +220,26 @@ final class ReelsViewModel: ObservableObject {
                 .execute()
         } catch {
             errorMessage = "No se pudo cambiar la visibilidad del número de me gusta."
+            await load()
+        }
+    }
+
+    /// Marcar contenido como sensible, comparado con Instagram/Twitter/
+    /// TikTok -- ver 0096_sensitive_content.sql. Equivalente de
+    /// ReelsViewModel.kt.toggleSensitive().
+    func toggleSensitive(_ reel: Reel) async {
+        let newValue = !reel.isSensitive
+        if let index = reels.firstIndex(where: { $0.id == reel.id }) {
+            reels[index].isSensitive = newValue
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("reels")
+                .update(["is_sensitive": newValue])
+                .eq("id", value: reel.id)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo cambiar la marca de contenido sensible."
             await load()
         }
     }

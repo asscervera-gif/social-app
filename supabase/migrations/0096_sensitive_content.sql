@@ -1,0 +1,31 @@
+-- ============================================================================
+-- SOCIAL — Marcar contenido como sensible, comparado con Instagram/
+-- Twitter/TikTok
+--
+-- Hallazgo real: las tres dejan a quien publica marcar su propia foto/
+-- vídeo como "contenido sensible" -- se muestra difuminado con un aviso
+-- real ("Puede contener contenido sensible") hasta que quien lo ve toca
+-- para revelarlo a propósito, en vez de aparecer directamente en el
+-- feed. Confirmado en el propio código: `posts`/`reels` no tienen
+-- ninguna columna ni concepto de sensibilidad -- toda foto/vídeo se
+-- muestra siempre igual, sin ningún aviso previo.
+--
+-- Diseño deliberado, sin tocar RLS ni triggers en absoluto: puramente una
+-- preferencia de VISUALIZACIÓN resuelta en el cliente (el propio autor
+-- decide si difuminar su contenido para los demás; el "toque para
+-- revelar" es un estado local de la pantalla, no algo que haya que
+-- guardar por persona que lo destapó). `posts_write_own`/`reels_write_own`
+-- (ya "for all") ya permiten al autor tocar esta columna nueva de su
+-- propia fila sin necesitar ninguna política adicional -- mismo criterio
+-- exacto que 0094_hide_like_count.sql.
+--
+-- Aviso de honestidad, mismo criterio ya documentado en 0091/0094: al
+-- seguir siendo el contenido de la fila público como siempre, un cliente
+-- modificado podría ignorar `is_sensitive` y mostrarlo sin difuminar --
+-- la misma limitación real que reconocen Instagram/Twitter/TikTok para
+-- esta función exacta (el aviso es cosa del cliente oficial, no una
+-- restricción real del servidor).
+-- ============================================================================
+
+alter table posts add column is_sensitive boolean not null default false;
+alter table reels add column is_sensitive boolean not null default false;
