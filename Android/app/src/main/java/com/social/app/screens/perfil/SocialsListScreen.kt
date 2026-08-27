@@ -113,7 +113,20 @@ fun SocialsListScreen(viewModel: SocialsListViewModel = viewModel(), onOpenProfi
                             // el feed/comentarios/chats/duelos/avisos:
                             // "Tus socials" tampoco mostraba avatar.
                             com.social.app.avatar.AvatarView(config = entry.avatarConfig ?: emptyMap(), size = 40.dp)
-                            Text(entry.displayName, modifier = Modifier.padding(start = 10.dp))
+                            Column(modifier = Modifier.padding(start = 10.dp)) {
+                                Text(entry.displayName)
+                                // % de compatibilidad REAL del chat
+                                // (chats.compatibility_score), no el
+                                // estimado por intereses del feed --
+                                // hueco real de la auditoría de sistemas
+                                // propios de SOCIAL: esta lista ni lo
+                                // mostraba ni ordenaba por él.
+                                Text(
+                                    "${entry.compatibilityScore}% de compatibilidad",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                         // Hallazgo real: no había forma de quitar un social
                         // aceptado — `socials` no tenía ninguna política de

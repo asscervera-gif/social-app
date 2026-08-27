@@ -21,7 +21,14 @@ data class SocialEntry(
     // Hallazgo real, mismo hueco raíz ya cerrado en el feed/comentarios/
     // chats/duelos/avisos: "Tus socials" -- la relación central de la
     // app -- tampoco mostraba avatar, solo el nombre.
-    val avatarConfig: Map<String, String>? = null
+    val avatarConfig: Map<String, String>? = null,
+    // % de compatibilidad REAL (chats.compatibility_score), comparado con
+    // el filtro "Compatibles" que ya existe en descubrimiento
+    // (MatchScreen.kt) -- hueco real de la auditoría de sistemas propios
+    // de SOCIAL: "Tus socials" no mostraba ni ordenaba por compatibilidad
+    // pese a que cada social aceptado ya tiene un chat con ese dato real
+    // (más significativo aquí que el estimado por intereses del feed).
+    val compatibilityScore: Int = 50
 )
 
 /**
@@ -68,6 +75,28 @@ class SocialsListViewModel : ViewModel() {
     @Serializable
     private data class BlockRow(@SerialName("blocked_id") val blockedId: String)
 
+    @Serializable
+    private data class CompatRow(@SerialName("compatibility_score") val compatibilityScore: Int = 50)
+
+    // Mismo orden canónico (menor id primero) que
+    // SocialLinkManager.getOrCreateChat() -- `unique(user_a_id,
+    // user_b_id)` (0001_schema.sql) es sensible al orden, así que el chat
+    // real de cada social ya vive con este mismo orden desde que se creó
+    // al aceptar (SocialLinkManager.respond()). Sin crear un chat nuevo
+    // aquí a propósito: esta pantalla solo LEE, nunca debe tener el
+    // efecto secundario de crear una fila nueva solo por mostrar la lista.
+    private suspend fun realCompatibility(userId: String, otherId: String): Int {
+        val (a, b) = if (userId < otherId) userId to otherId else otherId to userId
+        return try {
+            SupabaseManager.client.from("chats")
+                .select(columns = Columns.raw("compatibility_score")) { filter { eq("user_a_id", a); eq("user_b_id", b) } }
+                .decodeSingleOrNull<CompatRow>()
+                ?.compatibilityScore ?: 50
+        } catch (e: Exception) {
+            50
+        }
+    }
+
     fun load() {
         viewModelScope.launch {
             try {
@@ -113,8 +142,8 @@ class SocialsListViewModel : ViewModel() {
                     } catch (e: Exception) {
                         null
                     } ?: return@mapNotNull null
-                    SocialEntry(row.id, otherId, profile.displayName, profile.avatarConfig)
-                }
+                    SocialEntry(row.id, otherId, profile.displayName, profile.avatarConfig, realCompatibility(userId, otherId))
+                }.sortedByDescending { it.compatibilityScore }
 
                 val pendingRows = SupabaseManager.client.from("socials")
                     .select(columns = Columns.raw("id,requester_id,addressee_id")) {

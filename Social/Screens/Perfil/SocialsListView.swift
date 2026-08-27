@@ -51,7 +51,18 @@ struct SocialsListView: View {
                     } label: {
                         HStack(spacing: 10) {
                             ActiveAvatarProvider.shared.avatarView(config: entry.avatarConfig ?? [:], size: 40)
-                            Text(entry.displayName)
+                            VStack(alignment: .leading) {
+                                Text(entry.displayName)
+                                // % de compatibilidad REAL del chat
+                                // (chats.compatibility_score), no el
+                                // estimado por intereses del feed --
+                                // hueco real de la auditoría de sistemas
+                                // propios de SOCIAL: esta lista ni lo
+                                // mostraba ni ordenaba por él.
+                                Text("\(entry.compatibilityScore)% de compatibilidad")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                     Spacer()

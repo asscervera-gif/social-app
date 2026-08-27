@@ -21,6 +21,14 @@ struct SocialEntry: Identifiable {
     // chats/duelos/avisos: "Tus socials" -- la relación central de la
     // app -- tampoco mostraba avatar, solo el nombre.
     let avatarConfig: [String: String]?
+    // % de compatibilidad REAL (chats.compatibility_score), comparado con
+    // el filtro "Compatibles" que ya existe en descubrimiento
+    // (MatchView.swift) -- hueco real de la auditoría de sistemas propios
+    // de SOCIAL: "Tus socials" no mostraba ni ordenaba por compatibilidad
+    // pese a que cada social aceptado ya tiene un chat con ese dato real
+    // (más significativo aquí que el estimado por intereses del feed).
+    // Equivalente de SocialEntry.compatibilityScore (Kotlin).
+    let compatibilityScore: Int
 }
 
 @MainActor
@@ -43,6 +51,31 @@ final class SocialsListViewModel: ObservableObject {
     }
 
     private struct BlockRow: Decodable { let blocked_id: UUID }
+
+    private struct CompatRow: Decodable { let compatibility_score: Int }
+
+    /// Mismo orden canónico (menor id primero) que
+    /// SocialLinkManager.getOrCreateChat() -- `unique(user_a_id,
+    /// user_b_id)` (0001_schema.sql) es sensible al orden, así que el
+    /// chat real de cada social ya vive con este mismo orden desde que se
+    /// creó al aceptar (SocialLinkManager.respond()). Sin crear un chat
+    /// nuevo aquí a propósito: esta pantalla solo LEE, nunca debe tener
+    /// el efecto secundario de crear una fila nueva solo por mostrar la
+    /// lista. Equivalente de realCompatibility() en Kotlin.
+    private func realCompatibility(userID: UUID, otherID: UUID) async -> Int {
+        let (a, b) = userID.uuidString < otherID.uuidString ? (userID, otherID) : (otherID, userID)
+        guard let row: CompatRow = try? await SupabaseManager.shared.client
+            .from("chats")
+            .select("compatibility_score")
+            .eq("user_a_id", value: a)
+            .eq("user_b_id", value: b)
+            .single()
+            .execute()
+            .value else {
+            return 50
+        }
+        return row.compatibility_score
+    }
 
     func load() async {
         guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
@@ -81,11 +114,12 @@ final class SocialsListViewModel: ObservableObject {
                 if let profile = await profileInfo(for: otherID) {
                     entries.append(SocialEntry(
                         id: otherID, socialID: row.id,
-                        displayName: profile.display_name, avatarConfig: profile.avatar_config
+                        displayName: profile.display_name, avatarConfig: profile.avatar_config,
+                        compatibilityScore: await realCompatibility(userID: userID, otherID: otherID)
                     ))
                 }
             }
-            socials = entries
+            socials = entries.sorted { $0.compatibilityScore > $1.compatibilityScore }
 
             let pendingRows: [SocialRow] = try await SupabaseManager.shared.client
                 .from("socials")
@@ -100,9 +134,13 @@ final class SocialsListViewModel: ObservableObject {
             for row in pendingRows {
                 if blockedIDs.contains(row.addressee_id) { continue }
                 if let profile = await profileInfo(for: row.addressee_id) {
+                    // Sin chat real todavía (solo se crea al aceptar,
+                    // SocialLinkManager.respond()) -- 50 es solo un valor
+                    // de relleno, nunca se muestra para una pendiente.
                     pendingEntries.append(SocialEntry(
                         id: row.addressee_id, socialID: row.id,
-                        displayName: profile.display_name, avatarConfig: profile.avatar_config
+                        displayName: profile.display_name, avatarConfig: profile.avatar_config,
+                        compatibilityScore: 50
                     ))
                 }
             }
