@@ -2703,6 +2703,52 @@ async function main() {
   const viewOnceAfterAttempt = (await db.query(`select view_once from messages where id = $1`, [voSecondMessage.id])).rows[0];
   check('protect_message_columns: view_once real es inmutable tras el envío -- el destinatario NO puede activarlo después', viewOnceAfterAttempt.view_once === false);
 
+  // --- posts.pinned_at (0106_pin_posts_to_profile.sql): fijar una
+  // publicación en el perfil (hasta 3), comparado con Instagram.
+  // Usuario NUEVO a propósito (mismo motivo ya documentado varias veces
+  // esta sesión): sin ninguna publicación previa que pueda contaminar
+  // el recuento real de fijadas. ---
+  await asSuperuser();
+  const pnAuthor = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const pnStranger = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name) values ($1, 'Fija'), ($2, 'Ajeno')
+     on conflict (id) do update set display_name = excluded.display_name`,
+    [pnAuthor, pnStranger]
+  );
+
+  await asUser(pnAuthor);
+  const pnPost1 = (await db.query(`insert into posts (author_id, caption) values ($1, 'publicación real 1') returning id`, [pnAuthor])).rows[0];
+  const pnPost2 = (await db.query(`insert into posts (author_id, caption) values ($1, 'publicación real 2') returning id`, [pnAuthor])).rows[0];
+  const pnPost3 = (await db.query(`insert into posts (author_id, caption) values ($1, 'publicación real 3') returning id`, [pnAuthor])).rows[0];
+  const pnPost4 = (await db.query(`insert into posts (author_id, caption) values ($1, 'publicación real 4') returning id`, [pnAuthor])).rows[0];
+
+  await expectOk('posts_write_own: pnAuthor SÍ puede fijar su primera publicación real', async () => {
+    await db.query(`update posts set pinned_at = now() where id = $1`, [pnPost1.id]);
+  });
+  await expectOk('posts_write_own: pnAuthor SÍ puede fijar su segunda publicación real', async () => {
+    await db.query(`update posts set pinned_at = now() where id = $1`, [pnPost2.id]);
+  });
+  await expectOk('posts_write_own: pnAuthor SÍ puede fijar su tercera publicación real', async () => {
+    await db.query(`update posts set pinned_at = now() where id = $1`, [pnPost3.id]);
+  });
+  await expectFail('trg_limit_pinned_posts: pnAuthor NO puede fijar una cuarta publicación real (límite real de 3)', async () => {
+    await db.query(`update posts set pinned_at = now() where id = $1`, [pnPost4.id]);
+  });
+
+  await expectOk('posts_write_own: pnAuthor SÍ puede desfijar una publicación real ya fijada', async () => {
+    await db.query(`update posts set pinned_at = null where id = $1`, [pnPost1.id]);
+  });
+  await expectOk('trg_limit_pinned_posts: tras desfijar una, pnAuthor SÍ puede fijar la cuarta publicación real', async () => {
+    await db.query(`update posts set pinned_at = now() where id = $1`, [pnPost4.id]);
+  });
+
+  await asUser(pnStranger);
+  await db.query(`update posts set pinned_at = now() where id = $1`, [pnPost1.id]);
+  await asSuperuser();
+  const pnPost1AfterStrangerAttempt = (await db.query(`select pinned_at from posts where id = $1`, [pnPost1.id])).rows[0];
+  check('posts_write_own: un tercero real (pnStranger) NO puede fijar la publicación ajena de pnAuthor (0 filas afectadas por RLS, no un error)', pnPost1AfterStrangerAttempt.pinned_at === null);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

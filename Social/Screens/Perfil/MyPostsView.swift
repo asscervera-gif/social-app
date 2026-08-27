@@ -162,6 +162,32 @@ final class MyPostsViewModel: ObservableObject {
         }
     }
 
+    /// Fijar/desfijar una publicación real en el perfil (hasta 3),
+    /// comparado con Instagram -- `posts_write_own` ya es "for all",
+    /// mismo criterio que toggleArchive()/toggleSensitive(): sin
+    /// política RLS nueva. El límite real de 3 lo impone
+    /// `trg_limit_pinned_posts` (0106_pin_posts_to_profile.sql) del lado
+    /// del servidor -- si ya hay 3 fijadas, el UPDATE real falla y aquí
+    /// se revierte el optimismo y se avisa con un mensaje real, no
+    /// genérico. Equivalente de MyPostsViewModel.kt.togglePinned().
+    func togglePinned(_ post: Post) async {
+        let isCurrentlyPinned = post.pinnedAt != nil
+        let newPinnedAt = isCurrentlyPinned ? nil : ISO8601DateFormatter().string(from: Date())
+        if let index = posts.firstIndex(where: { $0.id == post.id }) {
+            posts[index].pinnedAt = newPinnedAt
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("posts")
+                .update(["pinned_at": newPinnedAt])
+                .eq("id", value: post.id)
+                .execute()
+        } catch {
+            errorMessage = isCurrentlyPinned ? "No se pudo desfijar la publicación." : "Ya tienes 3 publicaciones fijadas -- quita una antes de fijar otra."
+            await load()
+        }
+    }
+
     /// Hallazgo real, comparado con Instagram: no había forma de editar el
     /// caption de una publicación ya hecha, solo borrarla entera --
     /// `posts_write_own` (0002_rls.sql) ya es `for all`, así que editar la
@@ -224,7 +250,16 @@ struct MyPostsView: View {
     // mezclada con el resto), la última solo las archivadas.
     private var visiblePosts: [Post] {
         switch selectedTab {
-        case .all: return viewModel.posts.filter { $0.archivedAt == nil }
+        case .all:
+            // Fijar una publicación en el perfil (hasta 3), comparado
+            // con Instagram -- las fijadas van siempre primero (la más
+            // reciente fijada primero, no la más reciente publicada),
+            // igual que la rejilla real del perfil; el resto sigue en
+            // el mismo orden por fecha de siempre.
+            let active = viewModel.posts.filter { $0.archivedAt == nil }
+            let pinned = active.filter { $0.pinnedAt != nil }.sorted { ($0.pinnedAt ?? "") > ($1.pinnedAt ?? "") }
+            let unpinned = active.filter { $0.pinnedAt == nil }
+            return pinned + unpinned
         case .tagged: return viewModel.posts.filter { $0.archivedAt == nil && $0.taggedProfileID != nil }
         case .archived: return viewModel.posts.filter { $0.archivedAt != nil }
         }
@@ -287,6 +322,13 @@ struct MyPostsView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .onTapGesture { fullScreenURL = url }
                     }
+                    // Fijar una publicación en el perfil, comparado con
+                    // Instagram -- el propio icono ya comunica el
+                    // estado, mismo criterio que "Fijado" en mensajes/
+                    // comentarios.
+                    if post.pinnedAt != nil {
+                        Text("📌 Fijada").font(.caption.bold()).foregroundStyle(.accentColor)
+                    }
                     Text(post.caption ?? "")
                     if let taggedProfileID = post.taggedProfileID {
                         Text("con \(taggedName(taggedProfileID))")
@@ -306,6 +348,14 @@ struct MyPostsView: View {
                         editedCaption = post.caption ?? ""
                     }
                     .tint(.blue)
+                    // Fijar una publicación en el perfil (hasta 3),
+                    // comparado con Instagram -- ver
+                    // MyPostsViewModel.togglePinned(),
+                    // 0106_pin_posts_to_profile.sql.
+                    Button(post.pinnedAt != nil ? "Desfijar" : "Fijar") {
+                        Task { await viewModel.togglePinned(post) }
+                    }
+                    .tint(.yellow)
                     // Archivar publicaciones real
                     // (0076_archive_posts.sql), comparado con Instagram/
                     // Facebook -- antes o se dejaba visible para siempre o

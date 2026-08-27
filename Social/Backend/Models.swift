@@ -103,6 +103,9 @@ struct Post: Codable, Identifiable {
     // "¿Quién puede comentar?" real, comparado con Twitter/X/TikTok --
     // "everyone"/"followers"/"mentioned" (0097_reply_audience.sql).
     var replyAudience: String = "everyone"
+    // Fijar una publicación en el perfil (hasta 3), comparado con
+    // Instagram -- ver 0106_pin_posts_to_profile.sql.
+    var pinnedAt: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -120,6 +123,7 @@ struct Post: Codable, Identifiable {
         case locationName = "location_name"
         case isSensitive = "is_sensitive"
         case replyAudience = "reply_audience"
+        case pinnedAt = "pinned_at"
     }
 }
 

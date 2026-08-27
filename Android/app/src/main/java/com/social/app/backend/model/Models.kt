@@ -78,7 +78,10 @@ data class Post(
     @SerialName("is_sensitive") val isSensitive: Boolean = false,
     // "¿Quién puede comentar?" real, comparado con Twitter/X/TikTok --
     // 'everyone'/'followers'/'mentioned' (0097_reply_audience.sql).
-    @SerialName("reply_audience") val replyAudience: String = "everyone"
+    @SerialName("reply_audience") val replyAudience: String = "everyone",
+    // Fijar una publicación en el perfil (hasta 3), comparado con
+    // Instagram -- ver 0106_pin_posts_to_profile.sql.
+    @SerialName("pinned_at") val pinnedAt: String? = null
 )
 
 @Serializable

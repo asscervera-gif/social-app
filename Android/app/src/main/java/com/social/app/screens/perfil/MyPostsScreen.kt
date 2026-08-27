@@ -185,6 +185,29 @@ class MyPostsViewModel : ViewModel() {
         }
     }
 
+    /** Fijar/desfijar una publicación real en el perfil (hasta 3),
+     * comparado con Instagram -- `posts_write_own` ya es "for all",
+     * mismo criterio que toggleArchive()/toggleSensitive(): sin política
+     * RLS nueva. El límite real de 3 lo impone
+     * `trg_limit_pinned_posts` (0106_pin_posts_to_profile.sql) del lado
+     * del servidor -- si ya hay 3 fijadas, el UPDATE real falla y aquí
+     * se revierte el optimismo y se avisa con un mensaje real, no
+     * genérico. */
+    fun togglePinned(post: Post) {
+        val isCurrentlyPinned = post.pinnedAt != null
+        val newPinnedAt: String? = if (isCurrentlyPinned) null else java.time.Instant.now().toString()
+        _posts.value = _posts.value.map { if (it.id == post.id) it.copy(pinnedAt = newPinnedAt) else it }
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("posts")
+                    .update({ set("pinned_at", newPinnedAt) }) { filter { eq("id", post.id) } }
+            } catch (e: Exception) {
+                _errorMessage.value = if (isCurrentlyPinned) "No se pudo desfijar la publicación." else "Ya tienes 3 publicaciones fijadas -- quita una antes de fijar otra."
+                load()
+            }
+        }
+    }
+
     fun editCaption(post: Post, newCaption: String) {
         if (newCaption.length > 2200) {
             _errorMessage.value = "El texto no puede tener más de 2200 caracteres."
@@ -227,7 +250,16 @@ fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
     val visiblePosts = when (selectedTab) {
         1 -> posts.filter { it.archivedAt == null && it.taggedProfileId != null }
         2 -> posts.filter { it.archivedAt != null }
-        else -> posts.filter { it.archivedAt == null }
+        // Fijar una publicación en el perfil (hasta 3), comparado con
+        // Instagram -- las fijadas van siempre primero (la más reciente
+        // fijada primero, no la más reciente publicada), igual que la
+        // rejilla real del perfil; el resto sigue en el mismo orden por
+        // fecha de siempre.
+        else -> {
+            val active = posts.filter { it.archivedAt == null }
+            active.filter { it.pinnedAt != null }.sortedByDescending { it.pinnedAt } +
+                active.filter { it.pinnedAt == null }
+        }
     }
     // Hallazgo real, mismo hueco ya cerrado en el feed y el chat: no
     // había forma de tocar la imagen para verla a tamaño completo.
@@ -306,6 +338,13 @@ fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
                                     .clickable { fullScreenUrl = url }
                             )
                         }
+                        // Fijar una publicación en el perfil, comparado
+                        // con Instagram -- el propio icono ya comunica el
+                        // estado, visible para cualquiera (mismo criterio
+                        // que "Fijado" en mensajes/comentarios).
+                        if (post.pinnedAt != null) {
+                            Text("📌 Fijada", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        }
                         post.caption?.let { Text(it) }
                         post.taggedProfileId?.let { taggedId ->
                             Text(
@@ -332,6 +371,14 @@ fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
                                     },
                                     modifier = Modifier.padding(end = 8.dp)
                                 ) { Text("Editar") }
+                                // Fijar una publicación en el perfil
+                                // (hasta 3), comparado con Instagram --
+                                // ver MyPostsViewModel.togglePinned(),
+                                // 0106_pin_posts_to_profile.sql.
+                                OutlinedButton(
+                                    onClick = { viewModel.togglePinned(post) },
+                                    modifier = Modifier.padding(end = 8.dp)
+                                ) { Text(if (post.pinnedAt != null) "Desfijar" else "Fijar") }
                                 // Archivar publicaciones real
                                 // (0076_archive_posts.sql), comparado con
                                 // Instagram/Facebook -- antes o se dejaba
