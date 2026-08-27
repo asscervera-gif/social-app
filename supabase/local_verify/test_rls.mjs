@@ -1853,6 +1853,16 @@ async function main() {
   // (aquí, el autor de la publicación) puede tocarla vía RLS directa.
   // Reutiliza mutedWordsPost (autor real u1) y cleanComment (de u2, sin
   // palabra silenciada) del bloque de arriba. ---
+  // Nota de robustez de pruebas (no de producción), mismo hallazgo real ya
+  // documentado arriba para group_chat_members/group_messages: 0123_comment_edit.sql
+  // redefinió protect_comment_pin_only/protect_reel_comment_pin_only con
+  // `create or replace function`, añadiendo sus primeras llamadas reales
+  // a auth.uid() -- "permission denied for schema auth" real bajo un rol
+  // no-superusuario si nadie la calienta antes bajo un rol con bypass
+  // total. Un UPDATE de superusuario antes (no-op real) la ejercita una
+  // vez.
+  await asSuperuser();
+  await db.query(`update comments set body = body where id = $1`, [cleanComment.id]);
   await asUser(u1);
   await expectOk('comments_update_pin: el autor real de la publicación (u1) SÍ puede fijar un comentario ajeno', async () => {
     await db.query(`update comments set is_pinned = true where id = $1`, [cleanComment.id]);
@@ -1883,6 +1893,10 @@ async function main() {
   const reelCommentToPin = (await db.query(
     `insert into reel_comments (reel_id, author_id, body) values ($1, $2, 'buen reel') returning id`, [mutedWordsReel.id, u2]
   )).rows[0];
+  // Mismo "calentamiento" real que arriba, ahora para
+  // protect_reel_comment_pin_only (también redefinida por 0123).
+  await asSuperuser();
+  await db.query(`update reel_comments set body = body where id = $1`, [reelCommentToPin.id]);
   await asUser(u1); // u1 es el autor real del reel (mutedWordsReel)
   await expectOk('reel_comments_update_pin: el autor real del reel (u1) SÍ puede fijar un comentario ajeno', async () => {
     await db.query(`update reel_comments set is_pinned = true where id = $1`, [reelCommentToPin.id]);
@@ -1894,6 +1908,44 @@ async function main() {
   await db.query(`update reel_comments set is_pinned = false where id = $1`, [reelCommentToPin.id]);
   const stillPinnedByReelCommenter = (await db.query(`select is_pinned from reel_comments where id = $1`, [reelCommentToPin.id])).rows[0];
   check('reel_comments_update_pin: quien escribió el comentario de reel (u2) NO puede desfijarlo -- solo el autor real del reel puede (0 filas afectadas, no un error)', stillPinnedByReelCommenter.is_pinned === true);
+
+  // --- comments.edited_at/reel_comments.edited_at (0123_comment_edit.sql):
+  // editar un comentario ya publicado, comparado con Instagram/Facebook/
+  // Twitter/TikTok -- segunda política UPDATE real, esta vez para el
+  // propio autor del comentario (distinta de comments_update_pin, que es
+  // exclusiva del autor de la publicación). Reutiliza cleanComment (u2,
+  // ya "hackeado" arriba a body='hackeado'? no -- el intento de u1 de
+  // arriba NO tocó el body real, sigue en 'qué buena foto'). ---
+  await asUser(u2); // u2 escribió cleanComment
+  await expectOk('comments_update_own: el propio autor real (u2) SÍ puede editar su comentario', async () => {
+    await db.query(`update comments set body = 'editado de verdad', edited_at = now() where id = $1`, [cleanComment.id]);
+  });
+  const editedComment = (await db.query(`select body, edited_at from comments where id = $1`, [cleanComment.id])).rows[0];
+  check('comments_update_own: el body real queda editado', editedComment.body === 'editado de verdad');
+  check('comments_update_own: edited_at real queda marcado', editedComment.edited_at !== null);
+
+  await asUser(u1); // u1 es el autor de la publicación, NO del comentario
+  await db.query(`update comments set body = 'intento ajeno', edited_at = now() where id = $1`, [cleanComment.id]);
+  const afterForeignEditAttempt = (await db.query(`select body from comments where id = $1`, [cleanComment.id])).rows[0];
+  check('protect_comment_pin_only: el autor de la publicación (u1, no del comentario) NO puede editar el body ajeno (revertido)', afterForeignEditAttempt.body === 'editado de verdad');
+
+  await asUser(u4); // tercero real, ni autor de la publicación ni del comentario
+  await db.query(`update comments set body = 'intento de tercero' where id = $1`, [cleanComment.id]);
+  const afterStrangerEditAttempt = (await db.query(`select body from comments where id = $1`, [cleanComment.id])).rows[0];
+  check('protect_comment_pin_only: un tercero real (u4) NO puede editar el body ajeno (revertido)', afterStrangerEditAttempt.body === 'editado de verdad');
+
+  await asUser(u2); // reel_comments: mismo espejo real
+  await expectOk('reel_comments_update_own: el propio autor real (u2) SÍ puede editar su comentario de reel', async () => {
+    await db.query(`update reel_comments set body = 'reel editado de verdad', edited_at = now() where id = $1`, [reelCommentToPin.id]);
+  });
+  const editedReelComment = (await db.query(`select body, edited_at from reel_comments where id = $1`, [reelCommentToPin.id])).rows[0];
+  check('reel_comments_update_own: el body real queda editado', editedReelComment.body === 'reel editado de verdad');
+  check('reel_comments_update_own: edited_at real queda marcado', editedReelComment.edited_at !== null);
+
+  await asUser(u1); // u1 es el autor del reel, NO del comentario
+  await db.query(`update reel_comments set body = 'intento ajeno' where id = $1`, [reelCommentToPin.id]);
+  const afterForeignReelEditAttempt = (await db.query(`select body from reel_comments where id = $1`, [reelCommentToPin.id])).rows[0];
+  check('protect_reel_comment_pin_only: el autor del reel (u1, no del comentario) NO puede editar el body ajeno (revertido)', afterForeignReelEditAttempt.body === 'reel editado de verdad');
 
   // --- posts.comments_disabled/reels.comments_disabled
   // (0086_disable_comments.sql): desactivar los comentarios de una

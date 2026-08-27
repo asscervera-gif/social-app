@@ -23,6 +23,11 @@ struct CommentsView: View {
     // con Instagram/Facebook/Twitter/TikTok -- ver
     // CommentsViewModel.addComment(), 0104_comment_replies.sql.
     @State private var replyingToComment: Comment?
+    // Editar un comentario ya publicado, comparado con
+    // Instagram/Facebook/Twitter/TikTok -- ver
+    // CommentsViewModel.editComment(), 0123_comment_edit.sql.
+    @State private var editingCommentID: UUID?
+    @State private var editDraft = ""
     let onCommentAdded: () -> Void
     var onCommentRemoved: () -> Void = {}
 
@@ -80,14 +85,24 @@ struct CommentsView: View {
                         }
                         .buttonStyle(.plain)
 
+                        if editingCommentID == comment.id {
+                            TextField("Editar comentario", text: $editDraft)
+                                .textFieldStyle(.roundedBorder)
+                        } else {
+                            if comment.edited_at != nil {
+                                Text("(editado)").font(.caption2).foregroundStyle(.secondary)
+                            }
+                        }
                         HStack {
-                            MentionHashtagText(
-                                text: comment.body,
-                                font: .body,
-                                onOpenMention: { username in
-                                    Task { mentionProfileID = await MentionResolver.resolveProfileID(username: username) }
-                                }
-                            )
+                            if editingCommentID != comment.id {
+                                MentionHashtagText(
+                                    text: comment.body,
+                                    font: .body,
+                                    onOpenMention: { username in
+                                        Task { mentionProfileID = await MentionResolver.resolveProfileID(username: username) }
+                                    }
+                                )
+                            }
                             Spacer()
                             // Comparado con Instagram/Twitter/Facebook: dar
                             // like a un comentario concreto, no solo a la
@@ -123,6 +138,28 @@ struct CommentsView: View {
                                     Task { await viewModel.togglePin(comment) }
                                 }
                                 .font(.caption)
+                            }
+                            // Editar un comentario ya publicado, comparado
+                            // con Instagram/Facebook/Twitter/TikTok --
+                            // solo visible para el propio autor real,
+                            // mismo criterio que `comments_update_own` en
+                            // RLS.
+                            if comment.author_id == myID {
+                                if editingCommentID == comment.id {
+                                    Button("Guardar") {
+                                        Task { await viewModel.editComment(comment, newBody: editDraft) }
+                                        editingCommentID = nil
+                                    }
+                                    .font(.caption)
+                                    Button("Cancelar") { editingCommentID = nil }
+                                        .font(.caption)
+                                } else {
+                                    Button("Editar") {
+                                        editingCommentID = comment.id
+                                        editDraft = comment.body
+                                    }
+                                    .font(.caption)
+                                }
                             }
                             if comment.author_id == myID {
                                 Button("Borrar", role: .destructive) {

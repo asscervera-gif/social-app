@@ -70,6 +70,11 @@ fun CommentsSheet(
     // con Instagram/Facebook/Twitter/TikTok -- ver
     // CommentsViewModel.addComment(), 0104_comment_replies.sql.
     var replyingToComment by remember { mutableStateOf<Comment?>(null) }
+    // Editar un comentario ya publicado, comparado con
+    // Instagram/Facebook/Twitter/TikTok -- ver
+    // CommentsViewModel.editComment(), 0123_comment_edit.sql.
+    var editingCommentId by remember { mutableStateOf<String?>(null) }
+    var editDraft by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val mentionResolver = remember { MentionResolver() }
 
@@ -126,18 +131,39 @@ fun CommentsSheet(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // @menciones reales (0073_profile_username.sql +
-                            // 0074_mentions.sql), comparado con Instagram/
-                            // Twitter/TikTok -- tocar un @usuario dentro de
-                            // un comentario real abre ese perfil.
-                            MentionHashtagText(
-                                text = comment.body,
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.weight(1f),
-                                onOpenMention = { username ->
-                                    scope.launch { mentionResolver.resolveProfileId(username)?.let(onOpenProfile) }
+                            if (editingCommentId == comment.id) {
+                                OutlinedTextField(
+                                    value = editDraft,
+                                    onValueChange = { editDraft = it },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            } else {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    // @menciones reales (0073_profile_username.sql +
+                                    // 0074_mentions.sql), comparado con Instagram/
+                                    // Twitter/TikTok -- tocar un @usuario dentro de
+                                    // un comentario real abre ese perfil.
+                                    MentionHashtagText(
+                                        text = comment.body,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        onOpenMention = { username ->
+                                            scope.launch { mentionResolver.resolveProfileId(username)?.let(onOpenProfile) }
+                                        }
+                                    )
+                                    // Editar un comentario ya publicado,
+                                    // comparado con Instagram/Facebook/
+                                    // Twitter/TikTok -- misma etiqueta
+                                    // "(editado)" real ya usada en el chat
+                                    // (0049_messages_edit.sql).
+                                    if (comment.editedAt != null) {
+                                        Text(
+                                            "(editado)",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
-                            )
+                            }
                             // Comparado con Instagram/Twitter/Facebook: dar
                             // like a un comentario concreto, no solo a la
                             // publicación entera (0054_comment_likes.sql).
@@ -175,6 +201,25 @@ fun CommentsSheet(
                             if (postAuthorId != null && postAuthorId == myId) {
                                 TextButton(onClick = { viewModel.togglePin(comment) }) {
                                     Text(if (comment.isPinned) "Desfijar" else "Fijar")
+                                }
+                            }
+                            // Editar un comentario ya publicado, comparado
+                            // con Instagram/Facebook/Twitter/TikTok --
+                            // solo visible para el propio autor real,
+                            // mismo criterio que `comments_update_own` en
+                            // RLS.
+                            if (comment.authorId == myId) {
+                                if (editingCommentId == comment.id) {
+                                    TextButton(onClick = {
+                                        viewModel.editComment(comment, editDraft)
+                                        editingCommentId = null
+                                    }) { Text("Guardar") }
+                                    TextButton(onClick = { editingCommentId = null }) { Text("Cancelar") }
+                                } else {
+                                    TextButton(onClick = {
+                                        editingCommentId = comment.id
+                                        editDraft = comment.body
+                                    }) { Text("Editar") }
                                 }
                             }
                             // Hallazgo real: no había forma de borrar el propio

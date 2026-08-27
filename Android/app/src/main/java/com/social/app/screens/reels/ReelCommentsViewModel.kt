@@ -32,7 +32,11 @@ data class ReelComment(
     // Responder a un comentario concreto (hilo de un nivel), comparado
     // con Instagram/Facebook/Twitter/TikTok -- referencia al comentario
     // real de primer nivel que se responde. Ver 0104_comment_replies.sql.
-    @SerialName("parent_comment_id") val parentCommentId: String? = null
+    @SerialName("parent_comment_id") val parentCommentId: String? = null,
+    // Editar un comentario ya publicado, comparado con
+    // Instagram/Facebook/Twitter/TikTok -- solo el propio autor del
+    // comentario puede cambiarlo (0123_comment_edit.sql).
+    @SerialName("edited_at") val editedAt: String? = null
 )
 
 /**
@@ -83,7 +87,7 @@ class ReelCommentsViewModel(private val reelId: String) : ViewModel() {
             _isLoading.value = true
             try {
                 val loaded = SupabaseManager.client.from("reel_comments")
-                    .select(columns = Columns.raw("id,reel_id,author_id,body,created_at,like_count,is_pinned,parent_comment_id")) {
+                    .select(columns = Columns.raw("id,reel_id,author_id,body,created_at,like_count,is_pinned,parent_comment_id,edited_at")) {
                         filter { eq("reel_id", reelId) }
                         order("created_at", Order.ASCENDING)
                     }
@@ -169,6 +173,27 @@ class ReelCommentsViewModel(private val reelId: String) : ViewModel() {
                     .update({ set("is_pinned", newValue) }) { filter { eq("id", comment.id) } }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo fijar el comentario."
+                load()
+            }
+        }
+    }
+
+    /** Editar un comentario ya publicado, comparado con
+     * Instagram/Facebook/Twitter/TikTok -- solo el propio autor real del
+     * comentario puede hacerlo (`reel_comments_update_own`,
+     * 0123_comment_edit.sql, lo garantiza también del lado del servidor).
+     * Equivalente de CommentsViewModel.kt.editComment(). */
+    fun editComment(comment: ReelComment, newBody: String) {
+        val trimmed = newBody.trim()
+        if (trimmed.isEmpty() || trimmed.length > 500) return
+        val nowIso = java.time.Instant.now().toString()
+        _comments.update { list -> list.map { if (it.id == comment.id) it.copy(body = trimmed, editedAt = nowIso) else it } }
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("reel_comments")
+                    .update({ set("body", trimmed); set("edited_at", nowIso) }) { filter { eq("id", comment.id) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo editar el comentario."
                 load()
             }
         }

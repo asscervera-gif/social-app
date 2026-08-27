@@ -16,7 +16,7 @@ struct Comment: Identifiable, Decodable {
     let id: UUID
     let post_id: UUID
     let author_id: UUID
-    let body: String
+    var body: String
     let created_at: String
     // Comparado con Instagram/Twitter/Facebook: dar like a un comentario
     // concreto, no solo a la publicación entera (0054_comment_likes.sql).
@@ -28,6 +28,10 @@ struct Comment: Identifiable, Decodable {
     // con Instagram/Facebook/Twitter/TikTok -- referencia al comentario
     // real de primer nivel que se responde. Ver 0104_comment_replies.sql.
     var parent_comment_id: UUID? = nil
+    // Editar un comentario ya publicado, comparado con
+    // Instagram/Facebook/Twitter/TikTok -- solo el propio autor del
+    // comentario puede cambiarlo (0123_comment_edit.sql).
+    var edited_at: String? = nil
 }
 
 @MainActor
@@ -199,6 +203,32 @@ final class CommentsViewModel: ObservableObject {
                 .execute()
         } catch {
             errorMessage = "No se pudo fijar el comentario."
+            await load()
+        }
+    }
+
+    /// Editar un comentario ya publicado, comparado con
+    /// Instagram/Facebook/Twitter/TikTok -- solo el propio autor real del
+    /// comentario puede hacerlo (`comments_update_own`,
+    /// 0123_comment_edit.sql, lo garantiza también del lado del servidor).
+    /// Equivalente de CommentsViewModel.kt.editComment().
+    func editComment(_ comment: Comment, newBody: String) async {
+        let trimmed = newBody.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 500 else { return }
+        let nowISO = ISO8601DateFormatter().string(from: Date())
+        if let index = comments.firstIndex(where: { $0.id == comment.id }) {
+            comments[index].body = trimmed
+            comments[index].edited_at = nowISO
+        }
+        do {
+            struct EditUpdate: Encodable { let body: String; let edited_at: String }
+            try await SupabaseManager.shared.client
+                .from("comments")
+                .update(EditUpdate(body: trimmed, edited_at: nowISO))
+                .eq("id", value: comment.id)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo editar el comentario."
             await load()
         }
     }

@@ -100,7 +100,11 @@ data class Comment(
     // Responder a un comentario concreto (hilo de un nivel), comparado
     // con Instagram/Facebook/Twitter/TikTok -- referencia al comentario
     // real de primer nivel que se responde. Ver 0104_comment_replies.sql.
-    @SerialName("parent_comment_id") val parentCommentId: String? = null
+    @SerialName("parent_comment_id") val parentCommentId: String? = null,
+    // Editar un comentario ya publicado, comparado con
+    // Instagram/Facebook/Twitter/TikTok -- solo el propio autor del
+    // comentario puede cambiarlo (0123_comment_edit.sql).
+    @SerialName("edited_at") val editedAt: String? = null
 )
 
 // Comparado con Instagram/Facebook: publicaciones con varias fotos

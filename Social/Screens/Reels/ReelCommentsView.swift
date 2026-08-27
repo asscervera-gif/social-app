@@ -29,6 +29,11 @@ struct ReelCommentsView: View {
     // con Instagram/Facebook/Twitter/TikTok -- mismo criterio real que
     // CommentsView.swift (posts).
     @State private var replyingToComment: ReelComment?
+    // Editar un comentario ya publicado, comparado con
+    // Instagram/Facebook/Twitter/TikTok -- ver
+    // ReelCommentsViewModel.editComment(), 0123_comment_edit.sql.
+    @State private var editingCommentID: UUID?
+    @State private var editDraft = ""
     let onCommentAdded: () -> Void
     var onCommentRemoved: () -> Void = {}
 
@@ -75,14 +80,24 @@ struct ReelCommentsView: View {
                         }
                         .buttonStyle(.plain)
 
+                        if editingCommentID == comment.id {
+                            TextField("Editar comentario", text: $editDraft)
+                                .textFieldStyle(.roundedBorder)
+                        } else {
+                            if comment.edited_at != nil {
+                                Text("(editado)").font(.caption2).foregroundStyle(.secondary)
+                            }
+                        }
                         HStack {
-                            MentionHashtagText(
-                                text: comment.body,
-                                font: .body,
-                                onOpenMention: { username in
-                                    Task { mentionProfileID = await MentionResolver.resolveProfileID(username: username) }
-                                }
-                            )
+                            if editingCommentID != comment.id {
+                                MentionHashtagText(
+                                    text: comment.body,
+                                    font: .body,
+                                    onOpenMention: { username in
+                                        Task { mentionProfileID = await MentionResolver.resolveProfileID(username: username) }
+                                    }
+                                )
+                            }
                             Spacer()
                             // Comparado con Instagram/Twitter/Facebook: dar
                             // like a un comentario concreto (0054_comment_likes.sql).
@@ -117,6 +132,23 @@ struct ReelCommentsView: View {
                                     Task { await viewModel.togglePin(comment) }
                                 }
                                 .font(.caption)
+                            }
+                            if comment.author_id == myID {
+                                if editingCommentID == comment.id {
+                                    Button("Guardar") {
+                                        Task { await viewModel.editComment(comment, newBody: editDraft) }
+                                        editingCommentID = nil
+                                    }
+                                    .font(.caption)
+                                    Button("Cancelar") { editingCommentID = nil }
+                                        .font(.caption)
+                                } else {
+                                    Button("Editar") {
+                                        editingCommentID = comment.id
+                                        editDraft = comment.body
+                                    }
+                                    .font(.caption)
+                                }
                             }
                             if comment.author_id == myID {
                                 Button("Borrar", role: .destructive) {
