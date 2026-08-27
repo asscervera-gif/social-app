@@ -513,6 +513,12 @@ struct ChatView: View {
     // read receipts" — grabación nativa (ver VoiceRecorder.swift).
     @State private var voiceRecorder = VoiceRecorder()
     @State private var isRecording = false
+    // Escuchar la nota de voz real antes de mandarla, comparado con
+    // WhatsApp/Telegram -- antes se mandaba a ciegas en cuanto se
+    // soltaba el botón. Equivalente de ChatScreen.kt.pendingVoiceFile.
+    @State private var pendingVoiceURL: URL?
+    @State private var previewPlayer: AVAudioPlayer?
+    @State private var isPreviewPlaying = false
 
     private var composer: some View {
         VStack(spacing: 0) {
@@ -564,7 +570,7 @@ struct ChatView: View {
                 if isRecording {
                     isRecording = false
                     if let url = voiceRecorder.stop() {
-                        Task { await viewModel.sendVoiceNote(fileURL: url) }
+                        pendingVoiceURL = url
                     }
                 } else {
                     if (try? voiceRecorder.start()) != nil {
@@ -574,6 +580,51 @@ struct ChatView: View {
             } label: {
                 Image(systemName: isRecording ? "stop.circle.fill" : "mic")
                     .foregroundStyle(isRecording ? .red : .primary)
+            }
+            // `.sheet` en vez de `.alert`/`.confirmationDialog`: los dos
+            // cierran al primer toque de CUALQUIER botón, y aquí hace
+            // falta poder tocar "Escuchar" varias veces sin que se
+            // cierre -- mismo hallazgo real ya documentado en
+            // 0099_story_questions.sql para el mismo problema con
+            // TextField.
+            .sheet(isPresented: Binding(
+                get: { pendingVoiceURL != nil },
+                set: { if !$0 { previewPlayer?.stop(); isPreviewPlaying = false; pendingVoiceURL = nil } }
+            )) {
+                NavigationStack {
+                    VStack(spacing: 16) {
+                        Button(isPreviewPlaying ? "⏸ Reproduciendo…" : "▶ Escuchar antes de mandarla") {
+                            guard let url = pendingVoiceURL else { return }
+                            if isPreviewPlaying {
+                                previewPlayer?.pause()
+                                isPreviewPlaying = false
+                            } else {
+                                let player = previewPlayer ?? (try? AVAudioPlayer(contentsOf: url))
+                                previewPlayer = player
+                                player?.play()
+                                isPreviewPlaying = true
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        Button("Enviar") {
+                            previewPlayer?.stop()
+                            isPreviewPlaying = false
+                            if let url = pendingVoiceURL {
+                                pendingVoiceURL = nil
+                                Task { await viewModel.sendVoiceNote(fileURL: url) }
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        Button("Descartar", role: .destructive) {
+                            previewPlayer?.stop()
+                            isPreviewPlaying = false
+                            pendingVoiceURL = nil
+                        }
+                    }
+                    .padding()
+                    .navigationTitle("Nota de voz")
+                }
+                .presentationDetents([.height(220)])
             }
             TextField(isRecording ? "Grabando…" : "Escribe un mensaje…", text: $viewModel.draft)
                 .textFieldStyle(.roundedBorder)

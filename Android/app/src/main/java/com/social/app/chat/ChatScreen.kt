@@ -153,6 +153,10 @@ fun ChatScreen(
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val searchScope = rememberCoroutineScope()
     var pendingPhotoUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    // Escuchar la nota de voz real antes de mandarla, comparado con
+    // WhatsApp/Telegram -- antes se mandaba a ciegas en cuanto se
+    // soltaba el botón, sin forma real de deshacerla si salió mal.
+    var pendingVoiceFile by remember { mutableStateOf<java.io.File?>(null) }
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) pendingPhotoUri = uri
     }
@@ -740,7 +744,7 @@ fun ChatScreen(
                 onClick = {
                     if (isRecording) {
                         isRecording = false
-                        voiceRecorder.stop()?.let { viewModel.sendVoiceNote(it) }
+                        voiceRecorder.stop()?.let { pendingVoiceFile = it }
                     } else {
                         recordPermission.launch(android.Manifest.permission.RECORD_AUDIO)
                     }
@@ -766,6 +770,50 @@ fun ChatScreen(
     }
     // Foto para ver una vez, comparado con WhatsApp/Instagram DM/
     // Snapchat -- ver ChatViewModel.sendPhoto(), 0105_view_once_messages.sql.
+    pendingVoiceFile?.let { file ->
+        var isPreviewPlaying by remember(file) { mutableStateOf(false) }
+        var previewPlayer by remember(file) { mutableStateOf<android.media.MediaPlayer?>(null) }
+        androidx.compose.runtime.DisposableEffect(file) {
+            onDispose { previewPlayer?.release(); previewPlayer = null }
+        }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { previewPlayer?.release(); pendingVoiceFile = null },
+            title = { Text("Nota de voz") },
+            text = {
+                Text(
+                    if (isPreviewPlaying) "⏸ Reproduciendo…" else "▶ Escuchar antes de mandarla",
+                    modifier = Modifier.clickable {
+                        if (isPreviewPlaying) {
+                            previewPlayer?.pause()
+                            isPreviewPlaying = false
+                        } else {
+                            val p = previewPlayer ?: android.media.MediaPlayer().apply {
+                                setDataSource(file.absolutePath)
+                                setOnCompletionListener { isPreviewPlaying = false }
+                                prepare()
+                            }
+                            previewPlayer = p
+                            p.start()
+                            isPreviewPlaying = true
+                        }
+                    }
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    previewPlayer?.release()
+                    viewModel.sendVoiceNote(file)
+                    pendingVoiceFile = null
+                }) { Text("Enviar") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    previewPlayer?.release()
+                    pendingVoiceFile = null
+                }) { Text("Descartar") }
+            }
+        )
+    }
     pendingPhotoUri?.let { uri ->
         var photoCaption by remember(uri) { mutableStateOf("") }
         androidx.compose.material3.AlertDialog(
