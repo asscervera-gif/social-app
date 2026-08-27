@@ -75,7 +75,10 @@ data class Post(
     // Marcar contenido como sensible, comparado con Instagram/Twitter/
     // TikTok -- difumina la foto para cualquiera que no sea el autor
     // hasta que toque para revelarla (0096_sensitive_content.sql).
-    @SerialName("is_sensitive") val isSensitive: Boolean = false
+    @SerialName("is_sensitive") val isSensitive: Boolean = false,
+    // "¿Quién puede comentar?" real, comparado con Twitter/X/TikTok --
+    // 'everyone'/'followers'/'mentioned' (0097_reply_audience.sql).
+    @SerialName("reply_audience") val replyAudience: String = "everyone"
 )
 
 @Serializable

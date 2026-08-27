@@ -100,6 +100,9 @@ struct Post: Codable, Identifiable {
     // TikTok -- difumina la foto para cualquiera que no sea el autor
     // hasta que toque para revelarla (0096_sensitive_content.sql).
     var isSensitive: Bool = false
+    // "¿Quién puede comentar?" real, comparado con Twitter/X/TikTok --
+    // "everyone"/"followers"/"mentioned" (0097_reply_audience.sql).
+    var replyAudience: String = "everyone"
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -116,6 +119,7 @@ struct Post: Codable, Identifiable {
         case hideLikeCount = "hide_like_count"
         case locationName = "location_name"
         case isSensitive = "is_sensitive"
+        case replyAudience = "reply_audience"
     }
 }
 

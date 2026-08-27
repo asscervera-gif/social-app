@@ -35,6 +35,9 @@ struct Reel: Codable, Identifiable {
     // TikTok -- difumina el vídeo para cualquiera que no sea el autor
     // hasta que toque para revelarlo (0096_sensitive_content.sql).
     var isSensitive: Bool = false
+    // "¿Quién puede comentar?" real, comparado con Twitter/X/TikTok --
+    // "everyone"/"followers"/"mentioned" (0097_reply_audience.sql).
+    var replyAudience: String = "everyone"
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -50,6 +53,7 @@ struct Reel: Codable, Identifiable {
         case commentsDisabled = "comments_disabled"
         case hideLikeCount = "hide_like_count"
         case isSensitive = "is_sensitive"
+        case replyAudience = "reply_audience"
     }
 }
 
@@ -240,6 +244,31 @@ final class ReelsViewModel: ObservableObject {
                 .execute()
         } catch {
             errorMessage = "No se pudo cambiar la marca de contenido sensible."
+            await load()
+        }
+    }
+
+    /// "¿Quién puede comentar?" real, comparado con Twitter/X/TikTok --
+    /// ver 0097_reply_audience.sql. Equivalente de
+    /// ReelsViewModel.kt.cycleReplyAudience().
+    func cycleReplyAudience(_ reel: Reel) async {
+        let newValue: String
+        switch reel.replyAudience {
+        case "everyone": newValue = "followers"
+        case "followers": newValue = "mentioned"
+        default: newValue = "everyone"
+        }
+        if let index = reels.firstIndex(where: { $0.id == reel.id }) {
+            reels[index].replyAudience = newValue
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("reels")
+                .update(["reply_audience": newValue])
+                .eq("id", value: reel.id)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo cambiar quién puede comentar."
             await load()
         }
     }

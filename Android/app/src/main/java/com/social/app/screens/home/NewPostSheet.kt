@@ -76,6 +76,9 @@ fun NewPostSheet(
     // Marcar contenido como sensible, comparado con Instagram/Twitter/
     // TikTok -- ver NewPostViewModel.post(), 0096_sensitive_content.sql.
     var isSensitive by remember { mutableStateOf(false) }
+    // "¿Quién puede comentar?" real, comparado con Twitter/X/TikTok --
+    // ver NewPostViewModel.post(), 0097_reply_audience.sql.
+    var replyAudience by remember { mutableStateOf("everyone") }
     val socialsViewModel: SocialsListViewModel = viewModel()
     val socials by socialsViewModel.socials.collectAsState()
     LaunchedEffect(Unit) { socialsViewModel.load() }
@@ -146,6 +149,29 @@ fun NewPostSheet(
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
             )
 
+            // "¿Quién puede comentar?" real, comparado con Twitter/X/
+            // TikTok -- ver 0097_reply_audience.sql.
+            Text(
+                "¿Quién puede comentar?",
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("everyone" to "Todos", "followers" to "A quienes sigo", "mentioned" to "A quien mencione").forEach { (value, label) ->
+                    val selected = replyAudience == value
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (selected) SocialColors.Turquoise else MaterialTheme.colorScheme.surfaceVariant)
+                            .clickable { replyAudience = value }
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -191,7 +217,7 @@ fun NewPostSheet(
             Button(
                 onClick = {
                     scope.launch {
-                        if (viewModel.post(context, caption, isSocialOnly, imageUris, taggedProfileId, locationName, isSensitive)) {
+                        if (viewModel.post(context, caption, isSocialOnly, imageUris, taggedProfileId, locationName, isSensitive, replyAudience)) {
                             onPosted()
                             onDismiss()
                         }

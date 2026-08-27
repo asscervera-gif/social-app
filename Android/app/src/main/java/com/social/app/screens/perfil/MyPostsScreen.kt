@@ -164,6 +164,27 @@ class MyPostsViewModel : ViewModel() {
         }
     }
 
+    /** "¿Quién puede comentar?" real, comparado con Twitter/X/TikTok --
+     * ver 0097_reply_audience.sql. `posts_write_own` ya es `for all`,
+     * mismo criterio que toggleSensitive(): sin política RLS nueva. */
+    fun cycleReplyAudience(post: Post) {
+        val newValue = when (post.replyAudience) {
+            "everyone" -> "followers"
+            "followers" -> "mentioned"
+            else -> "everyone"
+        }
+        _posts.value = _posts.value.map { if (it.id == post.id) it.copy(replyAudience = newValue) else it }
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("posts")
+                    .update({ set("reply_audience", newValue) }) { filter { eq("id", post.id) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo cambiar quién puede comentar."
+                load()
+            }
+        }
+    }
+
     fun editCaption(post: Post, newCaption: String) {
         if (newCaption.length > 2200) {
             _errorMessage.value = "El texto no puede tener más de 2200 caracteres."
@@ -346,6 +367,21 @@ fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
                                     onClick = { viewModel.toggleSensitive(post) },
                                     modifier = Modifier.padding(end = 8.dp)
                                 ) { Text(if (post.isSensitive) "Quitar aviso de sensible" else "Marcar como sensible") }
+                                // "¿Quién puede comentar?" real, comparado
+                                // con Twitter/X/TikTok -- ver
+                                // 0097_reply_audience.sql.
+                                OutlinedButton(
+                                    onClick = { viewModel.cycleReplyAudience(post) },
+                                    modifier = Modifier.padding(end = 8.dp)
+                                ) {
+                                    Text(
+                                        "Comentan: " + when (post.replyAudience) {
+                                            "followers" -> "quienes sigo"
+                                            "mentioned" -> "a quien mencione"
+                                            else -> "todos"
+                                        }
+                                    )
+                                }
                                 OutlinedButton(onClick = { viewModel.delete(post) }) { Text("Borrar") }
                             }
                         }

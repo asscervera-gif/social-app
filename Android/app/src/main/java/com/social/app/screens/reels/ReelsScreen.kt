@@ -152,7 +152,8 @@ fun ReelsScreen(
                         // 0086_disable_comments.sql.
                         onToggleCommentsDisabled = { viewModel.toggleCommentsDisabled(reel) },
                         onToggleHideLikeCount = { viewModel.toggleHideLikeCount(reel) },
-                        onToggleSensitive = { viewModel.toggleSensitive(reel) }
+                        onToggleSensitive = { viewModel.toggleSensitive(reel) },
+                        onCycleReplyAudience = { viewModel.cycleReplyAudience(reel) }
                     )
                 }
             }
@@ -206,7 +207,8 @@ private fun ReelPage(
     onOpenComments: () -> Unit,
     onToggleCommentsDisabled: () -> Unit,
     onToggleHideLikeCount: () -> Unit,
-    onToggleSensitive: () -> Unit
+    onToggleSensitive: () -> Unit,
+    onCycleReplyAudience: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val mentionResolver = remember { MentionResolver() }
@@ -325,6 +327,21 @@ private fun ReelPage(
                         modifier = Modifier
                             .padding(start = 10.dp)
                             .clickable(onClick = onToggleSensitive),
+                        color = androidx.compose.ui.graphics.Color.White
+                    )
+                    // "¿Quién puede comentar?" real, comparado con
+                    // Twitter/X/TikTok -- ver
+                    // ReelsViewModel.cycleReplyAudience(),
+                    // 0097_reply_audience.sql.
+                    Text(
+                        when (reel.replyAudience) {
+                            "followers" -> "💬🧑‍🤝‍🧑"
+                            "mentioned" -> "💬@"
+                            else -> "💬🌐"
+                        },
+                        modifier = Modifier
+                            .padding(start = 10.dp)
+                            .clickable(onClick = onCycleReplyAudience),
                         color = androidx.compose.ui.graphics.Color.White
                     )
                 }

@@ -1714,6 +1714,55 @@ async function main() {
     await db.query(`insert into reel_comments (reel_id, author_id, body) values ($1, $2, 'intento con comentarios cerrados')`, [mutedWordsReel.id, u2]);
   });
 
+  // --- posts.reply_audience/reels.reply_audience (0097_reply_audience.sql):
+  // "¿quién puede comentar?" real, comparado con Twitter/X/TikTok --
+  // publicaciones/reels NUEVOS y propios de u1 (no reutiliza
+  // mutedWordsPost/mutedWordsReel, ya usados arriba con reply_audience
+  // por defecto 'everyone'). ---
+  await asUser(u1);
+  const followersOnlyPost = (await db.query(
+    `insert into posts (author_id, caption, reply_audience) values ($1, 'solo comentan quienes me siguen', 'followers') returning id`, [u1]
+  )).rows[0];
+  await asUser(u4);
+  await expectFail('comments_insert_own: u4 real, que NO sigue al autor, NO puede comentar (reply_audience = followers)', async () => {
+    await db.query(`insert into comments (post_id, author_id, body) values ($1, $2, 'intento sin seguir')`, [followersOnlyPost.id, u4]);
+  });
+  await asUser(u2);
+  await db.query(`insert into follows (follower_id, followee_id) values ($1, $2)`, [u2, u1]);
+  await expectOk('comments_insert_own: u2 real, que SÍ sigue al autor, SÍ puede comentar (reply_audience = followers)', async () => {
+    await db.query(`insert into comments (post_id, author_id, body) values ($1, $2, 'ahora sí te sigo')`, [followersOnlyPost.id, u2]);
+  });
+  await asUser(u1);
+  await expectOk('comments_insert_own: el propio autor real (u1) SIEMPRE puede comentar su publicación, sea cual sea reply_audience', async () => {
+    await db.query(`insert into comments (post_id, author_id, body) values ($1, $2, 'comento lo mío')`, [followersOnlyPost.id, u1]);
+  });
+
+  const mentionedOnlyPost = (await db.query(
+    `insert into posts (author_id, caption, reply_audience) values ($1, 'solo comenta @maria99', 'mentioned') returning id`, [u1]
+  )).rows[0];
+  await asUser(u4);
+  await expectFail('comments_insert_own: u4 real, al que NO se menciona en el caption, NO puede comentar (reply_audience = mentioned)', async () => {
+    await db.query(`insert into comments (post_id, author_id, body) values ($1, $2, 'intento sin mención')`, [mentionedOnlyPost.id, u4]);
+  });
+  await asUser(u2);
+  await expectOk('comments_insert_own: u2 real (@maria99), a quien SÍ se menciona en el caption, SÍ puede comentar (reply_audience = mentioned)', async () => {
+    await db.query(`insert into comments (post_id, author_id, body) values ($1, $2, 'me mencionaste, aquí estoy')`, [mentionedOnlyPost.id, u2]);
+  });
+
+  // Mismo espejo real en reel_comments.
+  await asUser(u1);
+  const followersOnlyReel = (await db.query(
+    `insert into reels (author_id, video_url, reply_audience) values ($1, 'v3.mp4', 'followers') returning id`, [u1]
+  )).rows[0];
+  await asUser(u4);
+  await expectFail('reel_comments_insert_own: u4 real, que NO sigue al autor, NO puede comentar el reel (reply_audience = followers)', async () => {
+    await db.query(`insert into reel_comments (reel_id, author_id, body) values ($1, $2, 'intento sin seguir')`, [followersOnlyReel.id, u4]);
+  });
+  await asUser(u2);
+  await expectOk('reel_comments_insert_own: u2 real, que ya sigue al autor, SÍ puede comentar el reel (reply_audience = followers)', async () => {
+    await db.query(`insert into reel_comments (reel_id, author_id, body) values ($1, $2, 'te sigo, comento')`, [followersOnlyReel.id, u2]);
+  });
+
   // --- starred_messages (0087_starred_messages.sql): mensajes destacados
   // reales, comparado con WhatsApp -- privado, sobre CUALQUIER mensaje
   // (propio o ajeno), en un chat 1:1 o de grupo. Reutiliza `chat`

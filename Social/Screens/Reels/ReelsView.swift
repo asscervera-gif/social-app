@@ -128,7 +128,8 @@ struct ReelsView: View {
             onOpenComments: { commentingReelID = reel.id },
             onToggleCommentsDisabled: { Task { await viewModel.toggleCommentsDisabled(reel) } },
             onToggleHideLikeCount: { Task { await viewModel.toggleHideLikeCount(reel) } },
-            onToggleSensitive: { Task { await viewModel.toggleSensitive(reel) } }
+            onToggleSensitive: { Task { await viewModel.toggleSensitive(reel) } },
+            onCycleReplyAudience: { Task { await viewModel.cycleReplyAudience(reel) } }
         )
     }
 }
@@ -152,6 +153,17 @@ private struct ReelRow: View {
     // TikTok -- el control solo tiene sentido sobre el reel propio
     // (0096_sensitive_content.sql).
     let onToggleSensitive: () -> Void
+    // "¿Quién puede comentar?" real, comparado con Twitter/X/TikTok --
+    // el control solo tiene sentido sobre el reel propio
+    // (0097_reply_audience.sql).
+    let onCycleReplyAudience: () -> Void
+    private var replyAudienceIcon: String {
+        switch reel.replyAudience {
+        case "followers": return "💬🧑‍🤝‍🧑"
+        case "mentioned": return "💬@"
+        default: return "💬🌐"
+        }
+    }
     @State private var player: AVPlayer?
     // Nombre de usuario único real (@handle, 0073_profile_username.sql) +
     // notificación real de mención (0074_mentions.sql), comparado con
@@ -232,6 +244,16 @@ private struct ReelRow: View {
                     // 0096_sensitive_content.sql.
                     Button(action: onToggleSensitive) {
                         Text(reel.isSensitive ? "⚠️✅" : "⚠️")
+                    }
+                    .buttonStyle(.plain)
+                    // "¿Quién puede comentar?" real, comparado con
+                    // Twitter/X/TikTok -- ver
+                    // ReelsViewModel.cycleReplyAudience(),
+                    // 0097_reply_audience.sql. Icono calculado aparte,
+                    // mismo motivo real ya documentado en
+                    // ReelsView.swift.row(for:).
+                    Button(action: onCycleReplyAudience) {
+                        Text(replyAudienceIcon)
                     }
                     .buttonStyle(.plain)
                 }

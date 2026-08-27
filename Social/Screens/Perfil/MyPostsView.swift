@@ -137,6 +137,31 @@ final class MyPostsViewModel: ObservableObject {
         }
     }
 
+    /// "¿Quién puede comentar?" real, comparado con Twitter/X/TikTok --
+    /// ver 0097_reply_audience.sql. Equivalente de
+    /// MyPostsViewModel.kt.cycleReplyAudience().
+    func cycleReplyAudience(_ post: Post) async {
+        let newValue: String
+        switch post.replyAudience {
+        case "everyone": newValue = "followers"
+        case "followers": newValue = "mentioned"
+        default: newValue = "everyone"
+        }
+        if let index = posts.firstIndex(where: { $0.id == post.id }) {
+            posts[index].replyAudience = newValue
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("posts")
+                .update(["reply_audience": newValue])
+                .eq("id", value: post.id)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo cambiar quién puede comentar."
+            await load()
+        }
+    }
+
     /// Hallazgo real, comparado con Instagram: no había forma de editar el
     /// caption de una publicación ya hecha, solo borrarla entera --
     /// `posts_write_own` (0002_rls.sql) ya es `for all`, así que editar la
@@ -234,6 +259,19 @@ struct MyPostsView: View {
                 Text(emptyStateText).foregroundStyle(.secondary)
             }
             ForEach(visiblePosts) { post in
+                // "¿Quién puede comentar?" real, comparado con Twitter/X/
+                // TikTok -- calculado aparte para no anidar un switch
+                // dentro del propio Button (mismo motivo real ya
+                // documentado en ReelsView.swift: el compilador de Swift
+                // real puede tardar demasiado en type-checkear una
+                // expresión compleja inlineada dentro de un ViewBuilder).
+                let audienceLabel: String = {
+                    switch post.replyAudience {
+                    case "followers": return "quienes sigo"
+                    case "mentioned": return "a quien mencione"
+                    default: return "todos"
+                    }
+                }()
                 VStack(alignment: .leading, spacing: 4) {
                     // Hallazgo real, mismo hueco ya cerrado en Guardados:
                     // esta lista tampoco mostraba la imagen de la
@@ -299,6 +337,12 @@ struct MyPostsView: View {
                         Task { await viewModel.toggleSensitive(post) }
                     }
                     .tint(.orange)
+                    // "¿Quién puede comentar?" real, comparado con
+                    // Twitter/X/TikTok -- ver 0097_reply_audience.sql.
+                    Button("Comentan: \(audienceLabel)") {
+                        Task { await viewModel.cycleReplyAudience(post) }
+                    }
+                    .tint(.teal)
                 }
             }
         }

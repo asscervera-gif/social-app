@@ -42,7 +42,10 @@ data class Reel(
     // Marcar contenido como sensible, comparado con Instagram/Twitter/
     // TikTok -- difumina el vídeo para cualquiera que no sea el autor
     // hasta que toque para revelarlo (0096_sensitive_content.sql).
-    @SerialName("is_sensitive") val isSensitive: Boolean = false
+    @SerialName("is_sensitive") val isSensitive: Boolean = false,
+    // "¿Quién puede comentar?" real, comparado con Twitter/X/TikTok --
+    // 'everyone'/'followers'/'mentioned' (0097_reply_audience.sql).
+    @SerialName("reply_audience") val replyAudience: String = "everyone"
 )
 
 /**
@@ -245,6 +248,27 @@ class ReelsViewModel : ViewModel() {
                     .update({ set("is_sensitive", newValue) }) { filter { eq("id", reel.id) } }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo cambiar la marca de contenido sensible."
+                load()
+            }
+        }
+    }
+
+    /** "¿Quién puede comentar?" real, comparado con Twitter/X/TikTok --
+     * ver 0097_reply_audience.sql. `reels_write_own` ya es `for all`,
+     * mismo criterio que toggleSensitive(): sin política RLS nueva. */
+    fun cycleReplyAudience(reel: Reel) {
+        val newValue = when (reel.replyAudience) {
+            "everyone" -> "followers"
+            "followers" -> "mentioned"
+            else -> "everyone"
+        }
+        _reels.update { list -> list.map { if (it.id == reel.id) it.copy(replyAudience = newValue) else it } }
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("reels")
+                    .update({ set("reply_audience", newValue) }) { filter { eq("id", reel.id) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo cambiar quién puede comentar."
                 load()
             }
         }

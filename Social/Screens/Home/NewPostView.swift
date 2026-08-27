@@ -33,6 +33,9 @@ struct NewPostView: View {
     // Marcar contenido como sensible, comparado con Instagram/Twitter/
     // TikTok -- ver NewPostViewModel.post(), 0096_sensitive_content.sql.
     @State private var isSensitive = false
+    // "¿Quién puede comentar?" real, comparado con Twitter/X/TikTok --
+    // ver NewPostViewModel.post(), 0097_reply_audience.sql.
+    @State private var replyAudience = "everyone"
     let onDismiss: () -> Void
     let onPosted: () -> Void
 
@@ -92,6 +95,16 @@ struct NewPostView: View {
                 Toggle("Marcar como contenido sensible", isOn: $isSensitive)
             }
 
+            // "¿Quién puede comentar?" real, comparado con Twitter/X/
+            // TikTok -- ver 0097_reply_audience.sql.
+            Text("¿Quién puede comentar?").font(.subheadline.bold())
+            Picker("¿Quién puede comentar?", selection: $replyAudience) {
+                Text("Todos").tag("everyone")
+                Text("A quienes sigo").tag("followers")
+                Text("A quien mencione").tag("mentioned")
+            }
+            .pickerStyle(.segmented)
+
             Toggle("Solo visible para tus socials aceptados", isOn: $isSocialOnly)
 
             if !socialsViewModel.socials.isEmpty {
@@ -119,7 +132,7 @@ struct NewPostView: View {
 
             Button {
                 Task {
-                    if await viewModel.post(caption: caption, isSocialOnly: isSocialOnly, imageDataList: imageDataList, taggedProfileID: taggedProfileID, locationName: locationName, isSensitive: isSensitive) {
+                    if await viewModel.post(caption: caption, isSocialOnly: isSocialOnly, imageDataList: imageDataList, taggedProfileID: taggedProfileID, locationName: locationName, isSensitive: isSensitive, replyAudience: replyAudience) {
                         onPosted()
                         onDismiss()
                     }

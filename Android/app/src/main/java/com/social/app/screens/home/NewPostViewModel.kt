@@ -44,7 +44,10 @@ class NewPostViewModel : ViewModel() {
         @SerialName("location_name") val locationName: String? = null,
         // Marcar contenido como sensible, comparado con Instagram/
         // Twitter/TikTok -- ver 0096_sensitive_content.sql.
-        @SerialName("is_sensitive") val isSensitive: Boolean = false
+        @SerialName("is_sensitive") val isSensitive: Boolean = false,
+        // "¿Quién puede comentar?" real, comparado con Twitter/X/TikTok
+        // -- ver 0097_reply_audience.sql.
+        @SerialName("reply_audience") val replyAudience: String = "everyone"
     )
 
     @Serializable
@@ -63,7 +66,7 @@ class NewPostViewModel : ViewModel() {
      * siempre (sin cambiar nada para quien solo muestra una miniatura),
      * el resto en `post_media`. [taggedProfileId] es opcional -- "con
      * quién" (0051_post_social_tags.sql), comparado con SOCIAL_APP.html. */
-    suspend fun post(context: Context, caption: String, isSocialOnly: Boolean, imageUris: List<Uri>, taggedProfileId: String? = null, locationName: String? = null, isSensitive: Boolean = false): Boolean {
+    suspend fun post(context: Context, caption: String, isSocialOnly: Boolean, imageUris: List<Uri>, taggedProfileId: String? = null, locationName: String? = null, isSensitive: Boolean = false, replyAudience: String = "everyone"): Boolean {
         val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return false
         // Mismo límite real que posts_caption_length
         // (0023_text_length_limits.sql) — validado aquí también para dar
@@ -85,7 +88,7 @@ class NewPostViewModel : ViewModel() {
         return try {
             val mediaUrls = imageUris.mapNotNull { StorageUploader.uploadImage(context, it, userId) }
             val insertedPost = SupabaseManager.client.from("posts")
-                .insert(NewPost(userId, caption, isSocialOnly, mediaUrls.firstOrNull(), taggedProfileId, trimmedLocation, isSensitive)) { select() }
+                .insert(NewPost(userId, caption, isSocialOnly, mediaUrls.firstOrNull(), taggedProfileId, trimmedLocation, isSensitive, replyAudience)) { select() }
                 .decodeSingle<Post>()
             if (mediaUrls.size > 1) {
                 val extraMedia = mediaUrls.drop(1).mapIndexed { index, url ->
