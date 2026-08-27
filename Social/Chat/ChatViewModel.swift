@@ -774,13 +774,19 @@ final class ChatViewModel: ObservableObject {
     /// (ver `messages_body_or_media`, 0016_message_media.sql).
     /// [viewOnce] es opcional -- foto para ver una vez, comparado con
     /// WhatsApp/Instagram DM/Snapchat, ver 0105_view_once_messages.sql.
-    func sendPhoto(imageData: Data, viewOnce: Bool = false) async {
+    func sendPhoto(imageData: Data, viewOnce: Bool = false, caption: String = "") async {
         icebreaker = nil
         do {
             let url = try await StorageUploader.uploadImage(data: imageData, fileExtension: "jpg", userID: currentUserID)
+            // Añadir un pie de foto real, comparado con WhatsApp/
+            // Telegram/Instagram DM -- mismo límite real que
+            // messages_body_length (0023, 2000 caracteres). Equivalente
+            // de ChatViewModel.kt.sendPhoto().
+            let trimmed = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+            let finalCaption = trimmed.isEmpty ? nil : String(trimmed.prefix(2000))
             try await SupabaseManager.shared.client
                 .from("messages")
-                .insert(NewMessage(chat_id: chatID, sender_id: currentUserID, media_url: url, view_once: viewOnce))
+                .insert(NewMessage(chat_id: chatID, sender_id: currentUserID, body: finalCaption, media_url: url, view_once: viewOnce))
                 .execute()
         } catch {
             errorMessage = "No se pudo enviar la foto."

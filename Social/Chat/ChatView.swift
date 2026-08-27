@@ -144,28 +144,41 @@ struct ChatView: View {
                     // Foto para ver una vez, comparado con WhatsApp/
                     // Instagram DM/Snapchat -- se pregunta al elegir la
                     // foto. Ver ChatViewModel.sendPhoto(),
-                    // 0105_view_once_messages.sql.
-                    .confirmationDialog(
-                        "Enviar foto",
-                        isPresented: Binding(
-                            get: { pendingPhotoData != nil },
-                            set: { if !$0 { pendingPhotoData = nil } }
-                        ),
-                        titleVisibility: .visible
-                    ) {
-                        Button("🔥 Ver una vez") {
-                            if let data = pendingPhotoData {
-                                pendingPhotoData = nil
-                                Task { await viewModel.sendPhoto(imageData: data, viewOnce: true) }
+                    // 0105_view_once_messages.sql. `.sheet`/`Form` en
+                    // vez de `.confirmationDialog`: ese no admite un
+                    // `TextField` propio para el pie de foto nuevo
+                    // (mismo hallazgo real ya documentado en
+                    // 0099_story_questions.sql).
+                    .sheet(isPresented: Binding(
+                        get: { pendingPhotoData != nil },
+                        set: { if !$0 { pendingPhotoData = nil } }
+                    )) {
+                        NavigationStack {
+                            Form {
+                                TextField("Añadir un comentario (opcional)", text: $pendingPhotoCaption)
+                                Button("🔥 Ver una vez") {
+                                    if let data = pendingPhotoData {
+                                        pendingPhotoData = nil
+                                        let caption = pendingPhotoCaption
+                                        pendingPhotoCaption = ""
+                                        Task { await viewModel.sendPhoto(imageData: data, viewOnce: true, caption: caption) }
+                                    }
+                                }
+                                Button("Normal") {
+                                    if let data = pendingPhotoData {
+                                        pendingPhotoData = nil
+                                        let caption = pendingPhotoCaption
+                                        pendingPhotoCaption = ""
+                                        Task { await viewModel.sendPhoto(imageData: data, viewOnce: false, caption: caption) }
+                                    }
+                                }
+                                Button("Cancelar", role: .cancel) {
+                                    pendingPhotoData = nil
+                                    pendingPhotoCaption = ""
+                                }
                             }
+                            .navigationTitle("Enviar foto")
                         }
-                        Button("Normal") {
-                            if let data = pendingPhotoData {
-                                pendingPhotoData = nil
-                                Task { await viewModel.sendPhoto(imageData: data, viewOnce: false) }
-                            }
-                        }
-                        Button("Cancelar", role: .cancel) { pendingPhotoData = nil }
                     }
             }
 
@@ -493,6 +506,9 @@ struct ChatView: View {
     // Foto para ver una vez, comparado con WhatsApp/Instagram DM/
     // Snapchat -- ver ChatViewModel.sendPhoto(), 0105_view_once_messages.sql.
     @State private var pendingPhotoData: Data?
+    // Añadir un pie de foto real, comparado con WhatsApp/Telegram/
+    // Instagram DM -- ver ChatViewModel.sendPhoto().
+    @State private var pendingPhotoCaption = ""
     // Última pieza real de "chat funcional con fotos, voz, reacciones,
     // read receipts" — grabación nativa (ver VoiceRecorder.swift).
     @State private var voiceRecorder = VoiceRecorder()

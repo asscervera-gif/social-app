@@ -767,19 +767,34 @@ fun ChatScreen(
     // Foto para ver una vez, comparado con WhatsApp/Instagram DM/
     // Snapchat -- ver ChatViewModel.sendPhoto(), 0105_view_once_messages.sql.
     pendingPhotoUri?.let { uri ->
+        var photoCaption by remember(uri) { mutableStateOf("") }
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { pendingPhotoUri = null },
             title = { Text("Enviar foto") },
-            text = { Text("¿Cómo quieres enviarla?") },
+            text = {
+                Column {
+                    Text("¿Cómo quieres enviarla?")
+                    // Añadir un pie de foto real, comparado con
+                    // WhatsApp/Telegram/Instagram DM -- hueco real,
+                    // antes solo se podía mandar la foto sola.
+                    OutlinedTextField(
+                        value = photoCaption,
+                        onValueChange = { photoCaption = it },
+                        placeholder = { Text("Añadir un comentario (opcional)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                    )
+                }
+            },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = {
-                    viewModel.sendPhoto(context, uri, viewOnce = true)
+                    viewModel.sendPhoto(context, uri, viewOnce = true, caption = photoCaption)
                     pendingPhotoUri = null
                 }) { Text("🔥 Ver una vez") }
             },
             dismissButton = {
                 androidx.compose.material3.TextButton(onClick = {
-                    viewModel.sendPhoto(context, uri, viewOnce = false)
+                    viewModel.sendPhoto(context, uri, viewOnce = false, caption = photoCaption)
                     pendingPhotoUri = null
                 }) { Text("Normal") }
             }
