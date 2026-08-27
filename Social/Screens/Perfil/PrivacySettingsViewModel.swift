@@ -64,6 +64,14 @@ final class PrivacySettingsViewModel: ObservableObject {
     // todos los demás, incluido quien lo escribió. Equivalente de
     // PrivacySettingsViewModel.kt.mutedKeywords.
     @Published var mutedKeywords: [String] = []
+    // Palabras silenciadas reales en TU PROPIO feed, comparado con
+    // Twitter/X ("Muted words") -- oculta de tu feed cualquier
+    // publicación (de cualquier autor) que contenga una de estas
+    // palabras. Distinto real de mutedKeywords (arriba): aquello filtra
+    // comentarios AJENOS en TUS publicaciones; esto filtra publicaciones
+    // AJENAS en TU feed. Ver 0116_muted_feed_keywords.sql. Equivalente
+    // de PrivacySettingsViewModel.kt.mutedFeedKeywords.
+    @Published var mutedFeedKeywords: [String] = []
     // Recibo de lectura real ("Leído ✓✓"), comparado con WhatsApp/
     // Instagram/Messenger -- mismo criterio recíproco real que esas apps:
     // si lo apagas, tampoco ves el de los demás (ChatViewModel.swift ya
@@ -78,6 +86,7 @@ final class PrivacySettingsViewModel: ObservableObject {
         let muted_push_kinds: [String]
         let muted_keywords: [String]
         let read_receipts_enabled: Bool
+        let muted_feed_keywords: [String]
     }
 
     func load() async {
@@ -85,7 +94,7 @@ final class PrivacySettingsViewModel: ObservableObject {
         do {
             let row: PrivacyRow = try await SupabaseManager.shared.client
                 .from("profiles")
-                .select("compat_public,location_public,muted_push_kinds,muted_keywords,read_receipts_enabled")
+                .select("compat_public,location_public,muted_push_kinds,muted_keywords,read_receipts_enabled,muted_feed_keywords")
                 .eq("id", value: userID)
                 .single()
                 .execute()
@@ -95,6 +104,7 @@ final class PrivacySettingsViewModel: ObservableObject {
             mutedKinds = Set(row.muted_push_kinds)
             mutedKeywords = row.muted_keywords
             readReceiptsEnabled = row.read_receipts_enabled
+            mutedFeedKeywords = row.muted_feed_keywords
         } catch {
             errorMessage = "No se pudo cargar la privacidad."
         }
@@ -136,6 +146,51 @@ final class PrivacySettingsViewModel: ObservableObject {
             } catch {
                 errorMessage = "No se pudo quitar la palabra silenciada."
                 mutedKeywords = previous
+            }
+        }
+    }
+
+    /// Palabras silenciadas reales en TU PROPIO feed, comparado con
+    /// Twitter/X -- mismo patrón exacto que addMutedKeyword()/
+    /// removeMutedKeyword() de arriba, sobre la columna nueva
+    /// `muted_feed_keywords` (0116_muted_feed_keywords.sql). Equivalente
+    /// de PrivacySettingsViewModel.kt.addMutedFeedKeyword().
+    func addMutedFeedKeyword(_ word: String) {
+        let normalized = word.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty, !mutedFeedKeywords.contains(normalized) else { return }
+        let previous = mutedFeedKeywords
+        mutedFeedKeywords.append(normalized)
+        Task {
+            guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+            struct KeywordsUpdate: Encodable { let muted_feed_keywords: [String] }
+            do {
+                try await SupabaseManager.shared.client
+                    .from("profiles")
+                    .update(KeywordsUpdate(muted_feed_keywords: mutedFeedKeywords))
+                    .eq("id", value: userID)
+                    .execute()
+            } catch {
+                errorMessage = "No se pudo guardar la palabra silenciada."
+                mutedFeedKeywords = previous
+            }
+        }
+    }
+
+    func removeMutedFeedKeyword(_ word: String) {
+        let previous = mutedFeedKeywords
+        mutedFeedKeywords.removeAll { $0 == word }
+        Task {
+            guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+            struct KeywordsUpdate: Encodable { let muted_feed_keywords: [String] }
+            do {
+                try await SupabaseManager.shared.client
+                    .from("profiles")
+                    .update(KeywordsUpdate(muted_feed_keywords: mutedFeedKeywords))
+                    .eq("id", value: userID)
+                    .execute()
+            } catch {
+                errorMessage = "No se pudo quitar la palabra silenciada."
+                mutedFeedKeywords = previous
             }
         }
     }

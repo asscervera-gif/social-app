@@ -27,6 +27,9 @@ class HomeViewModel : ViewModel() {
     @Serializable
     private data class BlockRow(@SerialName("blocked_id") val blockedId: String)
 
+    @Serializable
+    private data class MutedFeedKeywordsRow(@SerialName("muted_feed_keywords") val mutedFeedKeywords: List<String> = emptyList())
+
     private val _feed = MutableStateFlow<List<Post>>(emptyList())
     val feed: StateFlow<List<Post>> = _feed.asStateFlow()
 
@@ -125,6 +128,22 @@ class HomeViewModel : ViewModel() {
                 } catch (e: Exception) {
                     emptySet()
                 }
+                // Palabras silenciadas reales en TU PROPIO feed,
+                // comparado con Twitter/X ("Muted words") -- distinto de
+                // `muted_keywords` (0078, filtra comentarios AJENOS en
+                // TUS publicaciones): esto oculta publicaciones AJENAS de
+                // TU feed. Resuelto en cliente, nunca en RLS -- mismo
+                // criterio que el filtro de `blocks` de arriba. Ver
+                // 0116_muted_feed_keywords.sql.
+                val mutedFeedKeywords = try {
+                    val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
+                    if (myId == null) emptyList() else SupabaseManager.client.from("profiles")
+                        .select(columns = Columns.raw("muted_feed_keywords")) { filter { eq("id", myId) } }
+                        .decodeSingleOrNull<MutedFeedKeywordsRow>()
+                        ?.mutedFeedKeywords ?: emptyList()
+                } catch (e: Exception) {
+                    emptyList()
+                }
                 // Optimización: la tarjeta del feed solo usa estas 8 columnas
                 // de "posts", no filas completas (mismo patrón que
                 // MatchViewModel/DuelEntryPoint/AvisosViewModel).
@@ -143,7 +162,10 @@ class HomeViewModel : ViewModel() {
                         limit(30)
                     }
                     .decodeList<Post>()
-                    .filter { it.authorId !in blockedIds && it.archivedAt == null }
+                    .filter {
+                        it.authorId !in blockedIds && it.archivedAt == null &&
+                            mutedFeedKeywords.none { word -> it.caption?.contains(word, ignoreCase = true) == true }
+                    }
 
                 val feedIds = _feed.value.map { it.id }
                 if (feedIds.isNotEmpty()) {

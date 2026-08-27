@@ -47,6 +47,9 @@ struct AjustesView: View {
     // Palabras silenciadas reales en comentarios (0078_muted_keywords.sql),
     // comparado con Instagram/Twitter.
     @State private var newMutedKeyword = ""
+    // Palabras silenciadas reales en TU PROPIO feed, comparado con
+    // Twitter/X ("Muted words") -- ver 0116_muted_feed_keywords.sql.
+    @State private var newMutedFeedKeyword = ""
     // Verificación real (insignia azul, 0080_verification_requests.sql),
     // comparado con Instagram/Twitter/TikTok.
     @StateObject private var verification = VerificationRequestViewModel()
@@ -169,6 +172,38 @@ struct AjustesView: View {
                     Spacer()
                     Button("Quitar", role: .destructive) {
                         privacy.removeMutedKeyword(word)
+                    }
+                    .font(.caption)
+                }
+            }
+
+            // Palabras silenciadas reales en TU PROPIO feed, comparado
+            // con Twitter/X ("Muted words") -- distinto real de
+            // "Palabras silenciadas" de arriba (eso filtra comentarios
+            // ajenos en TUS publicaciones; esto filtra publicaciones
+            // ajenas en TU feed). Ver
+            // PrivacySettingsViewModel.addMutedFeedKeyword(),
+            // 0116_muted_feed_keywords.sql.
+            Text("Palabras silenciadas en tu feed").font(.headline)
+            Text("Oculta de tu feed cualquier publicación que contenga estas palabras.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                TextField("nueva palabra", text: $newMutedFeedKeyword)
+                    .textFieldStyle(.roundedBorder)
+                    .textInputAutocapitalization(.never)
+                Button("Añadir") {
+                    privacy.addMutedFeedKeyword(newMutedFeedKeyword)
+                    newMutedFeedKeyword = ""
+                }
+                .disabled(newMutedFeedKeyword.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            ForEach(privacy.mutedFeedKeywords, id: \.self) { word in
+                HStack {
+                    Text(word)
+                    Spacer()
+                    Button("Quitar", role: .destructive) {
+                        privacy.removeMutedFeedKeyword(word)
                     }
                     .font(.caption)
                 }

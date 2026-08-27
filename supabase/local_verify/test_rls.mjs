@@ -3124,6 +3124,23 @@ async function main() {
   const dmHiddenFromRecipient = (await db.query(`select id from messages where id = $1`, [dmMsg1.id])).rows;
   check('messages_select: dmU2 real tampoco lo ve una vez caducado', dmHiddenFromRecipient.length === 0);
 
+  // --- profiles.muted_feed_keywords (0116_muted_feed_keywords.sql):
+  // palabras silenciadas reales en el propio feed, comparado con
+  // Twitter/X -- columna normal sin trigger ni política nueva (mismo
+  // criterio que read_receipts_enabled/hide_like_count): solo se
+  // confirma el valor por defecto real y que el propio dueño de verdad
+  // puede guardarlas (profiles_update_own ya cubre tocar la propia
+  // fila; el filtrado real ocurre en el cliente, nunca en RLS). ---
+  const defaultMutedFeed = (await db.query(`select muted_feed_keywords from profiles where id = $1`, [u1])).rows[0];
+  check('profiles.muted_feed_keywords: arranca en lista vacía por defecto', Array.isArray(defaultMutedFeed.muted_feed_keywords) && defaultMutedFeed.muted_feed_keywords.length === 0);
+
+  await asUser(u1);
+  await expectOk('profiles_update_own: u1 SÍ puede guardar su propia lista real de palabras silenciadas', async () => {
+    await db.query(`update profiles set muted_feed_keywords = ARRAY['spoiler', 'política'] where id = $1`, [u1]);
+  });
+  const mutedFeedAfterSave = (await db.query(`select muted_feed_keywords from profiles where id = $1`, [u1])).rows[0];
+  check('profiles.muted_feed_keywords: la lista real queda guardada de verdad', JSON.stringify(mutedFeedAfterSave.muted_feed_keywords) === JSON.stringify(['spoiler', 'política']));
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

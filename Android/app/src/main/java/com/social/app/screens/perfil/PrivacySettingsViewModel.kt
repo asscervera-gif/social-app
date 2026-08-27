@@ -32,7 +32,12 @@ class PrivacySettingsViewModel : ViewModel() {
         @SerialName("location_public") val locationPublic: Boolean,
         @SerialName("muted_push_kinds") val mutedPushKinds: List<String> = emptyList(),
         @SerialName("muted_keywords") val mutedKeywords: List<String> = emptyList(),
-        @SerialName("read_receipts_enabled") val readReceiptsEnabled: Boolean = true
+        @SerialName("read_receipts_enabled") val readReceiptsEnabled: Boolean = true,
+        // Palabras silenciadas reales en TU PROPIO feed, comparado con
+        // Twitter/X ("Muted words") -- distinto de muted_keywords (eso
+        // filtra comentarios ajenos en TUS publicaciones). Ver
+        // 0116_muted_feed_keywords.sql.
+        @SerialName("muted_feed_keywords") val mutedFeedKeywords: List<String> = emptyList()
     )
 
     private val _compatPublic = MutableStateFlow(false)
@@ -66,6 +71,15 @@ class PrivacySettingsViewModel : ViewModel() {
     private val _mutedKeywords = MutableStateFlow<List<String>>(emptyList())
     val mutedKeywords: StateFlow<List<String>> = _mutedKeywords.asStateFlow()
 
+    // Palabras silenciadas reales en TU PROPIO feed, comparado con
+    // Twitter/X ("Muted words") -- oculta de tu feed cualquier
+    // publicación (de cualquier autor) cuyo texto contenga una de estas
+    // palabras. Distinto real de _mutedKeywords (arriba): aquello
+    // filtra comentarios AJENOS en TUS publicaciones; esto filtra
+    // publicaciones AJENAS en TU feed. Ver 0116_muted_feed_keywords.sql.
+    private val _mutedFeedKeywords = MutableStateFlow<List<String>>(emptyList())
+    val mutedFeedKeywords: StateFlow<List<String>> = _mutedFeedKeywords.asStateFlow()
+
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
@@ -74,13 +88,14 @@ class PrivacySettingsViewModel : ViewModel() {
             try {
                 val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
                 val row = SupabaseManager.client.from("profiles")
-                    .select(columns = Columns.raw("compat_public,location_public,muted_push_kinds,muted_keywords,read_receipts_enabled")) { filter { eq("id", userId) } }
+                    .select(columns = Columns.raw("compat_public,location_public,muted_push_kinds,muted_keywords,read_receipts_enabled,muted_feed_keywords")) { filter { eq("id", userId) } }
                     .decodeSingle<PrivacyRow>()
                 _compatPublic.value = row.compatPublic
                 _locationPublic.value = row.locationPublic
                 _mutedKinds.value = row.mutedPushKinds.toSet()
                 _mutedKeywords.value = row.mutedKeywords
                 _readReceiptsEnabled.value = row.readReceiptsEnabled
+                _mutedFeedKeywords.value = row.mutedFeedKeywords
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo cargar la privacidad."
             }
@@ -115,6 +130,42 @@ class PrivacySettingsViewModel : ViewModel() {
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo quitar la palabra silenciada."
                 _mutedKeywords.value = previous
+            }
+        }
+    }
+
+    /** Palabras silenciadas reales en TU PROPIO feed, comparado con
+     * Twitter/X -- mismo patrón exacto que addMutedKeyword()/
+     * removeMutedKeyword() de arriba, sobre la columna nueva
+     * `muted_feed_keywords` (0116_muted_feed_keywords.sql). */
+    fun addMutedFeedKeyword(word: String) {
+        val normalized = word.trim().lowercase()
+        if (normalized.isEmpty() || normalized in _mutedFeedKeywords.value) return
+        val previous = _mutedFeedKeywords.value
+        _mutedFeedKeywords.value = previous + normalized
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                SupabaseManager.client.from("profiles")
+                    .update({ set("muted_feed_keywords", _mutedFeedKeywords.value) }) { filter { eq("id", userId) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo guardar la palabra silenciada."
+                _mutedFeedKeywords.value = previous
+            }
+        }
+    }
+
+    fun removeMutedFeedKeyword(word: String) {
+        val previous = _mutedFeedKeywords.value
+        _mutedFeedKeywords.value = previous - word
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                SupabaseManager.client.from("profiles")
+                    .update({ set("muted_feed_keywords", _mutedFeedKeywords.value) }) { filter { eq("id", userId) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo quitar la palabra silenciada."
+                _mutedFeedKeywords.value = previous
             }
         }
     }

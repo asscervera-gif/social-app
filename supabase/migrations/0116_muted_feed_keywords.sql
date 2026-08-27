@@ -1,0 +1,27 @@
+-- ============================================================================
+-- SOCIAL — Palabras silenciadas en TU PROPIO feed, comparado con
+-- Twitter/X ("Muted words")
+--
+-- Distinto real de `profiles.muted_keywords` (0078_muted_keywords.sql):
+-- aquello filtra comentarios AJENOS que llegan a TUS publicaciones (el
+-- "Hidden Words" real de Instagram); esto es la función real de
+-- Twitter/X "Silenciar palabras" -- una lista propia que oculta de TU
+-- feed cualquier publicación (de cualquier autor) cuyo texto contenga
+-- alguna de esas palabras, sin bloquear ni silenciar a nadie en
+-- concreto. Dos conceptos reales distintos de dos apps distintas,
+-- confirmado en el propio código: no existía ningún filtro de feed por
+-- palabra, solo el filtro binario de `blocks`.
+--
+-- Diseño: columna simple en `profiles`, mismo criterio que
+-- `muted_keywords` (0078) -- sin tabla ni trigger de protección
+-- (preferencia propia sin implicaciones de seguridad). A diferencia de
+-- 0078 (necesita un helper `security definer` porque el filtro se
+-- aplica sobre comentarios AJENOS al leer las palabras del DUEÑO de la
+-- publicación), aquí el filtro se resuelve en el CLIENTE, nunca en RLS:
+-- cada quien solo necesita leer su PROPIA lista (`profiles_select_own`,
+-- 0002, ya lo cubre) para decidir qué esconderse a sí mismo de su
+-- propio feed -- mismo patrón exacto que el filtrado de `blocks` que
+-- ya hace `HomeViewModel.load()`/`.swift` en el cliente, nunca en RLS.
+-- ============================================================================
+
+alter table profiles add column if not exists muted_feed_keywords text[] not null default '{}';

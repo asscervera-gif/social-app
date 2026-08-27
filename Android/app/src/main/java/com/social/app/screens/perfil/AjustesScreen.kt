@@ -300,6 +300,48 @@ fun AjustesScreen(
             }
         }
 
+        // Palabras silenciadas reales en TU PROPIO feed, comparado con
+        // Twitter/X ("Muted words") -- distinto real de "Palabras
+        // silenciadas" de arriba (eso filtra comentarios ajenos en TUS
+        // publicaciones; esto filtra publicaciones ajenas en TU feed).
+        // Ver PrivacySettingsViewModel.addMutedFeedKeyword(),
+        // 0116_muted_feed_keywords.sql.
+        Text("Palabras silenciadas en tu feed", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 20.dp))
+        Text(
+            "Oculta de tu feed cualquier publicación que contenga estas palabras.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        val mutedFeedKeywords by privacy.mutedFeedKeywords.collectAsState()
+        var newFeedKeyword by remember { mutableStateOf("") }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = newFeedKeyword,
+                onValueChange = { newFeedKeyword = it },
+                placeholder = { Text("nueva palabra") },
+                singleLine = true,
+                modifier = Modifier.weight(1f)
+            )
+            Button(
+                onClick = { privacy.addMutedFeedKeyword(newFeedKeyword); newFeedKeyword = "" },
+                enabled = newFeedKeyword.isNotBlank(),
+                modifier = Modifier.padding(start = 8.dp)
+            ) { Text("Añadir") }
+        }
+        mutedFeedKeywords.forEach { word ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(word)
+                androidx.compose.material3.TextButton(onClick = { privacy.removeMutedFeedKeyword(word) }) { Text("Quitar") }
+            }
+        }
+
         Text("Privacidad", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 20.dp))
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),

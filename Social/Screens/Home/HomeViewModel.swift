@@ -75,6 +75,27 @@ final class HomeViewModel: ObservableObject {
                 blockedIDs = Set(blockRows.map { $0.blocked_id })
             }
 
+            // Palabras silenciadas reales en TU PROPIO feed, comparado
+            // con Twitter/X ("Muted words") -- distinto de
+            // `muted_keywords` (0078, filtra comentarios AJENOS en TUS
+            // publicaciones): esto oculta publicaciones AJENAS de TU
+            // feed. Resuelto en cliente, nunca en RLS -- mismo criterio
+            // que el filtro de bloqueados de arriba. Mismo fix ya
+            // construido en la versión Kotlin equivalente. Ver
+            // 0116_muted_feed_keywords.sql.
+            struct MutedFeedKeywordsRow: Decodable { let muted_feed_keywords: [String] }
+            var mutedFeedKeywords: [String] = []
+            if let userID = try? await client.auth.session.user.id,
+               let row: MutedFeedKeywordsRow = try? await client
+                .from("profiles")
+                .select("muted_feed_keywords")
+                .eq("id", value: userID)
+                .single()
+                .execute()
+                .value {
+                mutedFeedKeywords = row.muted_feed_keywords
+            }
+
             let allFeed: [Post] = try await client
                 .from("posts")
                 .select()
@@ -91,7 +112,12 @@ final class HomeViewModel: ObservableObject {
             // su propio feed principal, justo lo que archivar debería
             // evitar. Mismo fix ya construido en la versión Kotlin
             // equivalente.
-            feed = allFeed.filter { !blockedIDs.contains($0.authorID) && $0.archivedAt == nil }
+            feed = allFeed.filter {
+                !blockedIDs.contains($0.authorID) && $0.archivedAt == nil &&
+                    !mutedFeedKeywords.contains { word in
+                        $0.caption?.range(of: word, options: .caseInsensitive) != nil
+                    }
+            }
 
             let feedIDs = feed.map { $0.id }
             if !feedIDs.isEmpty {
