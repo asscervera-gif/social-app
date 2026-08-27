@@ -96,6 +96,18 @@ final class HomeViewModel: ObservableObject {
                 mutedFeedKeywords = row.muted_feed_keywords
             }
 
+            // Silenciar una cuenta real, comparado con Instagram/
+            // Twitter/X/Facebook -- sus publicaciones dejan de verse en
+            // tu feed sin dejar de seguirla, sin bloquearla y sin que se
+            // entere nunca. Resuelto en cliente, nunca en RLS -- mismo
+            // criterio exacto que mutedFeedKeywords de arriba. Ver
+            // SafetyManager.muteAccount(), 0126_muted_accounts.sql.
+            struct MutedAccountRow: Decodable { let muted_id: UUID }
+            var mutedAccountIDs: Set<UUID> = []
+            if let rows: [MutedAccountRow] = try? await client.from("muted_accounts").select("muted_id").execute().value {
+                mutedAccountIDs = Set(rows.map { $0.muted_id })
+            }
+
             let allFeed: [Post] = try await client
                 .from("posts")
                 .select()
@@ -113,7 +125,7 @@ final class HomeViewModel: ObservableObject {
             // evitar. Mismo fix ya construido en la versión Kotlin
             // equivalente.
             feed = allFeed.filter { post in
-                !blockedIDs.contains(post.authorID) && post.archivedAt == nil &&
+                !blockedIDs.contains(post.authorID) && !mutedAccountIDs.contains(post.authorID) && post.archivedAt == nil &&
                     !mutedFeedKeywords.contains { word in
                         post.caption?.range(of: word, options: .caseInsensitive) != nil
                     }

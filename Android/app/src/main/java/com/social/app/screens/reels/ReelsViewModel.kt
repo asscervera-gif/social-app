@@ -92,6 +92,9 @@ class ReelsViewModel : ViewModel() {
     private data class MutedFeedKeywordsRow(@SerialName("muted_feed_keywords") val mutedFeedKeywords: List<String> = emptyList())
 
     @Serializable
+    private data class MutedAccountRow(@SerialName("muted_id") val mutedId: String)
+
+    @Serializable
     private data class NewReelLike(
         @SerialName("reel_id") val reelId: String,
         @SerialName("user_id") val userId: String
@@ -138,6 +141,21 @@ class ReelsViewModel : ViewModel() {
                 } catch (e: Exception) {
                     emptyList()
                 }
+                // Silenciar una cuenta real, comparado con
+                // Instagram/Twitter/X/Facebook -- cierra el "hueco real
+                // aparte" del mismo tipo ya documentado para
+                // mutedFeedKeywords: se extiende a Reels con el mismo
+                // criterio exacto. Ver SafetyManager.muteAccount(),
+                // 0126_muted_accounts.sql.
+                val mutedAccountIds = try {
+                    SupabaseManager.client.from("muted_accounts")
+                        .select(columns = Columns.raw("muted_id"))
+                        .decodeList<MutedAccountRow>()
+                        .map { it.mutedId }
+                        .toSet()
+                } catch (e: Exception) {
+                    emptySet()
+                }
                 val recentReels = SupabaseManager.client.from("reels")
                     .select {
                         order("created_at", Order.DESCENDING)
@@ -145,7 +163,7 @@ class ReelsViewModel : ViewModel() {
                     }
                     .decodeList<Reel>()
                     .filter {
-                        it.authorId !in blockedIds &&
+                        it.authorId !in blockedIds && it.authorId !in mutedAccountIds &&
                             mutedFeedKeywords.none { word -> it.caption?.contains(word, ignoreCase = true) == true }
                     }
 

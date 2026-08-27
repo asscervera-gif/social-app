@@ -86,6 +86,41 @@ final class SafetyManager: ObservableObject {
         }
     }
 
+    /// Silenciar una cuenta real, comparado con Instagram/Twitter/X/
+    /// Facebook -- sus publicaciones dejan de verse en TU feed/Reels sin
+    /// dejar de seguirla, sin bloquearla y sin que se entere nunca
+    /// (filtrado real en cliente, HomeViewModel/ReelsViewModel, nunca en
+    /// RLS -- mismo criterio exacto que muted_feed_keywords, 0116). Ver
+    /// 0126_muted_accounts.sql. Equivalente de
+    /// SafetyManager.kt.muteAccount().
+    func muteAccount(userID: UUID, mutedID: UUID) async {
+        struct MutedAccountRow: Encodable {
+            let muter_id: UUID
+            let muted_id: UUID
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("muted_accounts")
+                .insert(MutedAccountRow(muter_id: userID, muted_id: mutedID))
+                .execute()
+        } catch {
+            errorMessage = "No se pudo silenciar a este usuario."
+        }
+    }
+
+    func unmuteAccount(userID: UUID, mutedID: UUID) async {
+        do {
+            try await SupabaseManager.shared.client
+                .from("muted_accounts")
+                .delete()
+                .eq("muter_id", value: userID)
+                .eq("muted_id", value: mutedID)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo dejar de silenciar a este usuario."
+        }
+    }
+
     /// Envía una denuncia. Se revisa manualmente por moderación (fuera del alcance de la app cliente).
     func report(
         reporterID: UUID, reportedID: UUID, reason: String, details: String?,

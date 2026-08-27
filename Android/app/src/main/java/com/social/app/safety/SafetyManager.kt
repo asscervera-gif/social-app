@@ -95,6 +95,40 @@ class SafetyManager : ViewModel() {
     }
 
     @Serializable
+    private data class MutedAccountRow(
+        @SerialName("muter_id") val muterId: String,
+        @SerialName("muted_id") val mutedId: String
+    )
+
+    /** Silenciar una cuenta real, comparado con Instagram/Twitter/X/
+     * Facebook -- sus publicaciones dejan de verse en TU feed/Reels, sin
+     * dejar de seguirla, sin bloquearla y sin que ella se entere nunca
+     * (filtrado real en cliente, `HomeViewModel`/`ReelsViewModel`, nunca
+     * en RLS de posts/reels -- mismo criterio exacto que
+     * `muted_feed_keywords`, 0116). Ver 0126_muted_accounts.sql. */
+    fun muteAccount(userId: String, mutedId: String) {
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("muted_accounts").insert(MutedAccountRow(userId, mutedId))
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo silenciar a este usuario."
+            }
+        }
+    }
+
+    fun unmuteAccount(userId: String, mutedId: String) {
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("muted_accounts").delete {
+                    filter { eq("muter_id", userId); eq("muted_id", mutedId) }
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo dejar de silenciar a este usuario."
+            }
+        }
+    }
+
+    @Serializable
     private data class ReportRow(
         @SerialName("reporter_id") val reporterId: String,
         @SerialName("reported_id") val reportedId: String,

@@ -85,6 +85,19 @@ struct ReportSheet: View {
                         }
                     }
                 }
+                // Silenciar una cuenta real, comparado con Instagram/
+                // Twitter/X/Facebook -- sus publicaciones dejan de verse
+                // en tu feed/Reels sin dejar de seguirla, sin bloquearla
+                // y sin que se entere nunca. Ver
+                // SafetyManager.muteAccount(), 0126_muted_accounts.sql.
+                Section {
+                    Button("🔇 Silenciar a este usuario") {
+                        Task {
+                            await safety.muteAccount(userID: userID, mutedID: reportedID)
+                            dismiss()
+                        }
+                    }
+                }
             }
             .navigationTitle("Denunciar")
             .toolbar {

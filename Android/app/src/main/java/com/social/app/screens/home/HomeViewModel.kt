@@ -30,6 +30,9 @@ class HomeViewModel : ViewModel() {
     @Serializable
     private data class MutedFeedKeywordsRow(@SerialName("muted_feed_keywords") val mutedFeedKeywords: List<String> = emptyList())
 
+    @Serializable
+    private data class MutedAccountRow(@SerialName("muted_id") val mutedId: String)
+
     private val _feed = MutableStateFlow<List<Post>>(emptyList())
     val feed: StateFlow<List<Post>> = _feed.asStateFlow()
 
@@ -144,6 +147,22 @@ class HomeViewModel : ViewModel() {
                 } catch (e: Exception) {
                     emptyList()
                 }
+                // Silenciar una cuenta real, comparado con
+                // Instagram/Twitter/X/Facebook -- sus publicaciones
+                // dejan de verse en tu feed sin dejar de seguirla, sin
+                // bloquearla y sin que se entere nunca. Resuelto en
+                // cliente, nunca en RLS -- mismo criterio exacto que
+                // `mutedFeedKeywords` de arriba. Ver
+                // SafetyManager.muteAccount(), 0126_muted_accounts.sql.
+                val mutedAccountIds = try {
+                    SupabaseManager.client.from("muted_accounts")
+                        .select(columns = Columns.raw("muted_id"))
+                        .decodeList<MutedAccountRow>()
+                        .map { it.mutedId }
+                        .toSet()
+                } catch (e: Exception) {
+                    emptySet()
+                }
                 // Optimización: la tarjeta del feed solo usa estas 8 columnas
                 // de "posts", no filas completas (mismo patrón que
                 // MatchViewModel/DuelEntryPoint/AvisosViewModel).
@@ -163,7 +182,7 @@ class HomeViewModel : ViewModel() {
                     }
                     .decodeList<Post>()
                     .filter {
-                        it.authorId !in blockedIds && it.archivedAt == null &&
+                        it.authorId !in blockedIds && it.authorId !in mutedAccountIds && it.archivedAt == null &&
                             mutedFeedKeywords.none { word -> it.caption?.contains(word, ignoreCase = true) == true }
                     }
 

@@ -3417,6 +3417,39 @@ async function main() {
   const spSeenByOther = (await db.query(`select id from saved_posts where id = $1`, [spSaved.id])).rows;
   check('saved_posts_select_own: un tercero real (spU2) NO ve el guardado ajeno (privado, 0009_saved_posts.sql)', spSeenByOther.length === 0);
 
+  // --- muted_accounts (0126_muted_accounts.sql): silenciar una cuenta
+  // real sin dejar de seguir ni bloquear, comparado con Instagram/
+  // Twitter/Facebook -- columnas normales, sin trigger ni función
+  // security definer (filtrado real en cliente, nunca en RLS de
+  // posts/reels). Usuarios NUEVOS a propósito. ---
+  await asSuperuser();
+  const maU1 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const maU2 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(`insert into profiles (id, display_name) values ($1,'Ma1'),($2,'Ma2') on conflict (id) do update set display_name=excluded.display_name`, [maU1, maU2]);
+
+  await asUser(maU1);
+  await expectFail('muted_accounts: silenciarse a sí mismo (muter_id = muted_id) NO se puede guardar', async () => {
+    await db.query(`insert into muted_accounts (muter_id, muted_id) values ($1, $1)`, [maU1]);
+  });
+
+  await expectOk('muted_accounts_insert_own: maU1 SÍ puede silenciar a maU2', async () => {
+    await db.query(`insert into muted_accounts (muter_id, muted_id) values ($1, $2)`, [maU1, maU2]);
+  });
+
+  await asUser(maU2);
+  const maSeenByMuted = (await db.query(`select muter_id from muted_accounts where muted_id = $1`, [maU2])).rows;
+  check('muted_accounts_select_own: maU2 (la persona silenciada) NUNCA puede ver que la silenciaron -- mismo criterio real que restricts_select_own', maSeenByMuted.length === 0);
+
+  await asUser(maU1);
+  const maSeenByMuter = (await db.query(`select muted_id from muted_accounts where muter_id = $1`, [maU1])).rows;
+  check('muted_accounts_select_own: maU1 SÍ ve su propia lista real de silenciados', maSeenByMuter.length === 1 && maSeenByMuter[0].muted_id === maU2);
+
+  await expectOk('muted_accounts_delete_own: maU1 SÍ puede dejar de silenciar', async () => {
+    await db.query(`delete from muted_accounts where muter_id = $1 and muted_id = $2`, [maU1, maU2]);
+  });
+  const maAfterUnmute = (await db.query(`select muted_id from muted_accounts where muter_id = $1`, [maU1])).rows;
+  check('muted_accounts_delete_own: la lista real queda vacía tras dejar de silenciar', maAfterUnmute.length === 0);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

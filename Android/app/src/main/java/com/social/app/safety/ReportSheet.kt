@@ -122,6 +122,20 @@ fun ReportSheet(
             ) {
                 Text("Restringir a este usuario")
             }
+            // Silenciar una cuenta real, comparado con Instagram/
+            // Twitter/X/Facebook -- sus publicaciones dejan de verse en
+            // tu feed/Reels sin dejar de seguirla, sin bloquearla y sin
+            // que se entere nunca. Ver SafetyManager.muteAccount(),
+            // 0126_muted_accounts.sql.
+            OutlinedButton(
+                onClick = {
+                    safety.muteAccount(reporterId, reportedId)
+                    onDismiss()
+                },
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+            ) {
+                Text("🔇 Silenciar a este usuario")
+            }
         }
     }
 }

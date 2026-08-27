@@ -115,6 +115,17 @@ final class ReelsViewModel: ObservableObject {
                 mutedFeedKeywords = row.muted_feed_keywords
             }
 
+            // Silenciar una cuenta real, comparado con Instagram/
+            // Twitter/X/Facebook -- cierra el mismo tipo de hueco real
+            // que mutedFeedKeywords, extendido a Reels con el mismo
+            // criterio exacto. Ver SafetyManager.muteAccount(),
+            // 0126_muted_accounts.sql.
+            struct MutedAccountRow: Decodable { let muted_id: UUID }
+            var mutedAccountIDs: Set<UUID> = []
+            if let rows: [MutedAccountRow] = try? await client.from("muted_accounts").select("muted_id").execute().value {
+                mutedAccountIDs = Set(rows.map { $0.muted_id })
+            }
+
             let allReels: [Reel] = try await client.from("reels")
                 .select()
                 .order("created_at", ascending: false)
@@ -122,7 +133,7 @@ final class ReelsViewModel: ObservableObject {
                 .execute()
                 .value
             var recentReels = allReels.filter { reel in
-                !blockedIDs.contains(reel.authorID) &&
+                !blockedIDs.contains(reel.authorID) && !mutedAccountIDs.contains(reel.authorID) &&
                     !mutedFeedKeywords.contains { word in
                         reel.caption?.range(of: word, options: .caseInsensitive) != nil
                     }
