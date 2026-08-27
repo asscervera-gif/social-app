@@ -781,7 +781,8 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
         @SerialName("media_url") val mediaUrl: String? = null,
         @SerialName("audio_url") val audioUrl: String? = null,
         @SerialName("reply_to_message_id") val replyToMessageId: String? = null,
-        @SerialName("view_once") val viewOnce: Boolean = false
+        @SerialName("view_once") val viewOnce: Boolean = false,
+        @SerialName("is_video") val isVideo: Boolean = false
     )
 
     fun sendMessage(text: String) {
@@ -821,6 +822,23 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
      * necesita AL MENOS texto o foto, nunca ninguno de los dos).
      * [viewOnce] es opcional -- foto para ver una vez, comparado con
      * WhatsApp/Instagram DM/Snapchat, ver 0105_view_once_messages.sql. */
+    /** Vídeo real en el chat, comparado con WhatsApp/Telegram/iMessage --
+     * reutiliza mediaUrl + is_video (0121_video_messages.sql), mismo
+     * patrón exacto que sendPhoto() de abajo. */
+    fun sendVideo(context: android.content.Context, uri: android.net.Uri, caption: String = "") {
+        _icebreaker.value = null
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                val url = com.social.app.backend.StorageUploader.uploadVideo(context, uri, userId)
+                val trimmedCaption = caption.trim().ifEmpty { null }?.take(2000)
+                SupabaseManager.client.from("messages").insert(NewMessage(chatId = chatId, senderId = userId, mediaUrl = url, isVideo = true, body = trimmedCaption))
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo enviar el vídeo."
+            }
+        }
+    }
+
     fun sendPhoto(context: android.content.Context, uri: android.net.Uri, viewOnce: Boolean = false, caption: String = "") {
         _icebreaker.value = null
         viewModelScope.launch {

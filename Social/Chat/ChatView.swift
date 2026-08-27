@@ -180,6 +180,32 @@ struct ChatView: View {
                             .navigationTitle("Enviar foto")
                         }
                     }
+                    // Vídeo real en el chat, comparado con WhatsApp/
+                    // Telegram/iMessage -- ver ChatViewModel.sendVideo(),
+                    // 0121_video_messages.sql.
+                    .sheet(isPresented: Binding(
+                        get: { pendingVideoData != nil },
+                        set: { if !$0 { pendingVideoData = nil } }
+                    )) {
+                        NavigationStack {
+                            Form {
+                                TextField("Añadir un comentario (opcional)", text: $pendingVideoCaption)
+                                Button("Enviar") {
+                                    if let data = pendingVideoData {
+                                        pendingVideoData = nil
+                                        let caption = pendingVideoCaption
+                                        pendingVideoCaption = ""
+                                        Task { await viewModel.sendVideo(videoData: data, caption: caption) }
+                                    }
+                                }
+                                Button("Cancelar", role: .cancel) {
+                                    pendingVideoData = nil
+                                    pendingVideoCaption = ""
+                                }
+                            }
+                            .navigationTitle("Enviar vídeo")
+                        }
+                    }
             }
 
             // Fijar un mensaje real (propio o ajeno) para que aparezca
@@ -503,6 +529,12 @@ struct ChatView: View {
     }
 
     @State private var selectedPhoto: PhotosPickerItem?
+    // Vídeo real en el chat, comparado con WhatsApp/Telegram/iMessage --
+    // ver ChatViewModel.sendVideo(), 0121_video_messages.sql.
+    @State private var selectedVideo: PhotosPickerItem?
+    @State private var pendingVideoData: Data?
+    @State private var pendingVideoCaption = ""
+    @State private var fullScreenVideoURL: String?
     // Foto para ver una vez, comparado con WhatsApp/Instagram DM/
     // Snapchat -- ver ChatViewModel.sendPhoto(), 0105_view_once_messages.sql.
     @State private var pendingPhotoData: Data?
@@ -563,6 +595,18 @@ struct ChatView: View {
                         // al elegir la foto. Ver
                         // ChatViewModel.sendPhoto(), 0105_view_once_messages.sql.
                         pendingPhotoData = data
+                    }
+                }
+            }
+            // Vídeo real en el chat, comparado con WhatsApp/Telegram/
+            // iMessage -- ver ChatViewModel.sendVideo(), 0121_video_messages.sql.
+            PhotosPicker(selection: $selectedVideo, matching: .videos) {
+                Image(systemName: "video")
+            }
+            .onChange(of: selectedVideo) { newValue in
+                Task {
+                    if let data = try? await newValue?.loadTransferable(type: Data.self) {
+                        pendingVideoData = data
                     }
                 }
             }
@@ -693,6 +737,7 @@ private struct MessageBubble: View {
     // forma de tocar una foto del chat para verla a tamaño completo, solo
     // la miniatura recortada de 200pt.
     @State private var fullScreenURL: URL?
+    @State private var fullScreenVideoURL: URL?
     private let reactionEmojis = ["❤", "😂", "😮", "😢", "👍"]
     // Reaccionar con CUALQUIER emoji, comparado con Telegram/Messenger/
     // Slack -- antes solo existían los 5 fijos. Reutiliza el teclado
@@ -823,6 +868,17 @@ private struct MessageBubble: View {
                                     }
                                 }
                             }
+                    } else if message.isVideo, let mediaURL = message.mediaURL, let url = URL(string: mediaURL) {
+                        // Vídeo real en el chat, comparado con WhatsApp/
+                        // Telegram/iMessage -- miniatura con ▶, el toque
+                        // abre el visor real (FullScreenVideoView).
+                        ZStack {
+                            Color.black
+                            Text("▶").font(.largeTitle).foregroundStyle(.white)
+                        }
+                        .frame(width: 200, height: 200)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .onTapGesture { fullScreenVideoURL = url }
                     } else if let mediaURL = message.mediaURL, let url = URL(string: mediaURL) {
                         AsyncImage(url: url) { image in
                             image.resizable().scaledToFill()
@@ -949,6 +1005,14 @@ private struct MessageBubble: View {
         )) {
             if let fullScreenURL {
                 FullScreenImageView(url: fullScreenURL, onDismiss: { self.fullScreenURL = nil })
+            }
+        }
+        .fullScreenCover(isPresented: Binding(
+            get: { fullScreenVideoURL != nil },
+            set: { isPresented in if !isPresented { fullScreenVideoURL = nil } }
+        )) {
+            if let fullScreenVideoURL {
+                FullScreenVideoView(url: fullScreenVideoURL, onDismiss: { self.fullScreenVideoURL = nil })
             }
         }
         .alert("Reaccionar con...", isPresented: $showCustomEmojiEntry) {

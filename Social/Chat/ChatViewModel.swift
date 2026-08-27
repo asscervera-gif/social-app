@@ -735,6 +735,7 @@ final class ChatViewModel: ObservableObject {
         var audio_url: String? = nil
         var reply_to_message_id: UUID? = nil
         var view_once: Bool = false
+        var is_video: Bool = false
     }
 
     func sendMessage() async {
@@ -790,6 +791,24 @@ final class ChatViewModel: ObservableObject {
                 .execute()
         } catch {
             errorMessage = "No se pudo enviar la foto."
+        }
+    }
+
+    /// Vídeo real en el chat, comparado con WhatsApp/Telegram/iMessage --
+    /// reutiliza mediaURL + isVideo (0121_video_messages.sql), mismo
+    /// criterio exacto que sendPhoto() de arriba.
+    func sendVideo(videoData: Data, caption: String = "") async {
+        icebreaker = nil
+        do {
+            let url = try await StorageUploader.uploadVideo(data: videoData, fileExtension: "mp4", userID: currentUserID)
+            let trimmed = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+            let finalCaption = trimmed.isEmpty ? nil : String(trimmed.prefix(2000))
+            try await SupabaseManager.shared.client
+                .from("messages")
+                .insert(NewMessage(chat_id: chatID, sender_id: currentUserID, body: finalCaption, media_url: url, is_video: true))
+                .execute()
+        } catch {
+            errorMessage = "No se pudo enviar el vídeo."
         }
     }
 

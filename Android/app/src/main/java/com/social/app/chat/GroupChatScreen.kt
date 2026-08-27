@@ -152,6 +152,13 @@ fun GroupChatScreen(
     val pickImage = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.GetContent()
     ) { uri -> uri?.let { pendingGroupPhotoUri = it } }
+    // Vídeo real en el chat de grupo, comparado con WhatsApp/Telegram/
+    // iMessage -- mismo patrón exacto que ChatScreen.kt (1:1).
+    var pendingGroupVideoUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var fullScreenVideoUrl by remember { mutableStateOf<String?>(null) }
+    val pickVideo = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri -> uri?.let { pendingGroupVideoUri = it } }
 
     LaunchedEffect(groupChatId) { viewModel.load() }
     LaunchedEffect(messages.size) {
@@ -304,6 +311,18 @@ fun GroupChatScreen(
                             }
                         } else if (audioUrl != null) {
                             GroupAudioMessageBubble(url = audioUrl, isMine = isMine)
+                        } else if (message.isVideo && mediaUrl != null) {
+                            // Vídeo real en el chat de grupo, comparado con
+                            // WhatsApp/Telegram/iMessage -- mismo patrón
+                            // exacto que ChatScreen.kt (1:1).
+                            Box(
+                                modifier = Modifier.size(200.dp).clip(RoundedCornerShape(12.dp))
+                                    .background(androidx.compose.ui.graphics.Color.Black)
+                                    .clickable { fullScreenVideoUrl = mediaUrl },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("▶", color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.headlineLarge)
+                            }
                         } else if (mediaUrl != null) {
                             // Fotos reales en un chat de grupo, comparado
                             // con WhatsApp/Instagram/Messenger/Facebook --
@@ -499,6 +518,12 @@ fun GroupChatScreen(
                 OutlinedButton(onClick = { pickImage.launch("image/*") }, modifier = Modifier.padding(end = 8.dp)) {
                     Text("📷")
                 }
+                // Vídeo real en el chat de grupo, comparado con WhatsApp/
+                // Telegram/iMessage -- mismo patrón exacto que
+                // ChatScreen.kt (1:1).
+                OutlinedButton(onClick = { pickVideo.launch("video/*") }, modifier = Modifier.padding(end = 8.dp)) {
+                    Text("🎬")
+                }
                 // Nota de voz real (0062_group_message_audio.sql), mismo
                 // patrón exacto que ChatScreen.kt (1:1): MediaRecorder
                 // nativo vía VoiceRecorder.kt, sin SDK de terceros.
@@ -538,6 +563,9 @@ fun GroupChatScreen(
 
     fullScreenImageUrl?.let { url ->
         com.social.app.util.FullScreenImageViewer(url = url, onDismiss = { fullScreenImageUrl = null })
+    }
+    fullScreenVideoUrl?.let { url ->
+        com.social.app.util.FullScreenVideoViewer(url = url, onDismiss = { fullScreenVideoUrl = null })
     }
 
     if (showMembers) {
@@ -580,6 +608,31 @@ fun GroupChatScreen(
             },
             dismissButton = {
                 TextButton(onClick = { pendingGroupPhotoUri = null }) { Text("Cancelar") }
+            }
+        )
+    }
+    pendingGroupVideoUri?.let { uri ->
+        var groupVideoCaption by remember(uri) { mutableStateOf("") }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { pendingGroupVideoUri = null },
+            title = { Text("Enviar vídeo") },
+            text = {
+                OutlinedTextField(
+                    value = groupVideoCaption,
+                    onValueChange = { groupVideoCaption = it },
+                    placeholder = { Text("Añadir un comentario (opcional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.sendVideo(context, uri, caption = groupVideoCaption)
+                    pendingGroupVideoUri = null
+                }) { Text("Enviar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingGroupVideoUri = null }) { Text("Cancelar") }
             }
         )
     }

@@ -65,7 +65,10 @@ data class GroupMessage(
     // cliente (mismo criterio que ChatViewModel.kt, 0118): la fila
     // sigue existiendo de verdad para el resto del grupo, solo se
     // oculta en MI propia lista. Ver 0120_delete_group_message_for_me.sql.
-    @SerialName("deleted_for") val deletedFor: List<String> = emptyList()
+    @SerialName("deleted_for") val deletedFor: List<String> = emptyList(),
+    // Vídeos reales en el chat de grupo, comparado con WhatsApp/
+    // Telegram/iMessage -- reutiliza mediaUrl. Ver 0121_video_messages.sql.
+    @SerialName("is_video") val isVideo: Boolean = false
 )
 
 /**
@@ -647,7 +650,8 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
         val body: String? = null,
         @SerialName("media_url") val mediaUrl: String? = null,
         @SerialName("audio_url") val audioUrl: String? = null,
-        @SerialName("reply_to_message_id") val replyToMessageId: String? = null
+        @SerialName("reply_to_message_id") val replyToMessageId: String? = null,
+        @SerialName("is_video") val isVideo: Boolean = false
     )
 
     /** Borrar el propio mensaje en un grupo real
@@ -762,6 +766,27 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo enviar la foto."
+            }
+        }
+    }
+
+    /** Vídeo real en un chat de grupo, comparado con WhatsApp/Telegram/
+     * iMessage -- reutiliza mediaUrl + is_video (0121_video_messages.sql),
+     * mismo criterio exacto que sendPhoto() de arriba. */
+    fun sendVideo(context: android.content.Context, uri: android.net.Uri, caption: String = "") {
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                val url = com.social.app.backend.StorageUploader.uploadVideo(context, uri, userId)
+                val trimmedCaption = caption.trim().ifEmpty { null }?.take(2000)
+                val inserted = SupabaseManager.client.from("group_messages")
+                    .insert(NewGroupMessage(groupChatId, userId, mediaUrl = url, isVideo = true, body = trimmedCaption)) { select() }
+                    .decodeSingle<GroupMessage>()
+                if (_messages.value.none { it.id == inserted.id }) {
+                    _messages.update { it + inserted }
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo enviar el vídeo."
             }
         }
     }

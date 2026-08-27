@@ -260,6 +260,10 @@ struct ChatMessage: Codable, Identifiable {
     // openedAt pasa de nil a no-nil (0105_view_once_messages.sql).
     var viewOnce: Bool = false
     var openedAt: String? = nil
+    // Vídeo real en el chat, comparado con WhatsApp/Telegram/iMessage --
+    // reutiliza mediaURL (ya es una URL de Storage real tanto para foto
+    // como vídeo). Ver 0121_video_messages.sql.
+    var isVideo: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -281,6 +285,7 @@ struct ChatMessage: Codable, Identifiable {
         case replyToMessageID = "reply_to_message_id"
         case viewOnce = "view_once"
         case openedAt = "opened_at"
+        case isVideo = "is_video"
     }
 }
 

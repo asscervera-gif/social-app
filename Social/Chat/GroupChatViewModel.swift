@@ -49,6 +49,9 @@ struct GroupMessage: Codable, Identifiable {
     // cliente (mismo criterio que ChatViewModel.swift, 0118). Ver
     // 0120_delete_group_message_for_me.sql.
     var deletedFor: [UUID] = []
+    // Vídeo real en el chat de grupo, comparado con WhatsApp/Telegram/
+    // iMessage -- reutiliza mediaURL. Ver 0121_video_messages.sql.
+    var isVideo: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -65,6 +68,7 @@ struct GroupMessage: Codable, Identifiable {
         case pinnedBy = "pinned_by"
         case replyToMessageID = "reply_to_message_id"
         case deletedFor = "deleted_for"
+        case isVideo = "is_video"
     }
 }
 
@@ -795,6 +799,37 @@ final class GroupChatViewModel: ObservableObject {
             }
         } catch {
             errorMessage = "No se pudo enviar la foto."
+        }
+    }
+
+    /// Vídeo real en un chat de grupo, comparado con WhatsApp/Telegram/
+    /// iMessage -- reutiliza mediaURL + isVideo (0121_video_messages.sql),
+    /// mismo criterio exacto que sendPhoto() de arriba.
+    func sendVideo(videoData: Data, caption: String = "") async {
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        struct NewGroupVideoMessage: Encodable {
+            let group_chat_id: UUID
+            let sender_id: UUID
+            let media_url: String
+            let is_video: Bool
+            let body: String?
+        }
+        do {
+            let url = try await StorageUploader.uploadVideo(data: videoData, fileExtension: "mp4", userID: userID)
+            let trimmed = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+            let finalCaption = trimmed.isEmpty ? nil : String(trimmed.prefix(2000))
+            let inserted: GroupMessage = try await SupabaseManager.shared.client
+                .from("group_messages")
+                .insert(NewGroupVideoMessage(group_chat_id: groupChatID, sender_id: userID, media_url: url, is_video: true, body: finalCaption))
+                .select()
+                .single()
+                .execute()
+                .value
+            if !messages.contains(where: { $0.id == inserted.id }) {
+                messages.append(inserted)
+            }
+        } catch {
+            errorMessage = "No se pudo enviar el vídeo."
         }
     }
 

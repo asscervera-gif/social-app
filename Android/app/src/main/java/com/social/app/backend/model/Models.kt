@@ -204,7 +204,11 @@ data class ChatMessage(
     // Snapchat -- el propio servidor vacía media_url de verdad en cuanto
     // opened_at pasa de null a no-null (0105_view_once_messages.sql).
     @SerialName("view_once") val viewOnce: Boolean = false,
-    @SerialName("opened_at") val openedAt: String? = null
+    @SerialName("opened_at") val openedAt: String? = null,
+    // Vídeos reales en el chat, comparado con WhatsApp/Telegram/
+    // iMessage -- reutiliza mediaUrl (ya es una URL de Storage real
+    // tanto para foto como vídeo). Ver 0121_video_messages.sql.
+    @SerialName("is_video") val isVideo: Boolean = false
 )
 
 /** Hallazgo de integridad corregido (ver duel-ai/index.ts): antes incluía

@@ -42,6 +42,12 @@ struct GroupChatView: View {
     @State private var pendingGroupPhotoData: Data?
     @State private var pendingGroupPhotoCaption = ""
     @State private var fullScreenURL: URL?
+    // Vídeo real en el chat de grupo, comparado con WhatsApp/Telegram/
+    // iMessage -- ver GroupChatViewModel.sendVideo(), 0121_video_messages.sql.
+    @State private var selectedVideo: PhotosPickerItem?
+    @State private var pendingGroupVideoData: Data?
+    @State private var pendingGroupVideoCaption = ""
+    @State private var fullScreenVideoURL: URL?
     // Editar/borrar un mensaje ya enviado en un grupo real
     // (0065_group_messages_edit_delete.sql), comparado con WhatsApp/
     // Telegram/Messenger -- mismo menú real que ChatView.swift (chat 1:1).
@@ -139,6 +145,7 @@ struct GroupChatView: View {
                                     Task { await viewModel.toggleReaction(groupMessageID: message.id, emoji: emoji) }
                                 },
                                 onOpenFullScreen: { url in fullScreenURL = url },
+                                onOpenVideo: { url in fullScreenVideoURL = url },
                                 onManage: { managingMessage = message },
                                 onForward: { forwardingMessage = message },
                                 onReply: { viewModel.replyingTo = message }
@@ -224,6 +231,37 @@ struct GroupChatView: View {
                         pendingGroupPhotoCaption = ""
                     }
                 }
+                // Vídeo real en el chat de grupo, comparado con WhatsApp/
+                // Telegram/iMessage -- mismo patrón exacto que
+                // ChatView.swift (1:1).
+                PhotosPicker(selection: $selectedVideo, matching: .videos) {
+                    Image(systemName: "video")
+                }
+                .onChange(of: selectedVideo) { newValue in
+                    Task {
+                        if let data = try? await newValue?.loadTransferable(type: Data.self) {
+                            pendingGroupVideoData = data
+                        }
+                    }
+                }
+                .alert("Enviar vídeo", isPresented: Binding(
+                    get: { pendingGroupVideoData != nil },
+                    set: { if !$0 { pendingGroupVideoData = nil } }
+                )) {
+                    TextField("Añadir un comentario (opcional)", text: $pendingGroupVideoCaption)
+                    Button("Enviar") {
+                        if let data = pendingGroupVideoData {
+                            let caption = pendingGroupVideoCaption
+                            pendingGroupVideoData = nil
+                            pendingGroupVideoCaption = ""
+                            Task { await viewModel.sendVideo(videoData: data, caption: caption) }
+                        }
+                    }
+                    Button("Cancelar", role: .cancel) {
+                        pendingGroupVideoData = nil
+                        pendingGroupVideoCaption = ""
+                    }
+                }
                 // Nota de voz real (0062_group_message_audio.sql), mismo
                 // patrón exacto que ChatView.swift (1:1).
                 Button {
@@ -296,6 +334,16 @@ struct GroupChatView: View {
         )) {
             if let fullScreenURL {
                 FullScreenImageView(url: fullScreenURL, onDismiss: { self.fullScreenURL = nil })
+            }
+        }
+        // Vídeo real en el chat de grupo, comparado con WhatsApp/
+        // Telegram/iMessage -- mismo patrón exacto que arriba.
+        .fullScreenCover(isPresented: Binding(
+            get: { fullScreenVideoURL != nil },
+            set: { isPresented in if !isPresented { fullScreenVideoURL = nil } }
+        )) {
+            if let fullScreenVideoURL {
+                FullScreenVideoView(url: fullScreenVideoURL, onDismiss: { self.fullScreenVideoURL = nil })
             }
         }
         // Denunciar un mensaje concreto de un chat de grupo real
@@ -570,6 +618,7 @@ private struct GroupMessageBubble: View {
     var repliedMessage: GroupMessage? = nil
     let onToggleReaction: (String) -> Void
     var onOpenFullScreen: (URL) -> Void = { _ in }
+    var onOpenVideo: (URL) -> Void = { _ in }
     // Editar/borrar un mensaje ya enviado en un grupo real
     // (0065_group_messages_edit_delete.sql), comparado con WhatsApp/
     // Telegram/Messenger -- mismo criterio que MessageBubble
@@ -657,6 +706,17 @@ private struct GroupMessageBubble: View {
             } else if let audioURLString = message.audioURL, let audioURL = URL(string: audioURLString) {
                 GroupAudioMessageBubble(url: audioURL, isMine: isMine)
                     .onTapGesture { showPicker.toggle() }
+            } else if message.isVideo, let mediaURLString = message.mediaURL, let mediaURL = URL(string: mediaURLString) {
+                // Vídeo real en el chat de grupo, comparado con WhatsApp/
+                // Telegram/iMessage -- mismo patrón exacto que
+                // ChatView.swift (1:1).
+                ZStack {
+                    Color.black
+                    Text("▶").font(.largeTitle).foregroundStyle(.white)
+                }
+                .frame(width: 200, height: 200)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .onTapGesture { onOpenVideo(mediaURL) }
             } else if let mediaURLString = message.mediaURL, let mediaURL = URL(string: mediaURLString) {
                 // Fotos reales en un chat de grupo, comparado con
                 // WhatsApp/Instagram/Messenger/Facebook -- mediaURL ya

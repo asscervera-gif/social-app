@@ -3235,6 +3235,27 @@ async function main() {
   const gdAfterTamper = (await db.query(`select deleted_for from group_messages where id = $1`, [gdMsg.id])).rows[0];
   check('protect_group_message_identity: el array real de grupo sigue teniendo a gdU1 (nadie puede quitar a otro)', gdAfterTamper.deleted_for.length === 1);
 
+  // --- messages.is_video/group_messages.is_video (0121_video_messages.sql):
+  // vídeos reales en el chat, comparado con WhatsApp/Telegram. ---
+  await asSuperuser();
+  const vidU1 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const vidU2 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(`insert into profiles (id, display_name) values ($1,'Vid1'),($2,'Vid2') on conflict (id) do update set display_name=excluded.display_name`, [vidU1, vidU2]);
+  const vidChat = (await db.query(`insert into chats (user_a_id, user_b_id) values ($1,$2) returning id`, [vidU1, vidU2])).rows[0];
+  await asUser(vidU1);
+  const vidMsg = (await db.query(
+    `insert into messages (chat_id, sender_id, media_url, is_video) values ($1,$2,'https://example.com/v.mp4', true) returning id, is_video`,
+    [vidChat.id, vidU1]
+  )).rows[0];
+  check('messages: un vídeo real se guarda con is_video=true', vidMsg.is_video === true);
+
+  await asUser(vidU2);
+  await expectOk('protect_message_columns: vidU2 (no remitente) NO consigue reescribir is_video (revertido)', async () => {
+    await db.query(`update messages set is_video = false where id = $1`, [vidMsg.id]);
+  });
+  const vidAfterAttempt = (await db.query(`select is_video from messages where id = $1`, [vidMsg.id])).rows[0];
+  check('protect_message_columns: is_video real sigue en true tras el intento ajeno', vidAfterAttempt.is_video === true);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

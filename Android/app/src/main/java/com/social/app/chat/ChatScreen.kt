@@ -153,12 +153,19 @@ fun ChatScreen(
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val searchScope = rememberCoroutineScope()
     var pendingPhotoUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    // Vídeo real en el chat, comparado con WhatsApp/Telegram/iMessage --
+    // ver ChatViewModel.sendVideo(), 0121_video_messages.sql.
+    var pendingVideoUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var fullScreenVideoUrl by remember { mutableStateOf<String?>(null) }
     // Escuchar la nota de voz real antes de mandarla, comparado con
     // WhatsApp/Telegram -- antes se mandaba a ciegas en cuanto se
     // soltaba el botón, sin forma real de deshacerla si salió mal.
     var pendingVoiceFile by remember { mutableStateOf<java.io.File?>(null) }
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) pendingPhotoUri = uri
+    }
+    val pickVideo = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) pendingVideoUri = uri
     }
     // Historial visual real del % de compatibilidad -- el dato ya
     // existía (compatibility_votes, 0032) pero nunca se leía, solo se
@@ -508,6 +515,21 @@ fun ChatScreen(
                                     .padding(horizontal = 14.dp, vertical = 10.dp),
                                 color = if (isMine) androidx.compose.ui.graphics.Color.White else MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                        } else if (message.isVideo && message.mediaUrl != null) {
+                            // Vídeo real en el chat, comparado con WhatsApp/
+                            // Telegram/iMessage -- miniatura con ▶, el toque
+                            // abre el visor real (FullScreenVideoViewer).
+                            Box(
+                                modifier = Modifier.size(200.dp).clip(RoundedCornerShape(14.dp))
+                                    .background(androidx.compose.ui.graphics.Color.Black)
+                                    .combinedClickable(
+                                        onClick = { fullScreenVideoUrl = message.mediaUrl },
+                                        onLongClick = { managingMessage = message }
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("▶", color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.headlineLarge)
+                            }
                         } else if (message.mediaUrl != null) {
                             Image(
                                 painter = rememberAsyncImagePainter(message.mediaUrl),
@@ -740,6 +762,9 @@ fun ChatScreen(
             OutlinedButton(onClick = { pickImage.launch("image/*") }, modifier = Modifier.padding(end = 8.dp)) {
                 Text("📷")
             }
+            OutlinedButton(onClick = { pickVideo.launch("video/*") }, modifier = Modifier.padding(end = 8.dp)) {
+                Text("🎬")
+            }
             OutlinedButton(
                 onClick = {
                     if (isRecording) {
@@ -847,6 +872,34 @@ fun ChatScreen(
                 }) { Text("Normal") }
             }
         )
+    }
+    pendingVideoUri?.let { uri ->
+        var videoCaption by remember(uri) { mutableStateOf("") }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { pendingVideoUri = null },
+            title = { Text("Enviar vídeo") },
+            text = {
+                OutlinedTextField(
+                    value = videoCaption,
+                    onValueChange = { videoCaption = it },
+                    placeholder = { Text("Añadir un comentario (opcional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    viewModel.sendVideo(context, uri, caption = videoCaption)
+                    pendingVideoUri = null
+                }) { Text("Enviar") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { pendingVideoUri = null }) { Text("Cancelar") }
+            }
+        )
+    }
+    fullScreenVideoUrl?.let { url ->
+        com.social.app.util.FullScreenVideoViewer(url = url, onDismiss = { fullScreenVideoUrl = null })
     }
     if (showCompatibilityHistory) {
         androidx.compose.material3.AlertDialog(
