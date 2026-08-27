@@ -2926,6 +2926,51 @@ async function main() {
   const noteSeenByOther = (await db.query(`select note_text from profiles where id = $1`, [u1])).rows[0];
   check('profiles_select_public: u2 real SÍ ve la nota de u1 (para pintarla en la bandeja de chats)', noteSeenByOther.note_text === 'pensando en pizza 🍕');
 
+  // --- seed_chat_compatibility (0111_seed_chat_compatibility_from_interests.sql):
+  // el % real de un chat nuevo arranca de los intereses compartidos, no
+  // de un 50 fijo -- quinto hallazgo de la auditoría de sistemas propios
+  // de SOCIAL. Usuarios NUEVOS a propósito, mismo motivo ya documentado
+  // varias veces esta sesión. ---
+  await asSuperuser();
+  const scU1 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const scU2 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const scU3 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const scU4 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const scU5 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const scU6 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const scU7 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const scU8 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name, interests) values
+     ($1, 'Sc1', ARRAY['viajes','musica']), ($2, 'Sc2', ARRAY['musica','cine']),
+     ($3, 'Sc3', ARRAY['deportes']), ($4, 'Sc4', ARRAY[]::text[]),
+     ($5, 'Sc5', ARRAY['arte']), ($6, 'Sc6', ARRAY['arte']),
+     ($7, 'Sc7', ARRAY['a']), ($8, 'Sc8', ARRAY['b'])
+     on conflict (id) do update set display_name = excluded.display_name, interests = excluded.interests`,
+    [scU1, scU2, scU3, scU4, scU5, scU6, scU7, scU8]
+  );
+
+  await asUser(scU1);
+  const scChatPartial = (await db.query(`insert into chats (user_a_id, user_b_id) values ($1, $2) returning compatibility_score`, [scU1, scU2])).rows[0];
+  check('seed_chat_compatibility: intersección parcial (1 de 3 intereses reales compartidos) da 33%, no 50', scChatPartial.compatibility_score === 33);
+
+  await asUser(scU3);
+  const scChatEmpty = (await db.query(`insert into chats (user_a_id, user_b_id) values ($1, $2) returning compatibility_score`, [scU3, scU4])).rows[0];
+  check('seed_chat_compatibility: sin intereses reales que comparar (uno de los dos vacío) conserva el 50 de siempre', scChatEmpty.compatibility_score === 50);
+
+  await asUser(scU5);
+  const scChatFull = (await db.query(`insert into chats (user_a_id, user_b_id) values ($1, $2) returning compatibility_score`, [scU5, scU6])).rows[0];
+  check('seed_chat_compatibility: los mismos intereses reales exactos dan 100%', scChatFull.compatibility_score === 100);
+
+  // Hallazgo de seguridad real (encontrado diseñando esta migración, no
+  // simulado): chats_insert (0002_rls.sql) nunca restringió qué columnas
+  // fija el propio INSERT -- sin este trigger, un cliente modificado
+  // podía insertar compatibility_score=100 de un tirón, sin haber
+  // compartido ni un solo interés real.
+  await asUser(scU7);
+  const scChatHijack = (await db.query(`insert into chats (user_a_id, user_b_id, compatibility_score) values ($1, $2, 100) returning compatibility_score`, [scU7, scU8])).rows[0];
+  check('seed_chat_compatibility: un compatibility_score=100 mandado directo por el cliente en el INSERT queda sobrescrito de verdad a 0 (sin intereses reales compartidos)', scChatHijack.compatibility_score === 0);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado
