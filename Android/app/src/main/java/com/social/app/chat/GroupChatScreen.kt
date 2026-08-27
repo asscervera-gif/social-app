@@ -108,6 +108,7 @@ fun GroupChatScreen(
     // (0065_group_messages_edit_delete.sql), comparado con WhatsApp/
     // Telegram/Messenger -- mismo menú real que ChatScreen.kt (chat 1:1).
     var managingMessage by remember { mutableStateOf<GroupMessage?>(null) }
+    val groupClipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
     var editingMessage by remember { mutableStateOf<GroupMessage?>(null) }
     var editedMessageText by remember { mutableStateOf("") }
     // Denunciar un mensaje concreto de un chat de grupo real
@@ -573,6 +574,15 @@ fun GroupChatScreen(
                         viewModel.setReplyingTo(message)
                         managingMessage = null
                     }) { Text("Responder") }
+                    // Copiar texto, comparado con WhatsApp/Telegram/
+                    // Messenger -- mismo hueco real ya cerrado en el
+                    // chat 1:1 (ChatScreen.kt).
+                    if (message.body != null) {
+                        TextButton(onClick = {
+                            groupClipboardManager.setText(androidx.compose.ui.text.AnnotatedString(message.body))
+                            managingMessage = null
+                        }) { Text("Copiar") }
+                    }
                     // Fijar un mensaje de grupo real (propio o ajeno),
                     // VISIBLE PARA TODOS los miembros -- a diferencia de
                     // "Destacar" (arriba), totalmente privado. Ver

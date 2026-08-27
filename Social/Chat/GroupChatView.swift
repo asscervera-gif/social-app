@@ -13,6 +13,7 @@
 
 import SwiftUI
 import AVFoundation
+import UIKit
 import PhotosUI
 
 struct GroupChatView: View {
@@ -326,6 +327,14 @@ struct GroupChatView: View {
                 // GroupChatViewModel.replyingTo, 0102_message_reply.sql.
                 Button("Responder") {
                     viewModel.replyingTo = managingMessage
+                }
+                // Copiar texto, comparado con WhatsApp/Telegram/
+                // Messenger -- mismo hueco real ya cerrado en el chat
+                // 1:1 (ChatView.swift).
+                if let body = managingMessage.body {
+                    Button("Copiar") {
+                        UIPasteboard.general.string = body
+                    }
                 }
                 // Fijar un mensaje de grupo real (propio o ajeno), VISIBLE
                 // PARA TODOS los miembros -- a diferencia de "Destacar"
