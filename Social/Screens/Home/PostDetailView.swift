@@ -42,6 +42,13 @@ struct PostDetailView: View {
     // TikTok -- estado local de la propia pantalla, ver
     // 0096_sensitive_content.sql.
     @State private var sensitiveRevealed = false
+    // Encuesta real en una publicación normal, comparado con Twitter/X/
+    // Facebook -- cierra el hueco deliberado documentado desde
+    // 0113_post_polls.sql: HomeView.swift ya la soportaba en el feed,
+    // esta pantalla ("permalink") todavía no. Mismo diseño exacto que
+    // HomeViewModel.swift.PostPollRow, aquí solo para este postID.
+    @State private var postPoll: HomeViewModel.PostPollRow?
+    @State private var myPollVote: Int?
 
     var body: some View {
         ScrollView {
@@ -135,6 +142,34 @@ struct PostDetailView: View {
                                 }
                             }
                         )
+                    }
+                    // Mismo patrón visual exacto que HomeView.swift.PostCard:
+                    // botones antes de votar, barras de porcentaje después.
+                    if let postPoll {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(postPoll.question).font(.subheadline.bold())
+                            let totalVotes = postPoll.vote_counts.reduce(0, +)
+                            ForEach(Array(postPoll.options.enumerated()), id: \.offset) { optionIndex, optionText in
+                                if let myPollVote {
+                                    let votesForOption = optionIndex < postPoll.vote_counts.count ? postPoll.vote_counts[optionIndex] : 0
+                                    let percent = totalVotes == 0 ? 0 : (votesForOption * 100) / totalVotes
+                                    ZStack(alignment: .leading) {
+                                        RoundedRectangle(cornerRadius: 8).fill(.gray.opacity(0.15))
+                                        GeometryReader { geo in
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .fill(optionIndex == myPollVote ? Color.accentColor : .gray.opacity(0.35))
+                                                .frame(width: geo.size.width * CGFloat(percent) / 100)
+                                        }
+                                        Text("\(optionText) · \(percent)%").padding(.horizontal, 10).padding(.vertical, 6)
+                                    }
+                                    .frame(height: 32)
+                                } else {
+                                    Button(optionText) { voteOnPoll(optionIndex) }
+                                        .buttonStyle(.bordered)
+                                        .frame(maxWidth: .infinity)
+                                }
+                            }
+                        }
                     }
                     Text(relativeTime(post.createdAt))
                         .font(.caption2)
@@ -256,8 +291,59 @@ struct PostDetailView: View {
                     .value) ?? []
                 isSaved = !saved.isEmpty
             }
+
+            if let poll: HomeViewModel.PostPollRow = try? await SupabaseManager.shared.client
+                .from("post_polls")
+                .select("id,post_id,question,options,vote_counts")
+                .eq("post_id", value: postID)
+                .single()
+                .execute()
+                .value {
+                postPoll = poll
+                if let userID = try? await SupabaseManager.shared.client.auth.session.user.id {
+                    struct MyVoteRow: Decodable { let option_index: Int }
+                    let voteRow: MyVoteRow? = try? await SupabaseManager.shared.client
+                        .from("post_poll_votes")
+                        .select("option_index")
+                        .eq("voter_id", value: userID)
+                        .eq("poll_id", value: poll.id)
+                        .single()
+                        .execute()
+                        .value
+                    myPollVote = voteRow?.option_index
+                }
+            }
         } catch {
             errorMessage = "No se pudo cargar la publicación."
+        }
+    }
+
+    /// Mismo criterio exacto que HomeViewModel.swift.voteOnPostPoll().
+    private func voteOnPoll(_ optionIndex: Int) {
+        guard let poll = postPoll else { return }
+        myPollVote = optionIndex
+        Task {
+            guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+            struct NewPostPollVote: Encodable {
+                let poll_id: UUID
+                let voter_id: UUID
+                let option_index: Int
+            }
+            do {
+                try await SupabaseManager.shared.client
+                    .from("post_poll_votes")
+                    .upsert(NewPostPollVote(poll_id: poll.id, voter_id: userID, option_index: optionIndex), onConflict: "poll_id,voter_id")
+                    .execute()
+                postPoll = try? await SupabaseManager.shared.client
+                    .from("post_polls")
+                    .select("id,post_id,question,options,vote_counts")
+                    .eq("id", value: poll.id)
+                    .single()
+                    .execute()
+                    .value
+            } catch {
+                errorMessage = "No se pudo registrar el voto."
+            }
         }
     }
 

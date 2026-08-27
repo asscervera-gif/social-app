@@ -48,6 +48,28 @@ class PostDetailViewModel(private val postId: String) : ViewModel() {
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
+    // Encuesta real en una publicación normal, comparado con Twitter/X/
+    // Facebook -- cierra el hueco deliberado documentado desde
+    // 0113_post_polls.sql: HomeViewModel.kt ya la soportaba en el feed,
+    // pero abrir la publicación individual ("permalink") desde un aviso
+    // no mostraba la encuesta ni dejaba votar. Mismo diseño exacto que
+    // HomeViewModel.postPolls()/myPostPollVotes()/voteOnPostPoll(), aquí
+    // operando sobre un solo postId en vez de una página del feed.
+    @Serializable
+    data class PostPollRow(
+        val id: String,
+        @SerialName("post_id") val postId: String,
+        val question: String,
+        val options: List<String>,
+        @SerialName("vote_counts") val voteCounts: List<Int> = emptyList()
+    )
+
+    private val _postPoll = MutableStateFlow<PostPollRow?>(null)
+    val postPoll: StateFlow<PostPollRow?> = _postPoll.asStateFlow()
+
+    private val _myPollVote = MutableStateFlow<Int?>(null)
+    val myPollVote: StateFlow<Int?> = _myPollVote.asStateFlow()
+
     fun load() {
         viewModelScope.launch {
             try {
@@ -81,8 +103,53 @@ class PostDetailViewModel(private val postId: String) : ViewModel() {
                         .select(columns = Columns.raw("post_id")) { filter { eq("post_id", postId); eq("user_id", userId) } }
                         .decodeList<SavedPostRow>().isNotEmpty()
                 }
+
+                try {
+                    val poll = SupabaseManager.client.from("post_polls")
+                        .select(columns = Columns.raw("id,post_id,question,options,vote_counts")) { filter { eq("post_id", postId) } }
+                        .decodeSingleOrNull<PostPollRow>()
+                    _postPoll.value = poll
+                    _myPollVote.value = if (poll == null || userId == null) null else SupabaseManager.client.from("post_poll_votes")
+                        .select(columns = Columns.raw("option_index")) { filter { eq("voter_id", userId); eq("poll_id", poll.id) } }
+                        .decodeSingleOrNull<MyPostPollVoteRow>()
+                        ?.optionIndex
+                } catch (e: Exception) {
+                    // No bloquea el resto de la pantalla si falla -- la
+                    // publicación se sigue mostrando sin su encuesta.
+                }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo cargar la publicación."
+            }
+        }
+    }
+
+    @Serializable
+    private data class MyPostPollVoteRow(@SerialName("option_index") val optionIndex: Int)
+
+    @Serializable
+    private data class NewPostPollVote(
+        @SerialName("poll_id") val pollId: String,
+        @SerialName("voter_id") val voterId: String,
+        @SerialName("option_index") val optionIndex: Int
+    )
+
+    /** Mismo criterio exacto que HomeViewModel.kt.voteOnPostPoll():
+     * `onConflict` cubre insertar el primer voto y cambiar de opción con
+     * una sola llamada, cada una ya cubierta por su propia política RLS
+     * real (0113_post_polls.sql). */
+    fun voteOnPoll(optionIndex: Int) {
+        val poll = _postPoll.value ?: return
+        _myPollVote.value = optionIndex
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                SupabaseManager.client.from("post_poll_votes")
+                    .upsert(NewPostPollVote(poll.id, userId, optionIndex), onConflict = "poll_id,voter_id")
+                _postPoll.value = SupabaseManager.client.from("post_polls")
+                    .select(columns = Columns.raw("id,post_id,question,options,vote_counts")) { filter { eq("id", poll.id) } }
+                    .decodeSingleOrNull<PostPollRow>()
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo registrar el voto."
             }
         }
     }

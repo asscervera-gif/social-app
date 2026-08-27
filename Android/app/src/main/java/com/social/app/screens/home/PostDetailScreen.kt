@@ -50,6 +50,12 @@ fun PostDetailScreen(postId: String, onOpenProfile: (String) -> Unit) {
     val isLiked by viewModel.isLiked.collectAsState()
     val isSaved by viewModel.isSaved.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    // Encuesta real en una publicación normal, comparado con Twitter/X/
+    // Facebook -- cierra el hueco deliberado documentado desde
+    // 0113_post_polls.sql: el feed ya la soportaba, esta pantalla
+    // ("permalink") todavía no.
+    val postPoll by viewModel.postPoll.collectAsState()
+    val myPollVote by viewModel.myPollVote.collectAsState()
     var showComments by remember { mutableStateOf(false) }
     var fullScreenUrl by remember { mutableStateOf<String?>(null) }
     // Marcar contenido como sensible, comparado con Instagram/Twitter/
@@ -164,6 +170,42 @@ fun PostDetailScreen(postId: String, onOpenProfile: (String) -> Unit) {
                         scope.launch { mentionResolver.resolveProfileId(username)?.let(onOpenProfile) }
                     }
                 )
+            }
+            // Mismo patrón visual exacto que HomeScreen.kt.PostCard:
+            // botones antes de votar, barras de porcentaje después.
+            postPoll?.let { p ->
+                Column(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp).fillMaxWidth()) {
+                    Text(p.question, style = MaterialTheme.typography.titleSmall)
+                    val totalVotes = p.voteCounts.sum()
+                    p.options.forEachIndexed { optionIndex, optionText ->
+                        if (myPollVote != null) {
+                            val votesForOption = p.voteCounts.getOrElse(optionIndex) { 0 }
+                            val percent = if (totalVotes == 0) 0 else (votesForOption * 100) / totalVotes
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 6.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth(percent / 100f)
+                                        .background(
+                                            if (optionIndex == myPollVote) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                            RoundedCornerShape(8.dp)
+                                        )
+                                )
+                                Text("$optionText · $percent%", modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                            }
+                        } else {
+                            androidx.compose.material3.OutlinedButton(
+                                onClick = { viewModel.voteOnPoll(optionIndex) },
+                                modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
+                            ) { Text(optionText) }
+                        }
+                    }
+                }
             }
             Text(
                 relativeTime(post.createdAt),
