@@ -248,6 +248,16 @@ private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewMod
     // Responder a una historia real (0071_message_story_reply.sql),
     // comparado con Instagram/WhatsApp Status/Snapchat.
     var replyText by remember(index) { mutableStateOf("") }
+    // Reacción rápida real a una historia ("toque para reaccionar"),
+    // comparado con Instagram/Snapchat -- ver más abajo,
+    // 0071_message_story_reply.sql.
+    var lastSentReaction by remember(index) { mutableStateOf<String?>(null) }
+    LaunchedEffect(lastSentReaction) {
+        if (lastSentReaction != null) {
+            kotlinx.coroutines.delay(1200)
+            lastSentReaction = null
+        }
+    }
     var isReplyFocused by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val socialLinks = remember { SocialLinkManager() }
@@ -538,12 +548,51 @@ private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewMod
                 // comparado con Instagram/WhatsApp Status/Snapchat -- solo
                 // tiene sentido sobre la historia de OTRA persona, nunca
                 // la propia (para eso ya está "quién vio tu historia").
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(16.dp)
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                // Reacción rápida real a una historia ("toque para
+                // reaccionar"), comparado con Instagram/Snapchat --
+                // distinta de responder con texto (justo debajo): manda
+                // el mismo emoji de un tirón como un mensaje real, sin
+                // pasar por el campo de texto. Reutiliza tal cual
+                // sendReply() (0071_message_story_reply.sql) -- ningún
+                // esquema nuevo, un emoji es un cuerpo de mensaje real
+                // como cualquier otro.
+                if (lastSentReaction != null) {
+                    Text(
+                        "$lastSentReaction enviado",
+                        color = androidx.compose.ui.graphics.Color.White,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+                } else {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    ) {
+                        listOf("❤️", "😂", "😮", "😢", "👏", "🔥").forEach { emoji ->
+                            Text(
+                                emoji,
+                                style = MaterialTheme.typography.headlineSmall,
+                                modifier = Modifier.clickable {
+                                    lastSentReaction = emoji
+                                    scope.launch {
+                                        val myIdNow = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                                        val chatId = socialLinks.getOrCreateChat(myIdNow, story.authorId) ?: return@launch
+                                        viewModel.sendReply(chatId, story.id, emoji)
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Box(
                         modifier = Modifier
@@ -578,6 +627,7 @@ private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewMod
                             }
                         )
                     }
+                }
                 }
             }
         }

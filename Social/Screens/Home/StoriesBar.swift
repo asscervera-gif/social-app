@@ -187,6 +187,10 @@ private struct StoryViewer: View {
     // Responder a una historia real (0071_message_story_reply.sql),
     // comparado con Instagram/WhatsApp Status/Snapchat.
     @State private var replyText = ""
+    // Reacción rápida real a una historia ("toque para reaccionar"),
+    // comparado con Instagram/Snapchat -- ver más abajo,
+    // 0071_message_story_reply.sql.
+    @State private var lastSentReaction: String?
     @FocusState private var isReplyFocused: Bool
     @StateObject private var socialLinks = SocialLinkManager()
     // Adhesivo de pregunta real en una historia ("Pregúntame algo"),
@@ -411,8 +415,39 @@ private struct StoryViewer: View {
                     // Instagram/WhatsApp Status/Snapchat -- solo tiene
                     // sentido sobre la historia de OTRA persona, nunca la
                     // propia (para eso ya está "quién vio tu historia").
-                    VStack {
+                    VStack(alignment: .leading, spacing: 0) {
                         Spacer()
+                        // Reacción rápida real a una historia ("toque
+                        // para reaccionar"), comparado con Instagram/
+                        // Snapchat -- distinta de responder con texto
+                        // (justo debajo): manda el mismo emoji de un
+                        // tirón como un mensaje real, sin pasar por el
+                        // campo de texto. Reutiliza tal cual sendReply()
+                        // -- ningún esquema nuevo, un emoji es un cuerpo
+                        // de mensaje real como cualquier otro.
+                        if let lastSentReaction {
+                            Text("\(lastSentReaction) enviado")
+                                .foregroundStyle(.white)
+                                .padding(.horizontal)
+                                .padding(.bottom, 6)
+                        } else {
+                            HStack(spacing: 14) {
+                                ForEach(["❤️", "😂", "😮", "😢", "👏", "🔥"], id: \.self) { emoji in
+                                    Text(emoji)
+                                        .font(.title2)
+                                        .onTapGesture {
+                                            lastSentReaction = emoji
+                                            Task {
+                                                guard let myID,
+                                                      let chatID = await socialLinks.getOrCreateChat(myID, story.author_id) else { return }
+                                                _ = await viewModel.sendReply(chatID: chatID, storyID: story.id, text: emoji)
+                                            }
+                                        }
+                                }
+                            }
+                            .padding(.horizontal)
+                            .padding(.bottom, 8)
+                        }
                         HStack(spacing: 8) {
                             ZStack(alignment: .leading) {
                                 if replyText.isEmpty {
@@ -444,6 +479,16 @@ private struct StoryViewer: View {
                         .padding()
                     }
                 }
+            }
+        }
+        // Reacción rápida real a una historia -- misma forma real de
+        // cerrar el aviso "enviado" que el resto de este archivo
+        // (`.onChange(of:)` de un parámetro, deployment target iOS 16).
+        .onChange(of: lastSentReaction) { newValue in
+            guard newValue != nil else { return }
+            Task {
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                lastSentReaction = nil
             }
         }
         .task(id: index) {
