@@ -269,6 +269,11 @@ private struct NotificationActionsSheet: View {
     @State private var showReport = false
     @State private var currentUserID: UUID?
     @State private var chatID: UUID?
+    // Retar a duelo real desde cualquier aviso, comparado con
+    // WhatsApp/Instagram -- ver startDuel(with:).
+    @State private var showDuel = false
+    @State private var duelChatID: UUID?
+    @State private var duelOpponentID: UUID?
 
     /// El id del emisor viaja en el payload de la notificación (guardado al
     /// crearla en el backend); sin él no se puede responder al social desde aquí.
@@ -340,6 +345,14 @@ private struct NotificationActionsSheet: View {
                 if let actorProfileID {
                     Button("💬 Enviar mensaje") { sendMessage(to: actorProfileID) }
                         .buttonStyle(.borderedProminent).tint(.blue)
+                    // Retar a duelo real desde cualquier aviso, comparado
+                    // con WhatsApp/Instagram -- cierra el hueco deliberado
+                    // documentado hace varias rondas: los duelos
+                    // necesitaban un chatID existente, ahora resuelto
+                    // reutilizando el mismo getOrCreateChat() de arriba
+                    // (mismo criterio real que "Enviar mensaje").
+                    Button("⚡ Retar a duelo") { startDuel(with: actorProfileID) }
+                        .buttonStyle(.bordered)
                     if entry.kind != "social" {
                         Button("🤝 Enviar social") { sendSocial(to: actorProfileID) }
                             .buttonStyle(.bordered)
@@ -371,6 +384,11 @@ private struct NotificationActionsSheet: View {
                 NavigationStack { ChatView(chatID: chatID, currentUserID: currentUserID) }
             }
         }
+        .sheet(isPresented: $showDuel) {
+            if let duelChatID, let currentUserID, let duelOpponentID {
+                DuelEntryPoint(chatID: duelChatID, currentUserID: currentUserID, opponentID: duelOpponentID)
+            }
+        }
         .sheet(isPresented: $showReport) {
             if let currentUserID, let actorProfileID {
                 ReportSheet(userID: currentUserID, reportedID: actorProfileID)
@@ -395,6 +413,26 @@ private struct NotificationActionsSheet: View {
             guard let myID = resolvedID else { return }
             chatID = await socialLinks.getOrCreateChat(myID, otherID)
             if chatID != nil { showChat = true }
+        }
+    }
+
+    /// Retar a duelo real desde cualquier aviso, comparado con
+    /// WhatsApp/Instagram -- cierra el hueco deliberado documentado hace
+    /// varias rondas: los duelos necesitaban un chatID existente para
+    /// poder challengear, ahora resuelto reutilizando el mismo
+    /// getOrCreateChat() que sendMessage(to:) de arriba.
+    private func startDuel(with otherID: UUID) {
+        Task {
+            let resolvedID: UUID?
+            if let currentUserID {
+                resolvedID = currentUserID
+            } else {
+                resolvedID = try? await SupabaseManager.shared.client.auth.session.user.id
+            }
+            guard let myID = resolvedID else { return }
+            duelChatID = await socialLinks.getOrCreateChat(myID, otherID)
+            duelOpponentID = otherID
+            if duelChatID != nil { showDuel = true }
         }
     }
 

@@ -75,6 +75,11 @@ fun AvisosScreen(
     // comparado con Instagram/TikTok -- ver ReelsViewModel.kt.load() para
     // el hallazgo completo.
     onOpenReel: (String) -> Unit = {},
+    // Retar a duelo real desde cualquier aviso, comparado con
+    // WhatsApp/Instagram -- cierra el hueco deliberado documentado hace
+    // varias rondas: los duelos necesitaban un chatId existente, ahora
+    // resuelto reutilizando getOrCreateChat() (SocialLinkManager.kt).
+    onStartDuel: (chatId: String, opponentId: String) -> Unit = { _, _ -> },
     viewModel: AvisosViewModel = viewModel()
 ) {
     val notifications by viewModel.notifications.collectAsState()
@@ -198,6 +203,7 @@ fun AvisosScreen(
             onOpenChat = onOpenChat,
             onOpenProfile = onOpenProfile,
             onOpenDuelResult = onOpenDuelResult,
+            onStartDuel = onStartDuel,
             onDismiss = { selected = null }
         )
     }
@@ -237,6 +243,7 @@ private fun NotificationActionsSheet(
     onOpenChat: (String) -> Unit,
     onOpenProfile: (String) -> Unit,
     onOpenDuelResult: (String) -> Unit,
+    onStartDuel: (chatId: String, opponentId: String) -> Unit = { _, _ -> },
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState()
@@ -341,6 +348,23 @@ private fun NotificationActionsSheet(
                     colors = ButtonDefaults.buttonColors(containerColor = SocialColors.Turquoise),
                     modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
                 ) { Text("💬 Enviar mensaje") }
+                // Retar a duelo real desde cualquier aviso, comparado con
+                // WhatsApp/Instagram -- cierra el hueco deliberado
+                // documentado hace varias rondas: los duelos necesitaban
+                // un chatId existente para poder challengear, ahora
+                // resuelto reutilizando el mismo getOrCreateChat() de
+                // arriba (mismo criterio real que "Enviar mensaje").
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            val myId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                            val chatId = socialLinks.getOrCreateChat(myId, actorId)
+                            onDismiss()
+                            if (chatId != null) onStartDuel(chatId, actorId)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                ) { Text("⚡ Retar a duelo") }
                 if (entry.kind != "social") {
                     OutlinedButton(
                         onClick = {

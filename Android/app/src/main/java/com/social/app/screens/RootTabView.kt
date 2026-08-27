@@ -281,6 +281,7 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                         onOpenChat = { chatId -> navController.navigate("chat/$chatId") },
                         onOpenProfile = { profileId -> navController.navigate("profile/$profileId") },
                         onOpenDuelResult = { duelId -> navController.navigate("duel_result/$duelId") },
+                        onStartDuel = { chatId, opponentId -> navController.navigate("duel/$chatId/$opponentId") },
                         // Publicación individual real, comparado con
                         // Instagram/Twitter/Facebook -- ver
                         // PostDetailScreen.kt para el hallazgo completo:
