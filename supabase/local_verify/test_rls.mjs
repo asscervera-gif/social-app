@@ -2823,6 +2823,43 @@ async function main() {
   const aAfterRealDemote = (await db.query(`select is_admin from group_chat_members where group_chat_id = $1 and user_id = $2`, [gaGroupId, gaMemberA])).rows[0];
   check('group_chat_members_update_admin: gaMemberA queda de verdad descendido tras el intento real de gaMemberB', aAfterRealDemote.is_admin === false);
 
+  // --- group_chats_update_by_admin (0108_group_chat_rename_by_admin.sql):
+  // renombrar el grupo/cambiar su foto también para admins, comparado
+  // con WhatsApp/Telegram/Messenger. Usuarios NUEVOS a propósito (mismo
+  // motivo ya documentado varias veces esta sesión): sin ninguna
+  // relación previa que pueda contaminar esta prueba. ---
+  await asSuperuser();
+  const rnCreator = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const rnAdmin = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const rnStranger = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name) values ($1, 'Crea'), ($2, 'Admin'), ($3, 'Ajeno')
+     on conflict (id) do update set display_name = excluded.display_name`,
+    [rnCreator, rnAdmin, rnStranger]
+  );
+
+  await asUser(rnCreator);
+  const rnGroupId = crypto.randomUUID();
+  await db.query(`insert into group_chats (id, name, created_by) values ($1, $2, $3)`, [rnGroupId, 'Grupo para renombrar', rnCreator]);
+  await db.query(`insert into group_chat_members (group_chat_id, user_id) values ($1, $2), ($1, $3)`, [rnGroupId, rnAdmin, rnStranger]);
+  await db.query(`update group_chat_members set is_admin = true where group_chat_id = $1 and user_id = $2`, [rnGroupId, rnAdmin]);
+
+  await asUser(rnStranger);
+  await db.query(`update group_chats set name = 'Intento ajeno real' where id = $1`, [rnGroupId]);
+  const afterStrangerRename = (await db.query(`select name from group_chats where id = $1`, [rnGroupId])).rows[0];
+  check('group_chats_update_by_admin: un miembro real que NO es admin (rnStranger) NO puede renombrar el grupo (0 filas afectadas por RLS, no un error)', afterStrangerRename.name === 'Grupo para renombrar');
+
+  await asUser(rnAdmin);
+  await expectOk('group_chats_update_by_admin: un admin real NO creador (rnAdmin) SÍ puede renombrar el grupo', async () => {
+    await db.query(`update group_chats set name = 'Renombrado de verdad por un admin' where id = $1`, [rnGroupId]);
+  });
+  const afterRealRename = (await db.query(`select name from group_chats where id = $1`, [rnGroupId])).rows[0];
+  check('group_chats_update_by_admin: el nombre real queda renombrado de verdad', afterRealRename.name === 'Renombrado de verdad por un admin');
+
+  await db.query(`update group_chats set created_by = $1 where id = $2`, [rnAdmin, rnGroupId]);
+  const afterHijackAttempt = (await db.query(`select created_by from group_chats where id = $1`, [rnGroupId])).rows[0];
+  check('protect_group_chat_identity: un admin real (rnAdmin) NO puede robar el grupo reescribiendo created_by (revertido de verdad)', afterHijackAttempt.created_by === rnCreator);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

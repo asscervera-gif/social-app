@@ -380,9 +380,9 @@ private struct GroupMembersView: View {
     @State private var showAddPicker = false
     @StateObject private var socialsViewModel = SocialsListViewModel()
     // Nombre editable y foto de grupo real, comparado con WhatsApp/
-    // Messenger/Telegram -- solo el creador puede tocarlos (RLS
-    // `group_chats_update_own`, 0057_group_chats.sql, mismo rol de
-    // "admin" que esas apps sin construir un sistema de roles nuevo).
+    // Messenger/Telegram -- el creador o cualquier admin real puede
+    // tocarlos (RLS `group_chats_update_own`/`_update_by_admin`,
+    // 0057/0108_group_chat_rename_by_admin.sql).
     @State private var editingName = false
     @State private var nameDraft = ""
     @State private var selectedGroupPhoto: PhotosPickerItem?
@@ -412,7 +412,7 @@ private struct GroupMembersView: View {
                                 Circle().fill(Color(.systemGray5)).frame(width: 48, height: 48).overlay(Text("👥"))
                             }
                         }
-                        .disabled(!isCreator)
+                        .disabled(!isCreator && !isAdmin)
                         .onChange(of: selectedGroupPhoto) { newValue in
                             Task {
                                 if let data = try? await newValue?.loadTransferable(type: Data.self) {
@@ -428,7 +428,7 @@ private struct GroupMembersView: View {
                             }
                         } else {
                             Text(viewModel.groupChat?.name ?? "Grupo").font(.headline)
-                            if isCreator {
+                            if isCreator || isAdmin {
                                 Spacer()
                                 Button {
                                     nameDraft = viewModel.groupChat?.name ?? ""

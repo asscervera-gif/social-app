@@ -673,9 +673,9 @@ private fun MembersSheet(
     LaunchedEffect(Unit) { socialsViewModel.load() }
 
     // Nombre editable y foto de grupo real, comparado con WhatsApp/
-    // Messenger/Telegram -- solo el creador puede tocarlos (RLS
-    // `group_chats_update_own`, 0057_group_chats.sql, mismo rol de
-    // "admin" que esas apps sin construir un sistema de roles nuevo).
+    // Messenger/Telegram -- el creador o cualquier admin real puede
+    // tocarlos (RLS `group_chats_update_own`/`_update_by_admin`,
+    // 0057/0108_group_chat_rename_by_admin.sql).
     val isCreator = groupChat != null && groupChat.createdBy == myId
     // Administradores reales de grupo, comparado con WhatsApp/Telegram/
     // Messenger -- el creador real siempre es admin (0107), pero aquí se
@@ -700,7 +700,7 @@ private fun MembersSheet(
                         .size(48.dp)
                         .clip(androidx.compose.foundation.shape.CircleShape)
                         .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .let { if (isCreator) it.clickable { pickGroupPhoto.launch("image/*") } else it }
+                        .let { if (isCreator || isAdmin) it.clickable { pickGroupPhoto.launch("image/*") } else it }
                 )
                 if (editingName) {
                     OutlinedTextField(
@@ -719,7 +719,10 @@ private fun MembersSheet(
                         style = MaterialTheme.typography.titleLarge,
                         modifier = Modifier.padding(start = 12.dp).weight(1f)
                     )
-                    if (isCreator) {
+                    // Renombrar el grupo/cambiar su foto también para
+                    // admins, comparado con WhatsApp/Telegram/Messenger
+                    // -- ver 0108_group_chat_rename_by_admin.sql.
+                    if (isCreator || isAdmin) {
                         TextButton(onClick = { editingName = true }) { Text("✏") }
                     }
                 }
