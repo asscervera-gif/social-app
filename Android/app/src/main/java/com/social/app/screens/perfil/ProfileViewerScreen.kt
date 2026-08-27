@@ -46,6 +46,14 @@ fun ProfileViewerScreen(profileId: String) {
     var isFollowing by remember { mutableStateOf(false) }
     var followBusy by remember { mutableStateOf(false) }
     val followManager = remember { FollowManager() }
+    // Activar avisos de publicaciones de esta cuenta real ("🔔"),
+    // comparado con Instagram/Twitter/X -- solo tiene sentido real una
+    // vez que ya la sigues (mismo criterio real que esas apps: la
+    // campana solo aparece tras seguir). Ver
+    // com.social.app.chat.PostNotificationManager, 0098_post_notifications.sql.
+    var isSubscribedToPosts by remember { mutableStateOf(false) }
+    var subscriptionBusy by remember { mutableStateOf(false) }
+    val postNotificationManager = remember { com.social.app.chat.PostNotificationManager() }
     val scope = rememberCoroutineScope()
     // Hallazgo real, comparado con Instagram/Twitter/TikTok: el visor de
     // OTRA persona solo tenía "Seguir" -- ningún "Bloquear" ni "Denunciar"
@@ -79,7 +87,10 @@ fun ProfileViewerScreen(profileId: String) {
         // FollowManager.kt para el detalle completo.
         myId = SupabaseManager.client.auth.currentUserOrNull()?.id
         myId?.let { uid ->
-            if (uid != profileId) isFollowing = followManager.isFollowing(uid, profileId)
+            if (uid != profileId) {
+                isFollowing = followManager.isFollowing(uid, profileId)
+                isSubscribedToPosts = postNotificationManager.isSubscribed(uid, profileId)
+            }
         }
     }
 
@@ -140,6 +151,25 @@ fun ProfileViewerScreen(profileId: String) {
                         OutlinedButton(onClick = onToggle, enabled = !followBusy) { Text("Siguiendo") }
                     } else {
                         Button(onClick = onToggle, enabled = !followBusy) { Text("Seguir") }
+                    }
+                    // Activar avisos de publicaciones de esta cuenta real
+                    // ("🔔"), comparado con Instagram/Twitter/X -- solo
+                    // aparece una vez que ya la sigues.
+                    if (isFollowing) {
+                        OutlinedButton(
+                            onClick = {
+                                val uid = myId!!
+                                subscriptionBusy = true
+                                scope.launch {
+                                    if (isSubscribedToPosts) postNotificationManager.unsubscribe(uid, profileId)
+                                    else postNotificationManager.subscribe(uid, profileId)
+                                    isSubscribedToPosts = !isSubscribedToPosts
+                                    subscriptionBusy = false
+                                }
+                            },
+                            enabled = !subscriptionBusy,
+                            modifier = Modifier.padding(start = 8.dp)
+                        ) { Text(if (isSubscribedToPosts) "🔔" else "🔕") }
                     }
                     OutlinedButton(
                         onClick = { showReportSheet = true },

@@ -179,6 +179,11 @@ fun AvisosScreen(
                     // rama de post_id de arriba.
                     entry.kind == "mention" && entry.payload["reel_id"] != null ->
                         onOpenReel(entry.payload["reel_id"]!!)
+                    // Activar avisos de publicaciones de una cuenta real
+                    // ("🔔"), comparado con Instagram/Twitter/X -- ver
+                    // 0098_post_notifications.sql.
+                    entry.kind == "new_post" && entry.payload["post_id"] != null ->
+                        onOpenPost(entry.payload["post_id"]!!)
                 }
             })
         }
@@ -210,6 +215,7 @@ private fun contextFor(kind: String): String = when (kind) {
     "mention" -> "Te ha mencionado."
     "social_accepted" -> "Aceptó tu social."
     "compat_accepted" -> "Compartió su compatibilidad contigo."
+    "new_post" -> "Ha publicado algo nuevo."
     else -> "Nueva notificación."
 }
 

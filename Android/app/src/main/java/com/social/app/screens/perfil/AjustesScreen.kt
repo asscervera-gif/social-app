@@ -63,6 +63,10 @@ private val NOTIFICATION_CATEGORIES: List<Pair<String, List<String>>> = listOf(
     "Menciones" to listOf("mention"),
     "Socials" to listOf("social", "social_accepted"),
     "Seguidores" to listOf("follow"),
+    // Activar avisos de publicaciones de una cuenta real ("🔔"), comparado
+    // con Instagram/Twitter/X -- ver ProfileViewerScreen.kt,
+    // 0098_post_notifications.sql.
+    "Publicaciones nuevas" to listOf("new_post"),
     "Duelos" to listOf("fight"),
     "Compatibilidad" to listOf("compat_request", "compat_accepted")
 )

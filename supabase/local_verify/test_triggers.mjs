@@ -198,6 +198,40 @@ async function main() {
   const nonMemberMentionNotif = (await db.query(`select id from notifications where kind = 'mention' and recipient_id = $1`, [u6])).rows;
   check('notify_mentions_in_group_message: @seis_test real, que NO es miembro del grupo, NO recibe aviso (evita la fuga real de que ese grupo existe)', nonMemberMentionNotif.length === 0);
 
+  // --- post_notification_subscriptions / notify_post_subscribers
+  // (0098_post_notifications.sql): activar avisos de publicaciones de
+  // una cuenta real ("🔔"), comparado con Instagram/Twitter/X. Usuarios
+  // nuevos a propósito (mismo motivo ya documentado en la ronda de
+  // menciones en grupo: evitar estado ajeno de bloqueos/follows de más
+  // arriba en este mismo archivo). ---
+  const u7 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const u8 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const u9 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name) values ($1, 'Siete'), ($2, 'Ocho'), ($3, 'Nueve')
+     on conflict (id) do update set display_name = excluded.display_name`,
+    [u7, u8, u9]
+  );
+  await db.query(`insert into post_notification_subscriptions (subscriber_id, creator_id) values ($1, $2)`, [u8, u7]);
+
+  const subscribedPost = (await db.query(`insert into posts (author_id, caption) values ($1, 'publicación real nueva') returning id`, [u7])).rows[0];
+  const newPostNotif = (await db.query(
+    `select id from notifications where kind = 'new_post' and recipient_id = $1 and payload->>'post_id' = $2`,
+    [u8, subscribedPost.id]
+  )).rows;
+  check('notify_post_subscribers: u8 real, suscrito a u7, SÍ recibe el aviso real de la publicación nueva', newPostNotif.length === 1);
+
+  const unsubscribedNotif = (await db.query(`select id from notifications where kind = 'new_post' and recipient_id = $1`, [u9])).rows;
+  check('notify_post_subscribers: u9 real, que NO está suscrito a u7, NO recibe ningún aviso', unsubscribedNotif.length === 0);
+
+  await db.query(`insert into blocks (blocker_id, blocked_id) values ($1, $2)`, [u8, u7]);
+  const secondPost = (await db.query(`insert into posts (author_id, caption) values ($1, 'segunda publicación real') returning id`, [u7])).rows[0];
+  const notifAfterBlock = (await db.query(
+    `select id from notifications where kind = 'new_post' and recipient_id = $1 and payload->>'post_id' = $2`,
+    [u8, secondPost.id]
+  )).rows;
+  check('notify_post_subscribers: tras bloquear real al autor, u8 NO recibe aviso de su nueva publicación aunque siga suscrito', notifAfterBlock.length === 0);
+
   console.log('\n--- fin de las pruebas funcionales ---');
   if (!allPassed) process.exitCode = 1;
 }

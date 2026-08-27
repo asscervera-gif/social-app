@@ -173,6 +173,16 @@ struct AvisosView: View {
             showOpenedReel = true
             return
         }
+        // Activar avisos de publicaciones de una cuenta real ("🔔"),
+        // comparado con Instagram/Twitter/X -- ver
+        // 0098_post_notifications.sql.
+        if entry.kind == "new_post",
+           let postIDString = entry.payload["post_id"],
+           let postID = UUID(uuidString: postIDString) {
+            selectedPostID = postID
+            showOpenedPost = true
+            return
+        }
         viewModel.selected = entry
     }
 }
@@ -232,6 +242,7 @@ private func contextFor(_ kind: String) -> String {
     case "mention": return "Te ha mencionado."
     case "social_accepted": return "Aceptó tu social."
     case "compat_accepted": return "Compartió su compatibilidad contigo."
+    case "new_post": return "Ha publicado algo nuevo."
     default: return "Nueva notificación."
     }
 }

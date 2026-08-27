@@ -30,6 +30,10 @@ struct AjustesView: View {
         ("Menciones", ["mention"]),
         ("Socials", ["social", "social_accepted"]),
         ("Seguidores", ["follow"]),
+        // Activar avisos de publicaciones de una cuenta real ("🔔"),
+        // comparado con Instagram/Twitter/X -- ver ProfileViewerView.swift,
+        // 0098_post_notifications.sql.
+        ("Publicaciones nuevas", ["new_post"]),
         ("Duelos", ["fight"]),
         ("Compatibilidad", ["compat_request", "compat_accepted"])
     ]

@@ -20,6 +20,14 @@ struct ProfileViewerView: View {
     @State private var isFollowing = false
     @State private var followBusy = false
     @StateObject private var followManager = FollowManager()
+    // Activar avisos de publicaciones de esta cuenta real ("🔔"),
+    // comparado con Instagram/Twitter/X -- solo tiene sentido real una
+    // vez que ya la sigues (mismo criterio real que esas apps: la
+    // campana solo aparece tras seguir). Ver PostNotificationManager.swift,
+    // 0098_post_notifications.sql.
+    @State private var isSubscribedToPosts = false
+    @State private var subscriptionBusy = false
+    private let postNotificationManager = PostNotificationManager()
     // Hallazgo real, comparado con Instagram/Twitter/TikTok: el visor de
     // OTRA persona solo tenía "Seguir" -- ningún "Bloquear" ni "Denunciar"
     // directo, pese a que ReportSheet ya incluye ambas acciones reales
@@ -97,6 +105,25 @@ struct ProfileViewerView: View {
                             .buttonStyle(.borderedProminent)
                             .disabled(followBusy)
                     }
+                    // Activar avisos de publicaciones de esta cuenta real
+                    // ("🔔"), comparado con Instagram/Twitter/X -- solo
+                    // aparece una vez que ya la sigues.
+                    if isFollowing {
+                        Button(isSubscribedToPosts ? "🔔" : "🔕") {
+                            subscriptionBusy = true
+                            Task {
+                                if isSubscribedToPosts {
+                                    _ = await postNotificationManager.unsubscribe(subscriberID: myID, creatorID: profileID)
+                                } else {
+                                    _ = await postNotificationManager.subscribe(subscriberID: myID, creatorID: profileID)
+                                }
+                                isSubscribedToPosts.toggle()
+                                subscriptionBusy = false
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(subscriptionBusy)
+                    }
                     Button("⚠") { showReportSheet = true }
                         .buttonStyle(.bordered)
                         .tint(.red)
@@ -139,6 +166,7 @@ struct ProfileViewerView: View {
             myID = try? await client.auth.session.user.id
             if let myID, myID != profileID {
                 isFollowing = await followManager.isFollowing(followerID: myID, followeeID: profileID)
+                isSubscribedToPosts = await postNotificationManager.isSubscribed(subscriberID: myID, creatorID: profileID)
             }
         }
     }

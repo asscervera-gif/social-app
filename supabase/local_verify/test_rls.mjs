@@ -2206,6 +2206,23 @@ async function main() {
   const sensitiveSeenByOther = (await db.query(`select is_sensitive from posts where id = $1`, [sensitivePost.id])).rows[0];
   check('posts_select: u2 real SÍ ve is_sensitive activado (necesario para difuminarlo en su cliente)', sensitiveSeenByOther.is_sensitive === true);
 
+  // --- post_notification_subscriptions (0098_post_notifications.sql):
+  // activar avisos de publicaciones de una cuenta real ("🔔"), comparado
+  // con Instagram/Twitter/X -- mismo criterio de privacidad real que
+  // restricts_select_own: nadie más que el propio suscriptor puede leer
+  // a quién se ha suscrito. ---
+  await asUser(u2);
+  await expectOk('post_notification_subscriptions_insert_own: u2 SÍ puede suscribirse real a los avisos de publicaciones de u1', async () => {
+    await db.query(`insert into post_notification_subscriptions (subscriber_id, creator_id) values ($1, $2)`, [u2, u1]);
+  });
+  await asUser(u4);
+  const subsSeenByStranger = (await db.query(`select 1 from post_notification_subscriptions where subscriber_id = $1`, [u2])).rows;
+  check('post_notification_subscriptions_select_own: un tercero real (u4) NO puede ver a quién está suscrito u2', subsSeenByStranger.length === 0);
+  await asUser(u2);
+  await expectOk('post_notification_subscriptions_delete_own: u2 SÍ puede darse de baja real', async () => {
+    await db.query(`delete from post_notification_subscriptions where subscriber_id = $1 and creator_id = $2`, [u2, u1]);
+  });
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado
