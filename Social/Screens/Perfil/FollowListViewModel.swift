@@ -107,4 +107,20 @@ final class FollowListViewModel: ObservableObject {
             await load()
         }
     }
+
+    /// Eliminar un seguidor real, comparado con Instagram/Twitter/
+    /// Facebook -- distinto de bloquear (no le impide volver a seguirte
+    /// si tu cuenta es pública) y distinto de dejar de seguir (aquí actúa
+    /// quien ES seguido, no el propio seguidor). Reutiliza
+    /// FollowManager.unfollow() tal cual -- es la misma fila `follows`,
+    /// solo cambia quién la borra (`follows_delete_by_followee`,
+    /// 0092_remove_follower.sql). Equivalente de
+    /// FollowListViewModel.kt.removeFollower().
+    func removeFollower(_ entry: FollowEntry) {
+        guard let myID else { return }
+        followers.removeAll { $0.id == entry.id }
+        Task {
+            await FollowManager().unfollow(followerID: entry.id, followeeID: myID)
+        }
+    }
 }

@@ -119,4 +119,19 @@ class FollowListViewModel : ViewModel() {
             load()
         }
     }
+
+    /** Eliminar un seguidor real, comparado con Instagram/Twitter/
+     * Facebook -- distinto de bloquear (no le impide volver a seguirte si
+     * tu cuenta es pública) y distinto de dejar de seguir (aquí el que
+     * actúa es a quien SIGUEN, no el propio seguidor). Reutiliza
+     * FollowManager.unfollow() tal cual -- es la misma fila `follows`,
+     * solo cambia quién la borra (`follows_delete_by_followee`,
+     * 0092_remove_follower.sql). */
+    fun removeFollower(entry: FollowEntry) {
+        val id = myId ?: return
+        _followers.value = _followers.value.filter { it.profileId != entry.profileId }
+        viewModelScope.launch {
+            FollowManager().unfollow(entry.profileId, id)
+        }
+    }
 }

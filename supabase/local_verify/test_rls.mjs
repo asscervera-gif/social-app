@@ -502,6 +502,27 @@ async function main() {
   const followGone = (await db.query(`select 1 from follows where follower_id = $1 and followee_id = $2`, [u3, u1])).rows;
   check('follows_delete: dejar de seguir SÍ borra la fila de verdad', followGone.length === 0);
 
+  // --- follows_delete_by_followee (0092_remove_follower.sql): eliminar
+  // un seguidor real, comparado con Instagram/Twitter/Facebook -- quien
+  // ES seguido también puede borrar esa fila, no solo el propio seguidor
+  // (0026, arriba). Reutiliza u3 siguiendo a u1 otra vez. ---
+  await asSuperuser();
+  await db.query(`insert into follows (follower_id, followee_id) values ($1, $2)`, [u3, u1]);
+
+  await asUser(u2);
+  await db.query(`delete from follows where follower_id = $1 and followee_id = $2`, [u3, u1]);
+  await asSuperuser();
+  const followStillThereAfterStranger = (await db.query(`select 1 from follows where follower_id = $1 and followee_id = $2`, [u3, u1])).rows;
+  check('follows_delete_by_followee: un tercero real (u2), que no es ni el seguidor ni el seguido, NO puede borrar esa relación (0 filas afectadas, no un error)', followStillThereAfterStranger.length === 1);
+
+  await asUser(u1);
+  await expectOk('follows_delete_by_followee: u1 real (a quien sigue u3) SÍ puede eliminarlo como seguidor', async () => {
+    await db.query(`delete from follows where follower_id = $1 and followee_id = $2`, [u3, u1]);
+  });
+  await asSuperuser();
+  const followGoneByFollowee = (await db.query(`select 1 from follows where follower_id = $1 and followee_id = $2`, [u3, u1])).rows;
+  check('follows_delete_by_followee: la fila real queda borrada de verdad', followGoneByFollowee.length === 0);
+
   // --- device_tokens (0040): registro de token de dispositivo para push
   // real — cada quien gestiona solo el suyo, nunca el de otro. Primera
   // vez que se prueba con RLS real, no solo la migración aplicando

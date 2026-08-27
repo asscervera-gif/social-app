@@ -101,13 +101,26 @@ fun FollowListScreen(
                         com.social.app.avatar.AvatarView(config = entry.avatarConfig ?: emptyMap(), size = 44.dp)
                         Text(entry.displayName, modifier = Modifier.padding(start = 10.dp))
                     }
-                    if (entry.isFollowing) {
-                        OutlinedButton(onClick = { viewModel.toggleFollow(entry) }) { Text("Siguiendo") }
-                    } else {
-                        Button(
-                            onClick = { viewModel.toggleFollow(entry) },
-                            colors = ButtonDefaults.buttonColors(containerColor = SocialColors.Turquoise)
-                        ) { Text("Seguir") }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (entry.isFollowing) {
+                            OutlinedButton(onClick = { viewModel.toggleFollow(entry) }) { Text("Siguiendo") }
+                        } else {
+                            Button(
+                                onClick = { viewModel.toggleFollow(entry) },
+                                colors = ButtonDefaults.buttonColors(containerColor = SocialColors.Turquoise)
+                            ) { Text("Seguir") }
+                        }
+                        // Eliminar un seguidor real, comparado con
+                        // Instagram/Twitter/Facebook -- distinto de
+                        // bloquear (no le impide volver a seguirte si tu
+                        // cuenta es pública) y de dejar de seguir (aquí
+                        // actúa quien ES seguido). Ver
+                        // FollowListViewModel.removeFollower(),
+                        // 0092_remove_follower.sql. Solo tiene sentido en
+                        // la pestaña de Seguidores.
+                        if (tab == FollowTab.FOLLOWERS) {
+                            OutlinedButton(onClick = { viewModel.removeFollower(entry) }) { Text("Eliminar") }
+                        }
                     }
                 }
                 HorizontalDivider()

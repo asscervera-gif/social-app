@@ -64,6 +64,21 @@ struct FollowListView: View {
                         }
                         .buttonStyle(.bordered)
                         .tint(entry.isFollowing ? .secondary : .blue)
+                        // Eliminar un seguidor real, comparado con
+                        // Instagram/Twitter/Facebook -- distinto de
+                        // bloquear (no le impide volver a seguirte si tu
+                        // cuenta es pública) y de dejar de seguir (aquí
+                        // actúa quien ES seguido). Ver
+                        // FollowListViewModel.removeFollower(),
+                        // 0092_remove_follower.sql. Solo tiene sentido en
+                        // la pestaña de Seguidores.
+                        if tab == .followers {
+                            Button("Eliminar") {
+                                viewModel.removeFollower(entry)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.red)
+                        }
                     }
                 }
             }
