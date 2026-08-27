@@ -232,6 +232,28 @@ async function main() {
   )).rows;
   check('notify_post_subscribers: tras bloquear real al autor, u8 NO recibe aviso de su nueva publicación aunque siga suscrito', notifAfterBlock.length === 0);
 
+  // --- notify_story_question_response (0099_story_questions.sql): avisa
+  // al autor real de una historia en cuanto llega una respuesta real a
+  // su pregunta, comparado con Instagram. ---
+  const u10 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const u11 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name) values ($1, 'Diez'), ($2, 'Once')
+     on conflict (id) do update set display_name = excluded.display_name`,
+    [u10, u11]
+  );
+  const questionStory = (await db.query(`insert into stories (author_id, media_url) values ($1, 'historia.jpg') returning id`, [u10])).rows[0];
+  const realQuestion = (await db.query(`insert into story_questions (story_id, prompt) values ($1, '¿qué opinas?') returning id`, [questionStory.id])).rows[0];
+  const realResponse = (await db.query(
+    `insert into story_question_responses (question_id, responder_id, body) values ($1, $2, 'me parece genial') returning id`,
+    [realQuestion.id, u11]
+  )).rows[0];
+  const storyQuestionNotif = (await db.query(
+    `select id from notifications where kind = 'story_question_response' and recipient_id = $1 and payload->>'response_id' = $2`,
+    [u10, realResponse.id]
+  )).rows;
+  check('notify_story_question_response: u10 real, autor de la historia, SÍ recibe el aviso real de la respuesta', storyQuestionNotif.length === 1);
+
   console.log('\n--- fin de las pruebas funcionales ---');
   if (!allPassed) process.exitCode = 1;
 }

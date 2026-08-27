@@ -19,6 +19,11 @@ struct StoriesBar: View {
     // con Instagram/Snapchat -- antes de subir, se pregunta la audiencia
     // real en vez de fijarla siempre a "everyone" en silencio.
     @State private var pendingImageData: Data?
+    // Adhesivo de pregunta real en una historia ("Pregúntame algo"),
+    // comparado con Instagram -- opcional, en el mismo paso real de
+    // audiencia en vez de un tercer paso aparte. Ver
+    // StoriesViewModel.createStory(), 0099_story_questions.sql.
+    @State private var pendingQuestion = ""
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -78,29 +83,50 @@ struct StoriesBar: View {
         // "Mejores amigos" real (0075_close_friends_stories.sql),
         // comparado con Instagram/Snapchat -- audiencia elegida en el
         // momento de subir, no un ajuste global fijo para todas las
-        // historias. Mismo criterio que StoriesBar.kt.
-        .confirmationDialog(
-            "¿Quién puede ver esta historia?",
-            isPresented: Binding(
-                get: { pendingImageData != nil },
-                set: { isPresented in if !isPresented { pendingImageData = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Todos") {
-                if let data = pendingImageData {
-                    pendingImageData = nil
-                    Task { await viewModel.createStory(imageData: data, visibility: "everyone") }
+        // historias. Mismo criterio que StoriesBar.kt. Un `.sheet` con
+        // `Form` en vez de `.confirmationDialog` real (que no admite un
+        // `TextField` propio) para poder añadir también la pregunta
+        // opcional en el mismo paso.
+        .sheet(isPresented: Binding(
+            get: { pendingImageData != nil },
+            set: { isPresented in if !isPresented { pendingImageData = nil; pendingQuestion = "" } }
+        )) {
+            NavigationStack {
+                Form {
+                    Section {
+                        Text("\"Mejores amigos\" solo se la enseña a la gente que actives en Ajustes.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    // Adhesivo de pregunta real en una historia
+                    // ("Pregúntame algo"), comparado con Instagram --
+                    // opcional.
+                    Section {
+                        TextField("Añadir pregunta (opcional)", text: $pendingQuestion)
+                    }
+                    Section {
+                        Button("Todos") {
+                            if let data = pendingImageData {
+                                let question = pendingQuestion
+                                pendingImageData = nil
+                                pendingQuestion = ""
+                                Task { await viewModel.createStory(imageData: data, visibility: "everyone", questionPrompt: question) }
+                            }
+                        }
+                        Button("Mejores amigos") {
+                            if let data = pendingImageData {
+                                let question = pendingQuestion
+                                pendingImageData = nil
+                                pendingQuestion = ""
+                                Task { await viewModel.createStory(imageData: data, visibility: "close_friends", questionPrompt: question) }
+                            }
+                        }
+                    }
                 }
+                .navigationTitle("¿Quién puede ver esta historia?")
+                .navigationBarTitleDisplayMode(.inline)
             }
-            Button("Mejores amigos") {
-                if let data = pendingImageData {
-                    pendingImageData = nil
-                    Task { await viewModel.createStory(imageData: data, visibility: "close_friends") }
-                }
-            }
-        } message: {
-            Text("\"Mejores amigos\" solo se la enseña a la gente que actives en Ajustes.")
+            .presentationDetents([.medium])
         }
     }
 }
@@ -130,6 +156,14 @@ private struct StoryViewer: View {
     @State private var replyText = ""
     @FocusState private var isReplyFocused: Bool
     @StateObject private var socialLinks = SocialLinkManager()
+    // Adhesivo de pregunta real en una historia ("Pregúntame algo"),
+    // comparado con Instagram -- ver
+    // StoriesViewModel.respondToQuestion()/loadQuestionResponses(),
+    // 0099_story_questions.sql.
+    @State private var questionAnswerText = ""
+    @State private var questionAnswerSent = false
+    @State private var showQuestionResponses = false
+    @State private var questionResponses: [StoriesViewModel.StoryQuestionResponse] = []
 
     private func goNext() {
         if index < group.stories.count - 1 {
@@ -197,20 +231,83 @@ private struct StoryViewer: View {
                 .padding(.top, 24)
                 .padding(.horizontal, 16)
 
+                // Adhesivo de pregunta real en una historia ("Pregúntame
+                // algo"), comparado con Instagram -- ver
+                // StoriesViewModel.storyQuestions, 0099_story_questions.sql.
+                let question = viewModel.storyQuestions[story.id]
                 if story.author_id == myID {
-                    VStack {
+                    VStack(alignment: .leading, spacing: 6) {
                         Spacer()
-                        HStack {
+                        Button {
+                            showViewers = true
+                        } label: {
+                            Text("👁 \(viewers.count) \(viewers.count == 1 ? "vista" : "vistas")")
+                                .foregroundStyle(.white)
+                        }
+                        if let question {
                             Button {
-                                showViewers = true
+                                Task {
+                                    questionResponses = await viewModel.loadQuestionResponses(questionID: question.id)
+                                    showQuestionResponses = true
+                                }
                             } label: {
-                                Text("👁 \(viewers.count) \(viewers.count == 1 ? "vista" : "vistas")")
+                                Text("💬 Ver respuestas a: \"\(question.prompt)\"")
                                     .foregroundStyle(.white)
+                                    .font(.subheadline)
                             }
-                            Spacer()
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
+                } else if let question {
+                    // Responder en privado a la pregunta real de esta
+                    // historia -- a diferencia de "Responder a la
+                    // historia" (abajo), esto NO manda un mensaje de chat
+                    // normal: solo el autor real la ve, con quién la
+                    // escribió.
+                    VStack {
+                        Spacer()
+                        if questionAnswerSent {
+                            Text("Respuesta enviada ✓")
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .background(Color.white.opacity(0.15))
+                                .clipShape(Capsule())
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding()
+                        } else {
+                            HStack(spacing: 8) {
+                                ZStack(alignment: .leading) {
+                                    if questionAnswerText.isEmpty {
+                                        Text(question.prompt)
+                                            .foregroundStyle(.white.opacity(0.6))
+                                    }
+                                    TextField("", text: $questionAnswerText)
+                                        .foregroundStyle(.white)
+                                        .focused($isReplyFocused)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .background(Color.white.opacity(0.15))
+                                .clipShape(Capsule())
+                                if !questionAnswerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                    Button {
+                                        let text = questionAnswerText
+                                        Task {
+                                            if await viewModel.respondToQuestion(questionID: question.id, text: text) {
+                                                questionAnswerSent = true
+                                                questionAnswerText = ""
+                                            }
+                                        }
+                                    } label: {
+                                        Text("➤").foregroundStyle(.white)
+                                    }
+                                }
+                            }
+                            .padding()
+                        }
+                    }
                 } else {
                     // Responder a una historia real
                     // (0071_message_story_reply.sql), comparado con
@@ -254,6 +351,9 @@ private struct StoryViewer: View {
         }
         .task(id: index) {
             showViewers = false
+            showQuestionResponses = false
+            questionAnswerSent = false
+            questionAnswerText = ""
             guard let story = group.stories[safe: index] else { return }
             if story.author_id == myID {
                 viewers = await viewModel.loadViewers(storyID: story.id)
@@ -299,6 +399,27 @@ private struct StoryViewer: View {
                     }
                 }
                 .navigationTitle("Vistas")
+            }
+        }
+        // Adhesivo de pregunta real en una historia ("Pregúntame algo"),
+        // comparado con Instagram -- respuestas privadas, solo el propio
+        // autor las ve, con quién las escribió. Ver
+        // StoriesViewModel.loadQuestionResponses(), 0099_story_questions.sql.
+        .sheet(isPresented: $showQuestionResponses) {
+            NavigationStack {
+                List(questionResponses) { response in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(response.responderName).font(.subheadline.bold())
+                        Text(response.body)
+                    }
+                }
+                .overlay {
+                    if questionResponses.isEmpty {
+                        Text("Todavía nadie ha respondido.")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .navigationTitle("Respuestas")
             }
         }
     }

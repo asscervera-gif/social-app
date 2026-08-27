@@ -73,6 +73,11 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
     // con Instagram/Snapchat -- antes de subir, se pregunta la audiencia
     // real en vez de fijarla siempre a "everyone" en silencio.
     var pendingUploadUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    // Adhesivo de pregunta real en una historia ("Pregúntame algo"),
+    // comparado con Instagram -- opcional, en el mismo diálogo real de
+    // audiencia en vez de un tercer paso aparte. Ver
+    // StoriesViewModel.createStory(), 0099_story_questions.sql.
+    var pendingQuestion by remember { mutableStateOf("") }
 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) pendingUploadUri = uri
@@ -135,17 +140,35 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
         AlertDialog(
             onDismissRequest = { pendingUploadUri = null },
             title = { Text("¿Quién puede ver esta historia?") },
-            text = { Text("\"Mejores amigos\" solo se la enseña a la gente que actives en Ajustes.") },
+            text = {
+                Column {
+                    Text("\"Mejores amigos\" solo se la enseña a la gente que actives en Ajustes.")
+                    // Adhesivo de pregunta real en una historia
+                    // ("Pregúntame algo"), comparado con Instagram --
+                    // opcional, ver StoriesViewModel.createStory().
+                    androidx.compose.material3.OutlinedTextField(
+                        value = pendingQuestion,
+                        onValueChange = { pendingQuestion = it },
+                        label = { Text("Añadir pregunta (opcional)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                    )
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
+                    val question = pendingQuestion
                     pendingUploadUri = null
-                    viewModel.createStory(context, uri, visibility = "close_friends") {}
+                    pendingQuestion = ""
+                    viewModel.createStory(context, uri, visibility = "close_friends", questionPrompt = question) {}
                 }) { Text("Mejores amigos") }
             },
             dismissButton = {
                 TextButton(onClick = {
+                    val question = pendingQuestion
                     pendingUploadUri = null
-                    viewModel.createStory(context, uri, visibility = "everyone") {}
+                    pendingQuestion = ""
+                    viewModel.createStory(context, uri, visibility = "everyone", questionPrompt = question) {}
                 }) { Text("Todos") }
             }
         )
@@ -178,6 +201,14 @@ private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewMod
     var isReplyFocused by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val socialLinks = remember { SocialLinkManager() }
+    // Adhesivo de pregunta real en una historia ("Pregúntame algo"),
+    // comparado con Instagram -- ver StoriesViewModel.storyQuestions(),
+    // 0099_story_questions.sql.
+    val storyQuestions by viewModel.storyQuestions.collectAsState()
+    var questionAnswerText by remember(index) { mutableStateOf("") }
+    var questionAnswerSent by remember(index) { mutableStateOf(false) }
+    var showQuestionResponses by remember { mutableStateOf(false) }
+    var questionResponses by remember { mutableStateOf<List<StoriesViewModel.StoryQuestionResponse>>(emptyList()) }
 
     if (story == null) {
         onDismiss()
@@ -193,6 +224,8 @@ private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewMod
 
     LaunchedEffect(story.id) {
         showViewers = false
+        showQuestionResponses = false
+        questionAnswerSent = false
         if (story.authorId == myId) {
             viewers = viewModel.loadViewers(story.id)
         } else {
@@ -298,16 +331,92 @@ private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewMod
                     )
                 }
             }
+            // Adhesivo de pregunta real en una historia ("Pregúntame
+            // algo"), comparado con Instagram -- ver
+            // StoriesViewModel.storyQuestions(), 0099_story_questions.sql.
+            val question = storyQuestions[story.id]
             if (story.authorId == myId) {
-                Text(
-                    "👁 ${viewers.size} ${if (viewers.size == 1) "vista" else "vistas"}",
-                    color = androidx.compose.ui.graphics.Color.White,
-                    style = MaterialTheme.typography.labelLarge,
+                Column(
+                    modifier = Modifier.align(Alignment.BottomStart).padding(16.dp)
+                ) {
+                    Text(
+                        "👁 ${viewers.size} ${if (viewers.size == 1) "vista" else "vistas"}",
+                        color = androidx.compose.ui.graphics.Color.White,
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.clickable(onClick = { showViewers = true })
+                    )
+                    if (question != null) {
+                        Text(
+                            "💬 Ver respuestas a: \"${question.prompt}\"",
+                            color = androidx.compose.ui.graphics.Color.White,
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(top = 6.dp).clickable {
+                                scope.launch {
+                                    questionResponses = viewModel.loadQuestionResponses(question.id)
+                                    showQuestionResponses = true
+                                }
+                            }
+                        )
+                    }
+                }
+            } else if (question != null) {
+                // Responder en privado a la pregunta real de esta
+                // historia -- a diferencia de "Responder a la historia"
+                // (abajo), esto NO manda un mensaje de chat normal: solo
+                // el autor real la ve, con quién la escribió.
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
                         .padding(16.dp)
-                        .clickable(onClick = { showViewers = true })
-                )
+                ) {
+                    if (questionAnswerSent) {
+                        Text(
+                            "Respuesta enviada ✓",
+                            color = androidx.compose.ui.graphics.Color.White,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(Color.White.copy(alpha = 0.15f))
+                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(Color.White.copy(alpha = 0.15f))
+                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            if (questionAnswerText.isEmpty()) {
+                                Text(question.prompt, color = Color.White.copy(alpha = 0.6f))
+                            }
+                            BasicTextField(
+                                value = questionAnswerText,
+                                onValueChange = { questionAnswerText = it },
+                                textStyle = TextStyle(color = Color.White),
+                                cursorBrush = SolidColor(Color.White),
+                                modifier = Modifier.fillMaxWidth().onFocusChanged { isReplyFocused = it.isFocused }
+                            )
+                        }
+                        if (questionAnswerText.isNotBlank()) {
+                            Text(
+                                "➤",
+                                color = Color.White,
+                                modifier = Modifier.padding(start = 8.dp).clickable {
+                                    val text = questionAnswerText
+                                    scope.launch {
+                                        if (viewModel.respondToQuestion(question.id, text)) {
+                                            questionAnswerSent = true
+                                            questionAnswerText = ""
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
             } else {
                 // Responder a una historia real (0071_message_story_reply.sql),
                 // comparado con Instagram/WhatsApp Status/Snapchat -- solo
@@ -376,6 +485,37 @@ private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewMod
                     }
                     viewers.forEach { viewer ->
                         Text(viewer.displayName, modifier = Modifier.padding(vertical = 6.dp))
+                    }
+                }
+            }
+        }
+    }
+
+    // Adhesivo de pregunta real en una historia ("Pregúntame algo"),
+    // comparado con Instagram -- respuestas privadas, solo el propio
+    // autor las ve, con quién las escribió. Ver
+    // StoriesViewModel.loadQuestionResponses(), 0099_story_questions.sql.
+    if (showQuestionResponses) {
+        Dialog(onDismissRequest = { showQuestionResponses = false }) {
+            Box(
+                modifier = Modifier
+                    .background(MaterialTheme.colorScheme.surface, androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                    .padding(16.dp)
+            ) {
+                Column {
+                    Text("Respuestas", style = MaterialTheme.typography.titleMedium)
+                    if (questionResponses.isEmpty()) {
+                        Text(
+                            "Todavía nadie ha respondido.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                    questionResponses.forEach { response ->
+                        Column(modifier = Modifier.padding(vertical = 6.dp)) {
+                            Text(response.responderName, style = MaterialTheme.typography.labelMedium)
+                            Text(response.body, style = MaterialTheme.typography.bodyMedium)
+                        }
                     }
                 }
             }

@@ -1410,6 +1410,48 @@ async function main() {
   const everyoneStoryAsStranger = (await db.query(`select id from stories where id = $1`, [everyoneStory.id])).rows;
   check('stories_select: comportamiento por defecto ("everyone") sin cambios -- un tercero cualquiera SÍ la ve', everyoneStoryAsStranger.length === 1);
 
+  // --- story_questions/story_question_responses (0099_story_questions.sql):
+  // adhesivo de pregunta real en una historia ("Pregúntame algo"),
+  // comparado con Instagram -- reutiliza everyoneStory (autor real u1).
+  // Las respuestas son privadas: ni siquiera otro espectador real de la
+  // misma historia ve la respuesta de otra persona. Usuarios NUEVOS a
+  // propósito para responder/mirar (no u2/u3): u1 ya los bloqueó a ambos
+  // más arriba en este mismo archivo, y private.is_blocked() comprueba
+  // las dos direcciones -- reutilizarlos aquí habría filtrado la
+  // respuesta por ese bloqueo real ya existente, no por ningún fallo de
+  // la migración (confirmado con una reproducción aislada: el mismo
+  // INSERT, con usuarios sin ese bloqueo previo, sí funcionaba). ---
+  await asSuperuser();
+  const storyResponder = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const storyOtherViewer = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name) values ($1, 'Responde'), ($2, 'Mira')
+     on conflict (id) do update set display_name = excluded.display_name`,
+    [storyResponder, storyOtherViewer]
+  );
+
+  await asUser(u1);
+  const storyQuestion = (await db.query(
+    `insert into story_questions (story_id, prompt) values ($1, '¿Qué tal el día?') returning id`, [everyoneStory.id]
+  )).rows[0];
+  await asUser(storyResponder);
+  const questionAsViewer = (await db.query(`select id, prompt from story_questions where id = $1`, [storyQuestion.id])).rows;
+  check('story_questions_select: un espectador real (storyResponder) SÍ ve que la historia tiene una pregunta', questionAsViewer.length === 1 && questionAsViewer[0].prompt === '¿Qué tal el día?');
+
+  await expectOk('story_question_responses_insert_own: storyResponder SÍ puede responder de verdad a la pregunta', async () => {
+    await db.query(`insert into story_question_responses (question_id, responder_id, body) values ($1, $2, 'muy bien, gracias')`, [storyQuestion.id, storyResponder]);
+  });
+  const responseAsResponder = (await db.query(`select id from story_question_responses where question_id = $1 and responder_id = $2`, [storyQuestion.id, storyResponder])).rows;
+  check('story_question_responses_select: quien respondió (storyResponder) SÍ ve su propia respuesta real', responseAsResponder.length === 1);
+
+  await asUser(u1);
+  const responseAsAuthor = (await db.query(`select id, body from story_question_responses where question_id = $1`, [storyQuestion.id])).rows;
+  check('story_question_responses_select: el autor real de la historia (u1) SÍ ve la respuesta real, con quién la escribió', responseAsAuthor.length === 1 && responseAsAuthor[0].body === 'muy bien, gracias');
+
+  await asUser(storyOtherViewer);
+  const responseAsOtherViewer = (await db.query(`select id from story_question_responses where question_id = $1`, [storyQuestion.id])).rows;
+  check('story_question_responses_select: otro espectador real (storyOtherViewer), que no escribió esa respuesta ni es el autor, NO la ve', responseAsOtherViewer.length === 0);
+
   await asUser(u1);
   await expectOk('close_friends_insert_own: u1 SÍ puede añadir a u2 como mejor amigo real', async () => {
     await db.query(`insert into close_friends (owner_id, friend_id) values ($1, $2)`, [u1, u2]);

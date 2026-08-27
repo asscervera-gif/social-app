@@ -24,6 +24,15 @@ struct StoryRow: Decodable, Identifiable {
     var visibility: String = "everyone"
 }
 
+// Adhesivo de pregunta real en una historia ("Pregúntame algo"),
+// comparado con Instagram -- ver 0099_story_questions.sql. Equivalente
+// de StoryQuestionRow en StoriesViewModel.kt.
+struct StoryQuestionRow: Decodable, Identifiable {
+    let id: UUID
+    let story_id: UUID
+    let prompt: String
+}
+
 struct StoryGroup: Identifiable {
     var id: UUID { authorID }
     let authorID: UUID
@@ -44,6 +53,11 @@ final class StoriesViewModel: ObservableObject {
     // Silenciar las historias de alguien sin dejar de seguirlo, comparado
     // con Instagram/Snapchat (0085_muted_story_authors.sql).
     @Published var mutedAuthorIDs: Set<UUID> = []
+    // Adhesivo de pregunta real en una historia ("Pregúntame algo"),
+    // comparado con Instagram -- una por story_id como mucho, ver
+    // 0099_story_questions.sql. Equivalente de
+    // StoriesViewModel.kt.storyQuestions.
+    @Published var storyQuestions: [UUID: StoryQuestionRow] = [:]
 
     private struct BlockRow: Decodable { let blocked_id: UUID }
     private struct MutedStoryAuthorRow: Decodable { let muted_id: UUID }
@@ -89,6 +103,23 @@ final class StoriesViewModel: ObservableObject {
                 mutedIDs = Set(mutedRows.map { $0.muted_id })
             }
             mutedAuthorIDs = mutedIDs
+
+            // Adhesivo de pregunta real en una historia ("Pregúntame
+            // algo"), comparado con Instagram -- se carga junto con el
+            // resto de historias, en vez de una consulta aparte por cada
+            // una al abrirlas.
+            if stories.isEmpty {
+                storyQuestions = [:]
+            } else if let questionRows: [StoryQuestionRow] = try? await SupabaseManager.shared.client
+                .from("story_questions")
+                .select("id,story_id,prompt")
+                .in("story_id", values: stories.map { $0.id })
+                .execute()
+                .value {
+                storyQuestions = Dictionary(uniqueKeysWithValues: questionRows.map { ($0.story_id, $0) })
+            } else {
+                storyQuestions = [:]
+            }
 
             let byAuthor = Dictionary(grouping: stories, by: { $0.author_id })
             var newGroups: [StoryGroup] = []
@@ -209,7 +240,11 @@ final class StoriesViewModel: ObservableObject {
     // "Mejores amigos" real (0075_close_friends_stories.sql), comparado
     // con Instagram/Snapchat -- `visibility` elegido por el usuario al
     // subir, "everyone" por defecto (mismo comportamiento de siempre).
-    func createStory(imageData: Data, visibility: String = "everyone") async {
+    /// [questionPrompt] es opcional -- el adhesivo de pregunta real
+    /// ("Pregúntame algo", 0099_story_questions.sql), comparado con
+    /// Instagram, no es obligatorio en ninguna historia. Equivalente de
+    /// StoriesViewModel.kt.createStory().
+    func createStory(imageData: Data, visibility: String = "everyone", questionPrompt: String? = nil) async {
         guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
         isUploading = true
         defer { isUploading = false }
@@ -220,10 +255,26 @@ final class StoriesViewModel: ObservableObject {
                 let media_url: String
                 let visibility: String
             }
-            try await SupabaseManager.shared.client
+            let insertedStory: StoryRow = try await SupabaseManager.shared.client
                 .from("stories")
                 .insert(NewStory(author_id: userID, media_url: url, visibility: visibility))
+                .select()
+                .single()
                 .execute()
+                .value
+            // Mismo límite real del CHECK de story_questions.prompt
+            // (0099_story_questions.sql): 200 caracteres.
+            let trimmedPrompt = questionPrompt?.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200)
+            if let trimmedPrompt, !trimmedPrompt.isEmpty {
+                struct NewStoryQuestion: Encodable {
+                    let story_id: UUID
+                    let prompt: String
+                }
+                try await SupabaseManager.shared.client
+                    .from("story_questions")
+                    .insert(NewStoryQuestion(story_id: insertedStory.id, prompt: String(trimmedPrompt)))
+                    .execute()
+            }
             // Hallazgo real, mismo criterio ya aplicado en la versión
             // Kotlin equivalente: publicar una historia no se registraba,
             // dejando un hueco en cualquier análisis de qué tan usada
@@ -262,5 +313,64 @@ final class StoriesViewModel: ObservableObject {
         } catch {
             return false
         }
+    }
+
+    /// Responder en privado a la pregunta real de una historia ajena
+    /// ("Pregúntame algo"), comparado con Instagram -- a diferencia de
+    /// sendReply() (arriba), esto NO manda un mensaje de chat normal:
+    /// solo el autor real de la historia ve la respuesta, con quién la
+    /// escribió (`story_question_responses_select`,
+    /// 0099_story_questions.sql). Equivalente de
+    /// StoriesViewModel.kt.respondToQuestion().
+    func respondToQuestion(questionID: UUID, text: String) async -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 500 else { return false }
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return false }
+        struct NewStoryQuestionResponse: Encodable {
+            let question_id: UUID
+            let responder_id: UUID
+            let body: String
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("story_question_responses")
+                .insert(NewStoryQuestionResponse(question_id: questionID, responder_id: userID, body: trimmed))
+                .execute()
+            AnalyticsManager.track("story_question_answered")
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    struct StoryQuestionResponse: Identifiable {
+        let id = UUID()
+        let responderName: String
+        let body: String
+    }
+
+    /// Solo tiene sentido llamarlo sobre una pregunta de tu propia
+    /// historia -- RLS (`story_question_responses_select`) ya lo exige,
+    /// esta función no duplica esa comprobación en cliente. Mismo patrón
+    /// que loadViewers(). Equivalente de
+    /// StoriesViewModel.kt.loadQuestionResponses().
+    func loadQuestionResponses(questionID: UUID) async -> [StoryQuestionResponse] {
+        struct ResponseRow: Decodable { let responder_id: UUID; let body: String }
+        struct ResponderNameRow: Decodable { let id: UUID; let display_name: String }
+        guard let rows: [ResponseRow] = try? await SupabaseManager.shared.client
+            .from("story_question_responses")
+            .select("responder_id,body")
+            .eq("question_id", value: questionID)
+            .execute()
+            .value else { return [] }
+        guard !rows.isEmpty else { return [] }
+        let names: [ResponderNameRow] = (try? await SupabaseManager.shared.client
+            .from("profiles")
+            .select("id,display_name")
+            .in("id", values: rows.map { $0.responder_id })
+            .execute()
+            .value) ?? []
+        let namesByID = Dictionary(uniqueKeysWithValues: names.map { ($0.id, $0.display_name) })
+        return rows.map { StoryQuestionResponse(responderName: namesByID[$0.responder_id] ?? "Alguien", body: $0.body) }
     }
 }

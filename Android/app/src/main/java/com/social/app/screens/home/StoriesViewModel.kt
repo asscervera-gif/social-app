@@ -31,6 +31,15 @@ data class StoryRow(
     val visibility: String = "everyone"
 )
 
+// Adhesivo de pregunta real en una historia ("Pregúntame algo"),
+// comparado con Instagram -- ver 0099_story_questions.sql.
+@Serializable
+data class StoryQuestionRow(
+    val id: String,
+    @SerialName("story_id") val storyId: String,
+    val prompt: String
+)
+
 data class StoryGroup(
     val authorId: String,
     val authorName: String,
@@ -65,6 +74,12 @@ class StoriesViewModel : ViewModel() {
     // con Instagram/Snapchat (0085_muted_story_authors.sql).
     private val _mutedAuthorIds = MutableStateFlow<Set<String>>(emptySet())
     val mutedAuthorIds: StateFlow<Set<String>> = _mutedAuthorIds.asStateFlow()
+
+    // Adhesivo de pregunta real en una historia ("Pregúntame algo"),
+    // comparado con Instagram -- una por story_id como mucho, ver
+    // 0099_story_questions.sql.
+    private val _storyQuestions = MutableStateFlow<Map<String, StoryQuestionRow>>(emptyMap())
+    val storyQuestions: StateFlow<Map<String, StoryQuestionRow>> = _storyQuestions.asStateFlow()
 
     @Serializable
     private data class NameRow(@SerialName("display_name") val displayName: String)
@@ -157,6 +172,19 @@ class StoriesViewModel : ViewModel() {
                 }
                 _mutedAuthorIds.value = mutedIds
 
+                // Adhesivo de pregunta real en una historia ("Pregúntame
+                // algo"), comparado con Instagram -- se carga junto con
+                // el resto de historias, en vez de una consulta aparte
+                // por cada una al abrirlas.
+                _storyQuestions.value = if (stories.isEmpty()) emptyMap() else try {
+                    SupabaseManager.client.from("story_questions")
+                        .select(columns = Columns.raw("id,story_id,prompt")) { filter { isIn("story_id", stories.map { it.id }) } }
+                        .decodeList<StoryQuestionRow>()
+                        .associateBy { it.storyId }
+                } catch (e: Exception) {
+                    emptyMap()
+                }
+
                 val groups = stories.groupBy { it.authorId }.map { (authorId, authorStories) ->
                     val name = try {
                         SupabaseManager.client.from("profiles")
@@ -241,13 +269,30 @@ class StoriesViewModel : ViewModel() {
     // "Mejores amigos" real (0075_close_friends_stories.sql), comparado
     // con Instagram/Snapchat -- `visibility` elegido por el usuario al
     // subir, "everyone" por defecto (mismo comportamiento de siempre).
-    fun createStory(context: Context, uri: Uri, visibility: String = "everyone", onDone: () -> Unit) {
+    @Serializable
+    private data class NewStoryQuestion(
+        @SerialName("story_id") val storyId: String,
+        val prompt: String
+    )
+
+    /** [questionPrompt] es opcional -- el adhesivo de pregunta real
+     * ("Pregúntame algo", 0099_story_questions.sql), comparado con
+     * Instagram, no es obligatorio en ninguna historia. */
+    fun createStory(context: Context, uri: Uri, visibility: String = "everyone", questionPrompt: String? = null, onDone: () -> Unit) {
         viewModelScope.launch {
             val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
             _isUploading.value = true
             try {
                 val url = StorageUploader.uploadImage(context, uri, userId)
-                SupabaseManager.client.from("stories").insert(NewStory(userId, url, visibility))
+                val insertedStory = SupabaseManager.client.from("stories")
+                    .insert(NewStory(userId, url, visibility)) { select() }
+                    .decodeSingle<StoryRow>()
+                // Mismo límite real del CHECK de story_questions.prompt
+                // (0099_story_questions.sql): 200 caracteres.
+                val trimmedPrompt = questionPrompt?.trim()?.take(200)
+                if (!trimmedPrompt.isNullOrEmpty()) {
+                    SupabaseManager.client.from("story_questions").insert(NewStoryQuestion(insertedStory.id, trimmedPrompt))
+                }
                 // Hallazgo real, mismo criterio ya aplicado a
                 // post_created/signup_completed: publicar una historia no
                 // se registraba, dejando un hueco en cualquier análisis
@@ -287,6 +332,59 @@ class StoriesViewModel : ViewModel() {
             true
         } catch (e: Exception) {
             false
+        }
+    }
+
+    @Serializable
+    private data class NewStoryQuestionResponse(
+        @SerialName("question_id") val questionId: String,
+        @SerialName("responder_id") val responderId: String,
+        val body: String
+    )
+
+    /** Responder en privado a la pregunta real de una historia ajena
+     * ("Pregúntame algo"), comparado con Instagram -- a diferencia de
+     * sendReply() (arriba), esto NO manda un mensaje de chat normal:
+     * solo el autor real de la historia ve la respuesta, con quién la
+     * escribió (`story_question_responses_select`, 0099_story_questions.sql). */
+    suspend fun respondToQuestion(questionId: String, text: String): Boolean {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty() || trimmed.length > 500) return false
+        val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return false
+        return try {
+            SupabaseManager.client.from("story_question_responses").insert(NewStoryQuestionResponse(questionId, userId, trimmed))
+            com.social.app.backend.AnalyticsManager.track("story_question_answered")
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    data class StoryQuestionResponse(val responderName: String, val body: String)
+
+    @Serializable
+    private data class ResponseRow(
+        @SerialName("responder_id") val responderId: String,
+        val body: String
+    )
+
+    /** Solo tiene sentido llamarlo sobre una pregunta de tu propia
+     * historia -- RLS (`story_question_responses_select`) ya lo exige,
+     * esta función no duplica esa comprobación en cliente. Mismo patrón
+     * que loadViewers(). */
+    suspend fun loadQuestionResponses(questionId: String): List<StoryQuestionResponse> {
+        return try {
+            val rows = SupabaseManager.client.from("story_question_responses")
+                .select(columns = Columns.raw("responder_id,body")) { filter { eq("question_id", questionId) } }
+                .decodeList<ResponseRow>()
+            if (rows.isEmpty()) return emptyList()
+            val names = SupabaseManager.client.from("profiles")
+                .select(columns = Columns.raw("id,display_name")) { filter { isIn("id", rows.map { it.responderId }) } }
+                .decodeList<ViewerNameRow>()
+                .associateBy { it.id }
+            rows.map { StoryQuestionResponse(names[it.responderId]?.displayName ?: "Alguien", it.body) }
+        } catch (e: Exception) {
+            emptyList()
         }
     }
 }
