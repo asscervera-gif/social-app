@@ -107,6 +107,35 @@ fun ChatListScreen(viewModel: ChatListViewModel = viewModel(), onOpenChat: (Stri
         }
         LazyColumn(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
             items(chats, key = { it.chat.id }) { entry ->
+                // Deslizar para archivar, comparado con WhatsApp/Telegram
+                // -- gesto real ausente hasta ahora en Android (iOS ya
+                // tenía `.swipeActions` completo desde la ronda de
+                // Archivados; aquí solo faltaba el gesto en sí, el menú de
+                // mantener pulsado seguía cubriendo el resto de acciones).
+                val dismissState = androidx.compose.material3.rememberSwipeToDismissBoxState(
+                    confirmValueChange = { value ->
+                        if (value == androidx.compose.material3.SwipeToDismissBoxValue.StartToEnd) {
+                            viewModel.hideChat(entry)
+                        }
+                        false
+                    }
+                )
+                androidx.compose.material3.SwipeToDismissBox(
+                    state = dismissState,
+                    enableDismissFromStartToEnd = true,
+                    enableDismissFromEndToStart = false,
+                    backgroundContent = {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.errorContainer)
+                                .padding(start = 20.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            Text("🗄 Archivar", color = MaterialTheme.colorScheme.onErrorContainer)
+                        }
+                    }
+                ) {
                 androidx.compose.foundation.layout.Row(
                     verticalAlignment = Alignment.CenterVertically,
                     // Hallazgo real, comparado con WhatsApp/Instagram/
@@ -117,6 +146,7 @@ fun ChatListScreen(viewModel: ChatListViewModel = viewModel(), onOpenChat: (Stri
                     // usado para borrar un mensaje propio en ChatScreen.kt.
                     modifier = Modifier
                         .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.background)
                         .combinedClickable(
                             onClick = { onOpenChat(entry.chat.id) },
                             onLongClick = { viewModel.hideChat(entry) }
@@ -219,6 +249,7 @@ fun ChatListScreen(viewModel: ChatListViewModel = viewModel(), onOpenChat: (Stri
                             })
                         }
                     }
+                }
                 }
                 HorizontalDivider()
             }
