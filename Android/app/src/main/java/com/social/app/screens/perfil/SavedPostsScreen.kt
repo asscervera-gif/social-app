@@ -37,6 +37,7 @@ import io.github.jan.supabase.postgrest.query.Order
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -52,9 +53,16 @@ import kotlinx.serialization.Serializable
  * compiler-verificado en `EventModeViewModel.kt` con
  * `profiles(display_name)`).
  */
+// Colecciones reales para publicaciones guardadas, comparado con
+// Instagram -- ver 0125_saved_post_collections.sql. `savedId` (id de la
+// propia fila saved_posts, no del post) hace falta para poder cambiar de
+// colección/quitar de guardados sin depender de post_id+user_id como
+// clave compuesta en cada llamada.
+data class SavedItem(val savedId: String, val post: Post, val collectionName: String?)
+
 class SavedPostsViewModel : ViewModel() {
-    private val _posts = MutableStateFlow<List<Post>>(emptyList())
-    val posts: StateFlow<List<Post>> = _posts.asStateFlow()
+    private val _posts = MutableStateFlow<List<SavedItem>>(emptyList())
+    val posts: StateFlow<List<SavedItem>> = _posts.asStateFlow()
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
@@ -68,7 +76,11 @@ class SavedPostsViewModel : ViewModel() {
     val authorProfiles: StateFlow<Map<String, Profile>> = _authorProfiles.asStateFlow()
 
     @Serializable
-    private data class SavedPostRow(val posts: Post?)
+    private data class SavedPostRow(
+        val id: String,
+        val posts: Post?,
+        @SerialName("collection_name") val collectionName: String? = null
+    )
 
     @Serializable
     private data class BlockRow(@SerialName("blocked_id") val blockedId: String)
@@ -92,16 +104,16 @@ class SavedPostsViewModel : ViewModel() {
                     emptySet()
                 }
                 val loaded = SupabaseManager.client.from("saved_posts")
-                    .select(columns = Columns.raw("created_at,posts(*)")) {
+                    .select(columns = Columns.raw("id,created_at,collection_name,posts(*)")) {
                         filter { eq("user_id", userId) }
                         order("created_at", Order.DESCENDING)
                     }
                     .decodeList<SavedPostRow>()
-                    .mapNotNull { it.posts }
-                    .filter { it.authorId !in blockedIds }
+                    .mapNotNull { row -> row.posts?.let { SavedItem(row.id, it, row.collectionName) } }
+                    .filter { it.post.authorId !in blockedIds }
                 _posts.value = loaded
 
-                val authorIds = loaded.map { it.authorId }.distinct()
+                val authorIds = loaded.map { it.post.authorId }.distinct()
                 if (authorIds.isNotEmpty()) {
                     try {
                         _authorProfiles.value = SupabaseManager.client.from("profiles")
@@ -122,19 +134,33 @@ class SavedPostsViewModel : ViewModel() {
 
     /** Quitar de guardados desde esta misma lista — sin esto, la única
      * forma de "deshacer" sería volver a encontrar el post en el feed. */
-    fun unsave(post: Post) {
-        _posts.value = _posts.value.filter { it.id != post.id }
+    fun unsave(item: SavedItem) {
+        _posts.value = _posts.value.filter { it.savedId != item.savedId }
         viewModelScope.launch {
             try {
-                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
                 SupabaseManager.client.from("saved_posts").delete {
-                    filter {
-                        eq("user_id", userId)
-                        eq("post_id", post.id)
-                    }
+                    filter { eq("id", item.savedId) }
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo quitar de guardados."
+            }
+        }
+    }
+
+    /** Mover un guardado real a otra colección (o quitarlo de todas con
+     * `null`), comparado con Instagram -- ver
+     * 0125_saved_post_collections.sql (`saved_posts_update_own`, primera
+     * política UPDATE real sobre esta tabla). */
+    fun setCollection(item: SavedItem, collectionName: String?) {
+        val trimmed = collectionName?.trim()?.ifEmpty { null }?.take(50)
+        _posts.update { list -> list.map { if (it.savedId == item.savedId) it.copy(collectionName = trimmed) else it } }
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("saved_posts")
+                    .update({ set("collection_name", trimmed) }) { filter { eq("id", item.savedId) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo cambiar la colección."
+                load()
             }
         }
     }
@@ -149,6 +175,12 @@ fun SavedPostsScreen(viewModel: SavedPostsViewModel = viewModel(), onOpenProfile
     // Hallazgo real, mismo hueco ya cerrado en el feed y el chat: no
     // había forma de tocar la imagen para verla a tamaño completo.
     var fullScreenUrl by remember { mutableStateOf<String?>(null) }
+    // Colecciones reales para publicaciones guardadas, comparado con
+    // Instagram -- ver SavedPostsViewModel.setCollection(),
+    // 0125_saved_post_collections.sql.
+    var selectedCollection by remember { mutableStateOf<String?>(null) }
+    var movingItem by remember { mutableStateOf<SavedItem?>(null) }
+    var moveDraft by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) { viewModel.load() }
 
@@ -175,9 +207,36 @@ fun SavedPostsScreen(viewModel: SavedPostsViewModel = viewModel(), onOpenProfile
                 modifier = Modifier.padding(top = 12.dp)
             )
         }
+        // Colecciones reales para publicaciones guardadas, comparado con
+        // Instagram -- fila de chips para filtrar, "Todo" siempre
+        // primero (bandeja general, incluye lo sin colección también).
+        val collections = posts.mapNotNull { it.collectionName }.distinct().sorted()
+        if (collections.isNotEmpty()) {
+            androidx.compose.foundation.lazy.LazyRow(
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+            ) {
+                item {
+                    androidx.compose.material3.FilterChip(
+                        selected = selectedCollection == null,
+                        onClick = { selectedCollection = null },
+                        label = { Text("Todo") }
+                    )
+                }
+                items(collections) { name ->
+                    androidx.compose.material3.FilterChip(
+                        selected = selectedCollection == name,
+                        onClick = { selectedCollection = name },
+                        label = { Text(name) }
+                    )
+                }
+            }
+        }
+        val visiblePosts = selectedCollection?.let { c -> posts.filter { it.collectionName == c } } ?: posts
         androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxWidth()) {
             LazyColumn(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                items(posts, key = { it.id }) { post ->
+                items(visiblePosts, key = { it.savedId }) { item ->
+                    val post = item.post
                     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
                         // Hallazgo real, mismo hueco raíz ya cerrado en el
                         // feed y en comentarios: esta lista tampoco
@@ -208,6 +267,17 @@ fun SavedPostsScreen(viewModel: SavedPostsViewModel = viewModel(), onOpenProfile
                             )
                         }
                         post.caption?.let { Text(it) }
+                        // Colecciones reales, comparado con Instagram --
+                        // etiqueta real cuando corresponde, mismo criterio
+                        // ya usado para "Reenviado"/"Editado" en el chat.
+                        item.collectionName?.let {
+                            Text(
+                                "🗂 $it",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween
@@ -217,7 +287,13 @@ fun SavedPostsScreen(viewModel: SavedPostsViewModel = viewModel(), onOpenProfile
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            OutlinedButton(onClick = { viewModel.unsave(post) }) { Text("Quitar") }
+                            Row {
+                                OutlinedButton(onClick = {
+                                    movingItem = item
+                                    moveDraft = item.collectionName ?: ""
+                                }) { Text("Mover") }
+                                OutlinedButton(onClick = { viewModel.unsave(item) }, modifier = Modifier.padding(start = 8.dp)) { Text("Quitar") }
+                            }
                         }
                     }
                     HorizontalDivider()
@@ -231,5 +307,35 @@ fun SavedPostsScreen(viewModel: SavedPostsViewModel = viewModel(), onOpenProfile
     }
     fullScreenUrl?.let { url ->
         com.social.app.util.FullScreenImageViewer(url = url, onDismiss = { fullScreenUrl = null })
+    }
+    // Colecciones reales para publicaciones guardadas, comparado con
+    // Instagram -- ver SavedPostsViewModel.setCollection(),
+    // 0125_saved_post_collections.sql.
+    movingItem?.let { item ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { movingItem = null },
+            title = { Text("Mover a colección") },
+            text = {
+                androidx.compose.material3.OutlinedTextField(
+                    value = moveDraft,
+                    onValueChange = { moveDraft = it },
+                    placeholder = { Text("Nombre (p. ej. \"Viajes\")") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    viewModel.setCollection(item, moveDraft)
+                    movingItem = null
+                }) { Text("Guardar") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    viewModel.setCollection(item, null)
+                    movingItem = null
+                }) { Text("Quitar colección") }
+            }
+        )
     }
 }

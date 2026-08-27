@@ -3385,6 +3385,38 @@ async function main() {
   const gdisHiddenFromMember = (await db.query(`select id from group_messages where id = $1`, [gdisMsg1.id])).rows;
   check('group_messages_select: gdisU2 tampoco lo ve una vez caducado', gdisHiddenFromMember.length === 0);
 
+  // --- saved_posts.collection_name (0125_saved_post_collections.sql):
+  // colecciones reales para publicaciones guardadas, comparado con
+  // Instagram -- columna normal sin trigger ni política nueva (mismo
+  // criterio que muted_feed_keywords/hide_like_count):
+  // saved_posts_select_own/insert_own/delete_own (0009) ya cubren
+  // cualquier columna de la fila. Usuarios NUEVOS a propósito. ---
+  await asSuperuser();
+  const spU1 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const spU2 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(`insert into profiles (id, display_name) values ($1,'Sp1'),($2,'Sp2') on conflict (id) do update set display_name=excluded.display_name`, [spU1, spU2]);
+  const spPost = (await db.query(`insert into posts (author_id, caption) values ($1, 'post para guardar') returning id`, [spU1])).rows[0];
+
+  await asUser(spU1);
+  const spSaved = (await db.query(
+    `insert into saved_posts (post_id, user_id) values ($1, $2) returning id, collection_name`, [spPost.id, spU1]
+  )).rows[0];
+  check('saved_posts.collection_name: arranca en null (sin colección) por defecto', spSaved.collection_name === null);
+
+  await expectFail('saved_posts_collection_name_length: un nombre real de más de 50 caracteres NO se puede guardar', async () => {
+    await db.query(`update saved_posts set collection_name = $2 where id = $1`, [spSaved.id, 'x'.repeat(51)]);
+  });
+
+  await expectOk('saved_posts_insert_own/update: spU1 SÍ puede ponerle una colección real propia', async () => {
+    await db.query(`update saved_posts set collection_name = 'Viajes' where id = $1`, [spSaved.id]);
+  });
+  const spAfterCollection = (await db.query(`select collection_name from saved_posts where id = $1`, [spSaved.id])).rows[0];
+  check('saved_posts.collection_name: la colección real queda guardada de verdad', spAfterCollection.collection_name === 'Viajes');
+
+  await asUser(spU2);
+  const spSeenByOther = (await db.query(`select id from saved_posts where id = $1`, [spSaved.id])).rows;
+  check('saved_posts_select_own: un tercero real (spU2) NO ve el guardado ajeno (privado, 0009_saved_posts.sql)', spSeenByOther.length === 0);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado
