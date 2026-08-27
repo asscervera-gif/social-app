@@ -78,6 +78,9 @@ fun GroupChatScreen(
     val viewModel = remember(groupChatId) { GroupChatViewModel(groupChatId) }
     val messages by viewModel.messages.collectAsState()
     val members by viewModel.members.collectAsState()
+    // Administradores reales de grupo, comparado con WhatsApp/Telegram/
+    // Messenger -- ver 0107_group_chat_admins.sql.
+    val adminIds by viewModel.adminIds.collectAsState()
     val reactions by viewModel.reactions.collectAsState()
     // Mensajes destacados reales, comparado con WhatsApp
     // (0087_starred_messages.sql).
@@ -519,6 +522,7 @@ fun GroupChatScreen(
         MembersSheet(
             groupChatViewModel = viewModel,
             members = members,
+            adminIds = adminIds,
             groupChat = groupChat,
             myId = myId,
             onDismiss = { showMembers = false },
@@ -654,6 +658,9 @@ fun GroupChatScreen(
 private fun MembersSheet(
     groupChatViewModel: GroupChatViewModel,
     members: List<com.social.app.backend.model.Profile>,
+    // Administradores reales de grupo, comparado con WhatsApp/Telegram/
+    // Messenger -- ver 0107_group_chat_admins.sql.
+    adminIds: Set<String>,
     groupChat: GroupChat?,
     myId: String?,
     onDismiss: () -> Unit,
@@ -670,6 +677,11 @@ private fun MembersSheet(
     // `group_chats_update_own`, 0057_group_chats.sql, mismo rol de
     // "admin" que esas apps sin construir un sistema de roles nuevo).
     val isCreator = groupChat != null && groupChat.createdBy == myId
+    // Administradores reales de grupo, comparado con WhatsApp/Telegram/
+    // Messenger -- el creador real siempre es admin (0107), pero aquí se
+    // comprueba con adminIds y no solo isCreator para que un admin
+    // ascendido (no creador) también vea las mismas acciones reales.
+    val isAdmin = myId != null && myId in adminIds
     var editingName by remember { mutableStateOf(false) }
     var nameDraft by remember(groupChat?.name) { mutableStateOf(groupChat?.name.orEmpty()) }
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -713,14 +725,35 @@ private fun MembersSheet(
                 }
             }
             members.forEach { member ->
+                val memberIsAdmin = member.id in adminIds
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 6.dp)) {
                     com.social.app.avatar.AvatarView(config = member.avatarConfig ?: emptyMap(), size = 32.dp)
-                    Text(member.displayName, modifier = Modifier.padding(start = 10.dp).weight(1f))
+                    Row(modifier = Modifier.padding(start = 10.dp).weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        Text(member.displayName)
+                        // Administradores reales de grupo, comparado con
+                        // WhatsApp/Telegram/Messenger -- ver
+                        // 0107_group_chat_admins.sql.
+                        if (memberIsAdmin) {
+                            Text(
+                                " · Admin",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                    // Ascender/descender a un admin real, comparado con
+                    // WhatsApp/Telegram/Messenger -- solo otro admin real
+                    // lo ve, y nunca sobre sí mismo.
+                    if (isAdmin && member.id != myId) {
+                        TextButton(onClick = { groupChatViewModel.toggleAdmin(member.id, !memberIsAdmin) }) {
+                            Text(if (memberIsAdmin) "Quitar admin" else "Hacer admin")
+                        }
+                    }
                     // Expulsar a otro miembro real, comparado con
-                    // WhatsApp/Messenger/Telegram -- solo el creador lo ve,
-                    // y nunca sobre sí mismo (para eso ya está "Salir del
-                    // grupo").
-                    if (isCreator && member.id != myId) {
+                    // WhatsApp/Messenger/Telegram -- el creador real o
+                    // cualquier admin real lo ve, y nunca sobre sí mismo
+                    // (para eso ya está "Salir del grupo").
+                    if (isAdmin && member.id != myId) {
                         TextButton(onClick = { groupChatViewModel.kickMember(member.id) }) {
                             Text("Quitar", color = MaterialTheme.colorScheme.error)
                         }

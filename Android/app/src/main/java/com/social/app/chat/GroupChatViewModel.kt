@@ -90,6 +90,11 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
     private val _members = MutableStateFlow<List<Profile>>(emptyList())
     val members: StateFlow<List<Profile>> = _members.asStateFlow()
 
+    // Administradores reales de grupo, comparado con WhatsApp/Telegram/
+    // Messenger -- ver 0107_group_chat_admins.sql.
+    private val _adminIds = MutableStateFlow<Set<String>>(emptySet())
+    val adminIds: StateFlow<Set<String>> = _adminIds.asStateFlow()
+
     // Enviar una publicación a un chat de grupo real
     // (0069_message_shared_post.sql), comparado con Instagram/TikTok/
     // Twitter/Snapchat -- vista previa real (miniatura + caption + autor)
@@ -494,10 +499,11 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
 
     private suspend fun loadMembers() {
         try {
-            val memberIds = SupabaseManager.client.from("group_chat_members")
-                .select(columns = Columns.raw("user_id")) { filter { eq("group_chat_id", groupChatId) } }
+            val memberRows = SupabaseManager.client.from("group_chat_members")
+                .select(columns = Columns.raw("user_id,is_admin")) { filter { eq("group_chat_id", groupChatId) } }
                 .decodeList<MemberIdRow>()
-                .map { it.userId }
+            val memberIds = memberRows.map { it.userId }
+            _adminIds.value = memberRows.filter { it.isAdmin }.map { it.userId }.toSet()
             if (memberIds.isNotEmpty()) {
                 _members.value = SupabaseManager.client.from("profiles")
                     .select(columns = Columns.raw("id,display_name,avatar_url,avatar_config")) {
@@ -512,7 +518,12 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
     }
 
     @Serializable
-    private data class MemberIdRow(@SerialName("user_id") val userId: String)
+    private data class MemberIdRow(
+        @SerialName("user_id") val userId: String,
+        // Administradores reales de grupo, comparado con WhatsApp/
+        // Telegram/Messenger -- ver 0107_group_chat_admins.sql.
+        @SerialName("is_admin") val isAdmin: Boolean = false
+    )
 
     private fun subscribeToRealtime() {
         val ch = SupabaseManager.client.realtime.channel("group-chat-$groupChatId")
@@ -767,12 +778,12 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
     }
 
     /** Expulsar a otro miembro real, comparado con WhatsApp/Messenger/
-     * Telegram -- solo el creador puede (RLS
-     * `group_chat_members_delete_by_creator`, 0066_group_chat_kick_member.sql,
-     * mismo rol de "admin" ya usado para renombrar/silenciar el grupo). El
-     * servidor decide de verdad: si quien llama no es el creador, la fila
-     * simplemente no se borra (0 filas afectadas), por eso se recarga la
-     * lista de miembros después en vez de asumir éxito. */
+     * Telegram -- el creador real o cualquier admin real ya ascendido
+     * puede (RLS `group_chat_members_delete_by_creator`/
+     * `_delete_by_admin`, 0066/0107_group_chat_admins.sql). El servidor
+     * decide de verdad: si quien llama no es admin, la fila simplemente
+     * no se borra (0 filas afectadas), por eso se recarga la lista de
+     * miembros después en vez de asumir éxito. */
     fun kickMember(profileId: String) {
         viewModelScope.launch {
             try {
@@ -782,6 +793,25 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
                 loadMembers()
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo expulsar del grupo."
+            }
+        }
+    }
+
+    /** Ascender/descender a un admin real de grupo, comparado con
+     * WhatsApp/Telegram/Messenger -- solo un admin real ya existente
+     * puede (RLS `group_chat_members_update_admin`/
+     * `protect_group_chat_member_identity`, 0107_group_chat_admins.sql).
+     * El servidor decide de verdad: si quien llama no es admin, la
+     * columna simplemente no cambia (revertida en silencio), por eso se
+     * recarga la lista de miembros después en vez de asumir éxito. */
+    fun toggleAdmin(profileId: String, makeAdmin: Boolean) {
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("group_chat_members")
+                    .update({ set("is_admin", makeAdmin) }) { filter { eq("group_chat_id", groupChatId); eq("user_id", profileId) } }
+                loadMembers()
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo cambiar el estado de administrador."
             }
         }
     }

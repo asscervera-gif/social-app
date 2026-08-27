@@ -388,6 +388,11 @@ private struct GroupMembersView: View {
     @State private var selectedGroupPhoto: PhotosPickerItem?
 
     private var isCreator: Bool { viewModel.groupChat?.createdBy != nil && viewModel.groupChat?.createdBy == myID }
+    // Administradores reales de grupo, comparado con WhatsApp/Telegram/
+    // Messenger -- el creador real siempre es admin (0107), pero aquí se
+    // comprueba con adminIDs y no solo isCreator para que un admin
+    // ascendido (no creador) también vea las mismas acciones reales.
+    private var isAdmin: Bool { myID != nil && viewModel.adminIDs.contains(myID!) }
 
     var body: some View {
         NavigationStack {
@@ -437,19 +442,31 @@ private struct GroupMembersView: View {
                 }
                 Section("Miembros") {
                     ForEach(viewModel.members) { member in
+                        let memberIsAdmin = viewModel.adminIDs.contains(member.id)
                         HStack {
                             ActiveAvatarProvider.shared.avatarView(config: member.avatarConfig ?? [:], size: 32)
                             Text(member.displayName)
+                            // Administradores reales de grupo, comparado
+                            // con WhatsApp/Telegram/Messenger -- ver
+                            // 0107_group_chat_admins.sql.
+                            if memberIsAdmin {
+                                Text("· Admin").font(.caption).foregroundStyle(Color.accentColor)
+                            }
                         }
-                        // Expulsar a otro miembro real, comparado con
-                        // WhatsApp/Messenger/Telegram -- solo el creador lo
+                        // Ascender/descender a un admin real, y expulsar
+                        // a otro miembro real, comparado con WhatsApp/
+                        // Messenger/Telegram -- solo otro admin real lo
                         // ve, y nunca sobre sí mismo (para eso ya está
                         // "Salir del grupo").
                         .swipeActions {
-                            if isCreator && member.id != myID {
+                            if isAdmin && member.id != myID {
                                 Button("Quitar", role: .destructive) {
                                     Task { await viewModel.kickMember(member.id) }
                                 }
+                                Button(memberIsAdmin ? "Quitar admin" : "Hacer admin") {
+                                    Task { await viewModel.toggleAdmin(member.id, makeAdmin: !memberIsAdmin) }
+                                }
+                                .tint(.blue)
                             }
                         }
                     }

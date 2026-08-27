@@ -69,6 +69,9 @@ final class GroupChatViewModel: ObservableObject {
 
     @Published var messages: [GroupMessage] = []
     @Published var members: [Profile] = []
+    // Administradores reales de grupo, comparado con WhatsApp/Telegram/
+    // Messenger -- ver 0107_group_chat_admins.sql.
+    @Published var adminIDs: Set<UUID> = []
     @Published var errorMessage: String?
     // Responder a un mensaje concreto (cita), comparado con
     // WhatsApp/Telegram/iMessage/Instagram DM -- mensaje real que se está
@@ -489,14 +492,20 @@ final class GroupChatViewModel: ObservableObject {
     }
 
     private func loadMembers() async {
-        struct MemberIDRow: Decodable { let user_id: UUID }
+        struct MemberIDRow: Decodable {
+            let user_id: UUID
+            // Administradores reales de grupo, comparado con WhatsApp/
+            // Telegram/Messenger -- ver 0107_group_chat_admins.sql.
+            var is_admin: Bool = false
+        }
         guard let memberRows: [MemberIDRow] = try? await SupabaseManager.shared.client
             .from("group_chat_members")
-            .select("user_id")
+            .select("user_id,is_admin")
             .eq("group_chat_id", value: groupChatID)
             .execute()
             .value else { return }
         let memberIDs = memberRows.map { $0.user_id }
+        adminIDs = Set(memberRows.filter { $0.is_admin }.map { $0.user_id })
         guard !memberIDs.isEmpty else { return }
         if let profiles: [Profile] = try? await SupabaseManager.shared.client
             .from("profiles")
@@ -803,12 +812,12 @@ final class GroupChatViewModel: ObservableObject {
     }
 
     /// Expulsar a otro miembro real, comparado con WhatsApp/Messenger/
-    /// Telegram -- solo el creador puede (RLS
-    /// `group_chat_members_delete_by_creator`, 0066_group_chat_kick_member.sql,
-    /// mismo rol de "admin" ya usado para renombrar/silenciar el grupo). El
-    /// servidor decide de verdad: si quien llama no es el creador, la fila
-    /// simplemente no se borra (0 filas afectadas), por eso se recarga la
-    /// lista de miembros después en vez de asumir éxito.
+    /// Telegram -- el creador real o cualquier admin real ya ascendido
+    /// puede (RLS `group_chat_members_delete_by_creator`/
+    /// `_delete_by_admin`, 0066/0107_group_chat_admins.sql). El servidor
+    /// decide de verdad: si quien llama no es admin, la fila simplemente
+    /// no se borra (0 filas afectadas), por eso se recarga la lista de
+    /// miembros después en vez de asumir éxito.
     func kickMember(_ profileID: UUID) async {
         do {
             try await SupabaseManager.shared.client
@@ -820,6 +829,27 @@ final class GroupChatViewModel: ObservableObject {
             await loadMembers()
         } catch {
             errorMessage = "No se pudo expulsar del grupo."
+        }
+    }
+
+    /// Ascender/descender a un admin real de grupo, comparado con
+    /// WhatsApp/Telegram/Messenger -- solo un admin real ya existente
+    /// puede (RLS `group_chat_members_update_admin`/
+    /// `protect_group_chat_member_identity`, 0107_group_chat_admins.sql).
+    /// El servidor decide de verdad: si quien llama no es admin, la
+    /// columna simplemente no cambia (revertida en silencio), por eso se
+    /// recarga la lista de miembros después en vez de asumir éxito.
+    func toggleAdmin(_ profileID: UUID, makeAdmin: Bool) async {
+        do {
+            try await SupabaseManager.shared.client
+                .from("group_chat_members")
+                .update(["is_admin": makeAdmin])
+                .eq("group_chat_id", value: groupChatID)
+                .eq("user_id", value: profileID)
+                .execute()
+            await loadMembers()
+        } catch {
+            errorMessage = "No se pudo cambiar el estado de administrador."
         }
     }
 

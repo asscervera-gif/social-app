@@ -1158,6 +1158,19 @@ async function main() {
   // --- group_chat_members.muted (0064_group_chat_mute.sql): silenciar un
   // chat de grupo real, comparado con WhatsApp/Instagram/Messenger.
   // Contexto ya asUser(u2) desde el bloque de arriba. ---
+  // Nota de robustez de pruebas (no de producción), mismo hallazgo real
+  // ya documentado arriba para group_messages/protect_group_message_identity:
+  // hasta aquí, ningún UPDATE real había tocado nunca group_chat_members
+  // -- protect_group_chat_member_identity() no se había invocado
+  // todavía, y 0107_group_chat_admins.sql la redefinió con
+  // `create or replace function`, añadiendo su primera llamada real a
+  // auth.uid() (vía private.is_group_admin). Mismo "permission denied
+  // for schema auth" real si nadie la calienta antes bajo un rol con
+  // bypass total -- un UPDATE de superusuario antes (no-op real, mismo
+  // body) la ejercita una vez.
+  await asSuperuser();
+  await db.query(`update group_chat_members set muted = muted where group_chat_id = $1 and user_id = $2`, [group.id, u2]);
+  await asUser(u2);
   await expectOk('group_chat_members_update_own: u2 SÍ puede silenciar su propia fila de membresía', async () => {
     await db.query(`update group_chat_members set muted = true where group_chat_id = $1 and user_id = $2`, [group.id, u2]);
   });
@@ -2748,6 +2761,67 @@ async function main() {
   await asSuperuser();
   const pnPost1AfterStrangerAttempt = (await db.query(`select pinned_at from posts where id = $1`, [pnPost1.id])).rows[0];
   check('posts_write_own: un tercero real (pnStranger) NO puede fijar la publicación ajena de pnAuthor (0 filas afectadas por RLS, no un error)', pnPost1AfterStrangerAttempt.pinned_at === null);
+
+  // --- group_chat_members.is_admin (0107_group_chat_admins.sql):
+  // administradores reales de un chat de grupo, comparado con
+  // WhatsApp/Telegram/Messenger. Usuarios NUEVOS a propósito (mismo
+  // motivo ya documentado varias veces esta sesión): sin ninguna
+  // relación previa que pueda contaminar esta prueba. ---
+  await asSuperuser();
+  const gaCreator = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const gaMemberA = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const gaMemberB = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const gaMemberC = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const gaMemberD = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name) values ($1, 'Crea'), ($2, 'Miembro A'), ($3, 'Miembro B'), ($4, 'Miembro C'), ($5, 'Miembro D')
+     on conflict (id) do update set display_name = excluded.display_name`,
+    [gaCreator, gaMemberA, gaMemberB, gaMemberC, gaMemberD]
+  );
+
+  await asUser(gaCreator);
+  const gaGroupId = crypto.randomUUID();
+  await db.query(`insert into group_chats (id, name, created_by) values ($1, $2, $3)`, [gaGroupId, 'Grupo con admins reales', gaCreator]);
+  const creatorMembershipRow = (await db.query(`select is_admin from group_chat_members where group_chat_id = $1 and user_id = $2`, [gaGroupId, gaCreator])).rows[0];
+  check('add_group_creator_as_member: el creador real (gaCreator) se marca admin de un tirón al crear el grupo', creatorMembershipRow.is_admin === true);
+
+  await db.query(`insert into group_chat_members (group_chat_id, user_id) values ($1, $2), ($1, $3), ($1, $4), ($1, $5)`, [gaGroupId, gaMemberA, gaMemberB, gaMemberC, gaMemberD]);
+
+  await asUser(gaMemberA);
+  await db.query(`update group_chat_members set is_admin = true where group_chat_id = $1 and user_id = $2`, [gaGroupId, gaMemberA]);
+  const afterSelfPromoteAttempt = (await db.query(`select is_admin from group_chat_members where group_chat_id = $1 and user_id = $2`, [gaGroupId, gaMemberA])).rows[0];
+  check('protect_group_chat_member_identity: gaMemberA (sin ser admin real) NO consigue ascenderse a sí mismo (revertido de verdad)', afterSelfPromoteAttempt.is_admin === false);
+
+  await asUser(gaMemberB);
+  await db.query(`delete from group_chat_members where group_chat_id = $1 and user_id = $2`, [gaGroupId, gaMemberC]);
+  await asSuperuser();
+  const cAfterNonAdminKickAttempt = (await db.query(`select 1 from group_chat_members where group_chat_id = $1 and user_id = $2`, [gaGroupId, gaMemberC])).rows;
+  check('group_chat_members_delete_by_admin: gaMemberB (sin ser admin real) NO puede expulsar a gaMemberC (0 filas afectadas por RLS, no un error)', cAfterNonAdminKickAttempt.length === 1);
+
+  await asUser(gaCreator);
+  await expectOk('group_chat_members_update_admin: el creador real (gaCreator) SÍ puede ascender a gaMemberA', async () => {
+    await db.query(`update group_chat_members set is_admin = true where group_chat_id = $1 and user_id = $2`, [gaGroupId, gaMemberA]);
+  });
+
+  await asUser(gaMemberA);
+  await expectOk('group_chat_members_update_admin: un admin real NO creador (gaMemberA, recién ascendido) SÍ puede ascender a gaMemberB', async () => {
+    await db.query(`update group_chat_members set is_admin = true where group_chat_id = $1 and user_id = $2`, [gaGroupId, gaMemberB]);
+  });
+  await expectOk('group_chat_members_delete_by_admin: un admin real NO creador (gaMemberA) SÍ puede expulsar a gaMemberC', async () => {
+    await db.query(`delete from group_chat_members where group_chat_id = $1 and user_id = $2`, [gaGroupId, gaMemberC]);
+  });
+
+  await asUser(gaMemberD);
+  await db.query(`update group_chat_members set is_admin = false where group_chat_id = $1 and user_id = $2`, [gaGroupId, gaMemberA]);
+  const aAfterNonAdminDemoteAttempt = (await db.query(`select is_admin from group_chat_members where group_chat_id = $1 and user_id = $2`, [gaGroupId, gaMemberA])).rows[0];
+  check('protect_group_chat_member_identity: gaMemberD (sin ser admin real) NO puede descender a gaMemberA (revertido de verdad)', aAfterNonAdminDemoteAttempt.is_admin === true);
+
+  await asUser(gaMemberB);
+  await expectOk('group_chat_members_update_admin: un admin real (gaMemberB) SÍ puede descender a otro admin real (gaMemberA)', async () => {
+    await db.query(`update group_chat_members set is_admin = false where group_chat_id = $1 and user_id = $2`, [gaGroupId, gaMemberA]);
+  });
+  const aAfterRealDemote = (await db.query(`select is_admin from group_chat_members where group_chat_id = $1 and user_id = $2`, [gaGroupId, gaMemberA])).rows[0];
+  check('group_chat_members_update_admin: gaMemberA queda de verdad descendido tras el intento real de gaMemberB', aAfterRealDemote.is_admin === false);
 
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
