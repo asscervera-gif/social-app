@@ -48,6 +48,10 @@ struct GroupChatView: View {
     @State private var pendingGroupVideoData: Data?
     @State private var pendingGroupVideoCaption = ""
     @State private var fullScreenVideoURL: URL?
+    // @menciones reales dentro de un chat de GRUPO
+    // (0090_group_message_mentions.sql), comparado con WhatsApp/
+    // Messenger/Telegram -- mismo patrón exacto que CommentsView.swift.
+    @State private var mentionProfileID: UUID?
     // Escuchar la nota de voz real antes de mandarla también en el chat
     // de grupo, cierra el alcance deliberado de la ronda anterior (solo
     // 1:1) -- comparado con WhatsApp/Telegram, mismo patrón exacto que
@@ -155,7 +159,10 @@ struct GroupChatView: View {
                                 onOpenVideo: { url in fullScreenVideoURL = url },
                                 onManage: { managingMessage = message },
                                 onForward: { forwardingMessage = message },
-                                onReply: { viewModel.replyingTo = message }
+                                onReply: { viewModel.replyingTo = message },
+                                onOpenMention: { username in
+                                    Task { mentionProfileID = await MentionResolver.resolveProfileID(username: username) }
+                                }
                             )
                             .id(message.id)
                         }
@@ -391,6 +398,17 @@ struct GroupChatView: View {
         )) {
             if let fullScreenVideoURL {
                 FullScreenVideoView(url: fullScreenVideoURL, onDismiss: { self.fullScreenVideoURL = nil })
+            }
+        }
+        // @menciones reales dentro de un chat de GRUPO
+        // (0090_group_message_mentions.sql), mismo patrón exacto que
+        // CommentsView.swift.
+        .sheet(isPresented: Binding(
+            get: { mentionProfileID != nil },
+            set: { isPresented in if !isPresented { mentionProfileID = nil } }
+        )) {
+            if let mentionProfileID {
+                NavigationStack { ProfileViewerView(profileID: mentionProfileID) }
             }
         }
         // Denunciar un mensaje concreto de un chat de grupo real
@@ -681,6 +699,11 @@ private struct GroupMessageBubble: View {
     // Responder a un mensaje concreto (cita), comparado con
     // WhatsApp/Telegram/iMessage/Instagram DM.
     var onReply: () -> Void = {}
+    // @menciones reales dentro de un chat de GRUPO
+    // (0090_group_message_mentions.sql), comparado con WhatsApp/
+    // Messenger/Telegram -- cierra el alcance deliberado documentado
+    // antes: tocar la mención ahora SÍ abre ese perfil.
+    var onOpenMention: (String) -> Void = { _ in }
 
     @State private var showPicker = false
     private let reactionEmojis = ["❤", "😂", "😮", "😢", "👍"]
@@ -792,11 +815,8 @@ private struct GroupMessageBubble: View {
                 // @menciones reales dentro de un chat de GRUPO
                 // (0090_group_message_mentions.sql), comparado con
                 // WhatsApp/Messenger/Telegram -- resalta "@usuario" real
-                // igual que en captions/comentarios (MentionHashtagText.swift),
-                // sin navegación al perfil todavía (alcance deliberado de
-                // esta ronda: el aviso real ya funciona, el
-                // toque-para-abrir-perfil queda pendiente).
-                MentionHashtagText(text: message.body ?? "")
+                // igual que en captions/comentarios (MentionHashtagText.swift).
+                MentionHashtagText(text: message.body ?? "", onOpenMention: onOpenMention)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(isMine ? Color.blue.opacity(0.15) : Color(.systemGray5))

@@ -78,7 +78,12 @@ fun GroupChatScreen(
     // WhatsApp/Messenger/Telegram -- mismo `CallManager` global ya usado
     // en ChatScreen.kt para el 1:1 (montado una sola vez en
     // RootTabView.kt), este chat solo INICIA la llamada.
-    callManager: com.social.app.calls.CallManager? = null
+    callManager: com.social.app.calls.CallManager? = null,
+    // @menciones reales dentro de un chat de GRUPO (0090_group_message_mentions.sql),
+    // comparado con WhatsApp/Messenger/Telegram -- cierra el alcance
+    // deliberado documentado antes: tocar "@usuario" ahora SÍ abre ese
+    // perfil, mismo patrón exacto ya usado en CommentsSheet.kt.
+    onOpenProfile: (String) -> Unit = {}
 ) {
     val viewModel = remember(groupChatId) { GroupChatViewModel(groupChatId) }
     val allGroupMessages by viewModel.messages.collectAsState()
@@ -92,6 +97,11 @@ fun GroupChatScreen(
     val starredMessageIds by viewModel.starredMessageIds.collectAsState()
     val reads by viewModel.reads.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    // @menciones reales dentro de un chat de GRUPO (0090_group_message_mentions.sql),
+    // comparado con WhatsApp/Messenger/Telegram -- mismo patrón exacto
+    // que CommentsSheet.kt para resolver "@usuario" -> id real de perfil.
+    val mentionScope = rememberCoroutineScope()
+    val mentionResolver = remember { com.social.app.util.MentionResolver() }
     // "En línea" y "escribiendo…" reales en un chat de grupo, comparado
     // con WhatsApp/Messenger -- ver GroupChatViewModel.kt para el
     // hallazgo completo (conjuntos en vez de un único booleano, a
@@ -384,14 +394,15 @@ fun GroupChatScreen(
                             // (0090_group_message_mentions.sql), comparado
                             // con WhatsApp/Messenger/Telegram -- resalta
                             // "@usuario" real igual que en captions/
-                            // comentarios (MentionHashtagText.kt), sin
-                            // navegación al perfil todavía (alcance
-                            // deliberado de esta ronda: el aviso real ya
-                            // funciona, el toque-para-abrir-perfil queda
-                            // pendiente).
+                            // comentarios (MentionHashtagText.kt). Cierra
+                            // el alcance deliberado documentado antes:
+                            // tocar la mención ahora SÍ abre ese perfil.
                             com.social.app.util.MentionHashtagText(
                                 text = message.body ?: "",
                                 baseColor = if (isMine) MaterialTheme.colorScheme.onPrimaryContainer else androidx.compose.material3.LocalContentColor.current,
+                                onOpenMention = { username ->
+                                    mentionScope.launch { mentionResolver.resolveProfileId(username)?.let(onOpenProfile) }
+                                },
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(
