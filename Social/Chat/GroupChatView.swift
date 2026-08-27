@@ -28,6 +28,13 @@ struct GroupChatView: View {
     // llama a TODO el grupo de una vez en vez de a una sola persona.
     @EnvironmentObject private var callManager: CallManager
     @State private var myID: UUID?
+    // Mensajes que desaparecen real también en el chat de grupo,
+    // comparado con WhatsApp/Instagram DM -- solo el creador/admin puede
+    // tocarlo. Nombradas distinto de GroupMembersView.isCreator/isAdmin
+    // (struct aparte más abajo en este mismo archivo) para no confundir
+    // dos propiedades con el mismo nombre en ámbitos distintos.
+    private var isCreatorForDisappearing: Bool { viewModel.groupChat?.createdBy != nil && viewModel.groupChat?.createdBy == myID }
+    private var isAdminForDisappearing: Bool { myID != nil && viewModel.adminIDs.contains(myID!) }
     @Environment(\.dismiss) private var dismiss
     // Nota de voz real (0062_group_message_audio.sql), mismo patrón
     // exacto que ChatView.swift (1:1).
@@ -377,7 +384,7 @@ struct GroupChatView: View {
             // (solo 1:1 esa ronda). Botón solo visible para quien ya
             // puede tocar el grupo (creador/admin), mismo criterio que
             // renombrar/cambiar la foto.
-            if isCreator || isAdmin {
+            if isCreatorForDisappearing || isAdminForDisappearing {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Button("Desactivado") { Task { await viewModel.setDisappearingSeconds(nil) } }
