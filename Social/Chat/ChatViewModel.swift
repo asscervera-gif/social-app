@@ -682,6 +682,7 @@ final class ChatViewModel: ObservableObject {
         var media_url: String? = nil
         var audio_url: String? = nil
         var reply_to_message_id: UUID? = nil
+        var view_once: Bool = false
     }
 
     func sendMessage() async {
@@ -719,17 +720,45 @@ final class ChatViewModel: ObservableObject {
 
     /// Primera pieza de "chat multimedia" — el chat solo soportaba texto
     /// (ver `messages_body_or_media`, 0016_message_media.sql).
-    func sendPhoto(imageData: Data) async {
+    /// [viewOnce] es opcional -- foto para ver una vez, comparado con
+    /// WhatsApp/Instagram DM/Snapchat, ver 0105_view_once_messages.sql.
+    func sendPhoto(imageData: Data, viewOnce: Bool = false) async {
         icebreaker = nil
         do {
             let url = try await StorageUploader.uploadImage(data: imageData, fileExtension: "jpg", userID: currentUserID)
             try await SupabaseManager.shared.client
                 .from("messages")
-                .insert(NewMessage(chat_id: chatID, sender_id: currentUserID, media_url: url))
+                .insert(NewMessage(chat_id: chatID, sender_id: currentUserID, media_url: url, view_once: viewOnce))
                 .execute()
         } catch {
             errorMessage = "No se pudo enviar la foto."
         }
+    }
+
+    /// Abre una foto real "para ver una vez", comparado con
+    /// WhatsApp/Instagram DM/Snapchat -- solo tiene sentido llamarlo
+    /// sobre un mensaje ajeno (RLS/`protect_message_columns` ya lo
+    /// exigen: el propio remitente NUNCA puede marcarla como abierta,
+    /// 0105_view_once_messages.sql). El propio servidor vacía media_url
+    /// de verdad al marcar opened_at -- por eso aquí se guarda la URL
+    /// real ANTES de mandar el UPDATE, para poder mostrarla una última
+    /// vez en el visor a pantalla completa. Equivalente de
+    /// ChatViewModel.kt.openViewOnceMessage().
+    func openViewOnceMessage(_ messageID: UUID) async -> String? {
+        guard let index = messages.firstIndex(where: { $0.id == messageID }),
+              let mediaURL = messages[index].mediaURL else { return nil }
+        messages[index].openedAt = ISO8601DateFormatter().string(from: Date())
+        messages[index].mediaURL = nil
+        do {
+            try await SupabaseManager.shared.client
+                .from("messages")
+                .update(["opened_at": ISO8601DateFormatter().string(from: Date())])
+                .eq("id", value: messageID)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo abrir la foto."
+        }
+        return mediaURL
     }
 
     /// Última pieza real de "chat funcional con fotos, voz, reacciones,

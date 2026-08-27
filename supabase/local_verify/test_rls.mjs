@@ -2633,6 +2633,76 @@ async function main() {
     );
   });
 
+  // --- messages.view_once/opened_at (0105_view_once_messages.sql): foto
+  // para ver una vez, comparado con WhatsApp/Instagram DM/Snapchat.
+  // Usuarios NUEVOS a propósito (mismo motivo ya documentado varias
+  // veces esta sesión): sin ninguna relación previa que pueda contaminar
+  // esta prueba. ---
+  await asSuperuser();
+  const voSender = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const voRecipient = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name) values ($1, 'Envía'), ($2, 'Recibe')
+     on conflict (id) do update set display_name = excluded.display_name`,
+    [voSender, voRecipient]
+  );
+  const voChat = (await db.query(`insert into chats (user_a_id, user_b_id) values ($1, $2) returning id`, [voSender, voRecipient])).rows[0];
+
+  await asUser(voSender);
+  await expectFail('messages_view_once_needs_media: una foto real "para ver una vez" SIN media_url no se puede enviar', async () => {
+    await db.query(`insert into messages (chat_id, sender_id, body, view_once) values ($1, $2, 'solo texto', true)`, [voChat.id, voSender]);
+  });
+
+  const voMessage = (await db.query(
+    `insert into messages (chat_id, sender_id, media_url, view_once) values ($1, $2, 'una_vez.jpg', true) returning id`, [voChat.id, voSender]
+  )).rows[0];
+
+  await asUser(voRecipient);
+  const beforeOpening = (await db.query(`select media_url, opened_at from messages where id = $1`, [voMessage.id])).rows[0];
+  check('messages_select: el destinatario real (voRecipient) SÍ ve la foto real antes de abrirla', beforeOpening.media_url === 'una_vez.jpg' && beforeOpening.opened_at === null);
+
+  // RLS real (`messages_update_own`) SÍ deja pasar la sentencia del
+  // propio remitente (sender_id = auth.uid() se cumple igual) -- no
+  // lanza ninguna excepción real, el guardia de columnas la revierte en
+  // silencio por debajo, mismo criterio real ya documentado para
+  // read_at/body en 0049. Por eso se comprueba con expectOk + un check
+  // aparte del valor real, nunca con expectFail.
+  await asUser(voSender);
+  await expectOk('messages_update_own: la sentencia del propio remitente (voSender) no lanza ninguna excepción real (RLS la deja pasar)', async () => {
+    await db.query(`update messages set opened_at = now() where id = $1`, [voMessage.id]);
+  });
+  const afterSenderAttempt = (await db.query(`select opened_at, media_url from messages where id = $1`, [voMessage.id])).rows[0];
+  check('protect_message_columns: pero el propio remitente real (voSender) NO consigue marcar su propia foto como abierta (revertido de verdad)', afterSenderAttempt.opened_at === null && afterSenderAttempt.media_url === 'una_vez.jpg');
+
+  await asUser(voRecipient);
+  await expectOk('messages_update_read: el destinatario real (voRecipient) SÍ puede abrir su foto real "para ver una vez"', async () => {
+    await db.query(`update messages set opened_at = now() where id = $1`, [voMessage.id]);
+  });
+  const afterOpening = (await db.query(`select media_url, opened_at from messages where id = $1`, [voMessage.id])).rows[0];
+  check('protect_message_columns: al abrirla de verdad, media_url real queda vacío del todo (nunca decidido por el cliente)', afterOpening.media_url === null && afterOpening.opened_at !== null);
+
+  await asUser(voSender);
+  const asSenderAfterOpening = (await db.query(`select media_url, opened_at from messages where id = $1`, [voMessage.id])).rows[0];
+  check('protect_message_columns: el propio remitente real (voSender) tampoco puede volver a verla, aunque sí sabe que se abrió', asSenderAfterOpening.media_url === null && asSenderAfterOpening.opened_at !== null);
+
+  await asUser(voRecipient);
+  await db.query(`update messages set opened_at = null where id = $1`, [voMessage.id]);
+  const afterUnopenAttempt = (await db.query(`select opened_at from messages where id = $1`, [voMessage.id])).rows[0];
+  check('protect_message_columns: intentar "desabrir" una foto real ya consumida no lo consigue (irreversible de verdad)', afterUnopenAttempt.opened_at !== null);
+
+  await db.query(`update messages set media_url = 'evil.jpg' where id = $1`, [voMessage.id]);
+  const afterFakeMediaAttempt = (await db.query(`select media_url from messages where id = $1`, [voMessage.id])).rows[0];
+  check('protect_message_columns: el destinatario real NO puede escribir un media_url falso directamente', afterFakeMediaAttempt.media_url === null);
+
+  await asUser(voSender);
+  const voSecondMessage = (await db.query(
+    `insert into messages (chat_id, sender_id, media_url) values ($1, $2, 'normal.jpg') returning id`, [voChat.id, voSender]
+  )).rows[0];
+  await asUser(voRecipient);
+  await db.query(`update messages set view_once = true where id = $1`, [voSecondMessage.id]);
+  const viewOnceAfterAttempt = (await db.query(`select view_once from messages where id = $1`, [voSecondMessage.id])).rows[0];
+  check('protect_message_columns: view_once real es inmutable tras el envío -- el destinatario NO puede activarlo después', viewOnceAfterAttempt.view_once === false);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

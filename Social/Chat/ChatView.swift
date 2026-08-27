@@ -120,6 +120,32 @@ struct ChatView: View {
                             onDismiss: { forwardingMessage = nil }
                         )
                     }
+                    // Foto para ver una vez, comparado con WhatsApp/
+                    // Instagram DM/Snapchat -- se pregunta al elegir la
+                    // foto. Ver ChatViewModel.sendPhoto(),
+                    // 0105_view_once_messages.sql.
+                    .confirmationDialog(
+                        "Enviar foto",
+                        isPresented: Binding(
+                            get: { pendingPhotoData != nil },
+                            set: { if !$0 { pendingPhotoData = nil } }
+                        ),
+                        titleVisibility: .visible
+                    ) {
+                        Button("🔥 Ver una vez") {
+                            if let data = pendingPhotoData {
+                                pendingPhotoData = nil
+                                Task { await viewModel.sendPhoto(imageData: data, viewOnce: true) }
+                            }
+                        }
+                        Button("Normal") {
+                            if let data = pendingPhotoData {
+                                pendingPhotoData = nil
+                                Task { await viewModel.sendPhoto(imageData: data, viewOnce: false) }
+                            }
+                        }
+                        Button("Cancelar", role: .cancel) { pendingPhotoData = nil }
+                    }
             }
 
             // Fijar un mensaje real (propio o ajeno) para que aparezca
@@ -189,6 +215,9 @@ struct ChatView: View {
                                 },
                                 onReply: {
                                     viewModel.replyingTo = message
+                                },
+                                onOpenViewOnce: {
+                                    await viewModel.openViewOnceMessage(message.id)
                                 },
                                 showReadReceipts: viewModel.showReadReceipts
                             )
@@ -376,6 +405,9 @@ struct ChatView: View {
     }
 
     @State private var selectedPhoto: PhotosPickerItem?
+    // Foto para ver una vez, comparado con WhatsApp/Instagram DM/
+    // Snapchat -- ver ChatViewModel.sendPhoto(), 0105_view_once_messages.sql.
+    @State private var pendingPhotoData: Data?
     // Última pieza real de "chat funcional con fotos, voz, reacciones,
     // read receipts" — grabación nativa (ver VoiceRecorder.swift).
     @State private var voiceRecorder = VoiceRecorder()
@@ -419,7 +451,11 @@ struct ChatView: View {
             .onChange(of: selectedPhoto) { newValue in
                 Task {
                     if let data = try? await newValue?.loadTransferable(type: Data.self) {
-                        await viewModel.sendPhoto(imageData: data)
+                        // Foto para ver una vez, comparado con
+                        // WhatsApp/Instagram DM/Snapchat -- se pregunta
+                        // al elegir la foto. Ver
+                        // ChatViewModel.sendPhoto(), 0105_view_once_messages.sql.
+                        pendingPhotoData = data
                     }
                 }
             }
@@ -490,6 +526,10 @@ private struct MessageBubble: View {
     // Responder a un mensaje concreto (cita), comparado con
     // WhatsApp/Telegram/iMessage/Instagram DM.
     var onReply: () -> Void = {}
+    // Foto para ver una vez, comparado con WhatsApp/Instagram DM/
+    // Snapchat -- devuelve la URL real ya resuelta (o nil si falla), ver
+    // ChatViewModel.openViewOnceMessage(), 0105_view_once_messages.sql.
+    var onOpenViewOnce: () async -> String? = { nil }
     // Recibo de lectura real ("Leído ✓✓"), comparado con WhatsApp/
     // Instagram/Messenger -- ya es false si CUALQUIERA de los dos
     // desactivó el suyo, ver ChatViewModel.loadReadReceiptsVisibility(),
@@ -592,6 +632,39 @@ private struct MessageBubble: View {
                             .padding(8)
                         }
                         .buttonStyle(.plain)
+                    } else if message.viewOnce && message.openedAt != nil {
+                        // Foto real "para ver una vez" ya consumida,
+                        // comparado con WhatsApp/Instagram DM/Snapchat --
+                        // el propio servidor ya vació media_url de verdad
+                        // (0105_view_once_messages.sql), ni siquiera el
+                        // remitente puede volver a verla.
+                        Text("🔥 Foto vista")
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(isMine ? Color.accentColor.opacity(0.85) : Color.gray.opacity(0.15))
+                            .foregroundStyle(isMine ? .white : .primary)
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                    } else if message.viewOnce, message.mediaURL != nil {
+                        // Foto real "para ver una vez" todavía sin abrir
+                        // -- el toque real solo tiene efecto para el
+                        // destinatario (onOpenViewOnce); el propio
+                        // remitente no puede consumir la suya
+                        // (protect_message_columns ya lo impide del lado
+                        // del servidor).
+                        Text(isMine ? "🔥 Enviada para ver una vez" : "🔥 Toca para ver una vez")
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(isMine ? Color.accentColor.opacity(0.85) : Color.gray.opacity(0.15))
+                            .foregroundStyle(isMine ? .white : .primary)
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                            .onTapGesture {
+                                guard !isMine else { return }
+                                Task {
+                                    if let urlString = await onOpenViewOnce(), let url = URL(string: urlString) {
+                                        fullScreenURL = url
+                                    }
+                                }
+                            }
                     } else if let mediaURL = message.mediaURL, let url = URL(string: mediaURL) {
                         AsyncImage(url: url) { image in
                             image.resizable().scaledToFill()
@@ -683,9 +756,15 @@ private struct MessageBubble: View {
                     Button("↩ Responder", action: onReply)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                    Button("↪ Reenviar", action: onForward)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                    // Foto para ver una vez, comparado con WhatsApp/
+                    // Instagram DM/Snapchat -- nunca reenviable, igual
+                    // que esas apps (todo el punto real es que solo la
+                    // vea el destinatario elegido, una sola vez).
+                    if !message.viewOnce {
+                        Button("↪ Reenviar", action: onForward)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             if isMine {

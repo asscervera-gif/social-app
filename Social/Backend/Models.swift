@@ -238,6 +238,11 @@ struct ChatMessage: Codable, Identifiable {
     // WhatsApp/Telegram/iMessage/Instagram DM -- referencia al mensaje
     // real citado, nunca una copia. Ver 0102_message_reply.sql.
     var replyToMessageID: UUID? = nil
+    // Foto para ver una vez, comparado con WhatsApp/Instagram DM/
+    // Snapchat -- el propio servidor vacía mediaURL de verdad en cuanto
+    // openedAt pasa de nil a no-nil (0105_view_once_messages.sql).
+    var viewOnce: Bool = false
+    var openedAt: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -255,6 +260,8 @@ struct ChatMessage: Codable, Identifiable {
         case pinnedAt = "pinned_at"
         case pinnedBy = "pinned_by"
         case replyToMessageID = "reply_to_message_id"
+        case viewOnce = "view_once"
+        case openedAt = "opened_at"
     }
 }
 

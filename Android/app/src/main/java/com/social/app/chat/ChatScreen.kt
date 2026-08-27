@@ -125,8 +125,13 @@ fun ChatScreen(
     // WhatsApp/Telegram/Messenger.
     var forwardingMessage by remember { mutableStateOf<com.social.app.backend.model.ChatMessage?>(null) }
     val context = LocalContext.current
+    // Foto para ver una vez, comparado con WhatsApp/Instagram DM/
+    // Snapchat -- se pregunta al elegir la foto, mismo momento real que
+    // 0075_close_friends_stories.sql pregunta la audiencia de una
+    // historia. Ver ChatViewModel.sendPhoto(), 0105_view_once_messages.sql.
+    var pendingPhotoUri by remember { mutableStateOf<android.net.Uri?>(null) }
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) viewModel.sendPhoto(context, uri)
+        if (uri != null) pendingPhotoUri = uri
     }
 
     LaunchedEffect(chatId) { viewModel.start() }
@@ -364,6 +369,44 @@ fun ChatScreen(
                                 )
                                 sharedPost?.caption?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                             }
+                        } else if (message.viewOnce && message.openedAt != null) {
+                            // Foto real "para ver una vez" ya consumida,
+                            // comparado con WhatsApp/Instagram DM/
+                            // Snapchat -- el propio servidor ya vació
+                            // media_url de verdad (0105_view_once_messages.sql),
+                            // ni siquiera el remitente puede volver a verla.
+                            Text(
+                                "🔥 Foto vista",
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(if (isMine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+                                    .combinedClickable(onClick = {}, onLongClick = { managingMessage = message })
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                color = if (isMine) androidx.compose.ui.graphics.Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else if (message.viewOnce && message.mediaUrl != null) {
+                            // Foto real "para ver una vez" todavía sin
+                            // abrir -- el toque real solo tiene efecto
+                            // para el destinatario (ChatViewModel.
+                            // openViewOnceMessage()); el propio remitente
+                            // no puede consumir la suya (protect_message_columns
+                            // ya lo impide del lado del servidor).
+                            Text(
+                                if (isMine) "🔥 Enviada para ver una vez" else "🔥 Toca para ver una vez",
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(if (isMine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+                                    .combinedClickable(
+                                        onClick = {
+                                            if (!isMine) {
+                                                viewModel.openViewOnceMessage(message.id)?.let { url -> fullScreenImageUrl = url }
+                                            }
+                                        },
+                                        onLongClick = { managingMessage = message }
+                                    )
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                color = if (isMine) androidx.compose.ui.graphics.Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         } else if (message.mediaUrl != null) {
                             Image(
                                 painter = rememberAsyncImagePainter(message.mediaUrl),
@@ -458,12 +501,19 @@ fun ChatScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.clickable { viewModel.setReplyingTo(message) }
                             )
-                            Text(
-                                "↪ Reenviar",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.clickable { forwardingMessage = message }
-                            )
+                            // Foto para ver una vez, comparado con
+                            // WhatsApp/Instagram DM/Snapchat -- nunca
+                            // reenviable, igual que esas apps (todo el
+                            // punto real es que solo la vea el
+                            // destinatario elegido, una sola vez).
+                            if (!message.viewOnce) {
+                                Text(
+                                    "↪ Reenviar",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.clickable { forwardingMessage = message }
+                                )
+                            }
                         }
                     }
                     if (isMine) {
@@ -594,6 +644,27 @@ fun ChatScreen(
     }
     fullScreenImageUrl?.let { url ->
         com.social.app.util.FullScreenImageViewer(url = url, onDismiss = { fullScreenImageUrl = null })
+    }
+    // Foto para ver una vez, comparado con WhatsApp/Instagram DM/
+    // Snapchat -- ver ChatViewModel.sendPhoto(), 0105_view_once_messages.sql.
+    pendingPhotoUri?.let { uri ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { pendingPhotoUri = null },
+            title = { Text("Enviar foto") },
+            text = { Text("¿Cómo quieres enviarla?") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    viewModel.sendPhoto(context, uri, viewOnce = true)
+                    pendingPhotoUri = null
+                }) { Text("🔥 Ver una vez") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    viewModel.sendPhoto(context, uri, viewOnce = false)
+                    pendingPhotoUri = null
+                }) { Text("Normal") }
+            }
+        )
     }
     if (showReportSheet) {
         opponentId?.let { opponent ->

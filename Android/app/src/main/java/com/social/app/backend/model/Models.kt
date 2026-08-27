@@ -184,7 +184,12 @@ data class ChatMessage(
     // Responder a un mensaje concreto (cita), comparado con
     // WhatsApp/Telegram/iMessage/Instagram DM -- referencia al mensaje
     // real citado, nunca una copia. Ver 0102_message_reply.sql.
-    @SerialName("reply_to_message_id") val replyToMessageId: String? = null
+    @SerialName("reply_to_message_id") val replyToMessageId: String? = null,
+    // Foto para ver una vez, comparado con WhatsApp/Instagram DM/
+    // Snapchat -- el propio servidor vacía media_url de verdad en cuanto
+    // opened_at pasa de null a no-null (0105_view_once_messages.sql).
+    @SerialName("view_once") val viewOnce: Boolean = false,
+    @SerialName("opened_at") val openedAt: String? = null
 )
 
 /** Hallazgo de integridad corregido (ver duel-ai/index.ts): antes incluía

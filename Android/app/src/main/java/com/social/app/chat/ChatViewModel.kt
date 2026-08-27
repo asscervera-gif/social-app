@@ -731,7 +731,8 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
         val body: String? = null,
         @SerialName("media_url") val mediaUrl: String? = null,
         @SerialName("audio_url") val audioUrl: String? = null,
-        @SerialName("reply_to_message_id") val replyToMessageId: String? = null
+        @SerialName("reply_to_message_id") val replyToMessageId: String? = null,
+        @SerialName("view_once") val viewOnce: Boolean = false
     )
 
     fun sendMessage(text: String) {
@@ -768,18 +769,44 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
 
     /** Primera pieza de "chat multimedia" — el chat solo soportaba texto
      * (ver `messages_body_or_media`, 0016_message_media.sql: un mensaje
-     * necesita AL MENOS texto o foto, nunca ninguno de los dos). */
-    fun sendPhoto(context: android.content.Context, uri: android.net.Uri) {
+     * necesita AL MENOS texto o foto, nunca ninguno de los dos).
+     * [viewOnce] es opcional -- foto para ver una vez, comparado con
+     * WhatsApp/Instagram DM/Snapchat, ver 0105_view_once_messages.sql. */
+    fun sendPhoto(context: android.content.Context, uri: android.net.Uri, viewOnce: Boolean = false) {
         _icebreaker.value = null
         viewModelScope.launch {
             try {
                 val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
                 val url = com.social.app.backend.StorageUploader.uploadImage(context, uri, userId)
-                SupabaseManager.client.from("messages").insert(NewMessage(chatId = chatId, senderId = userId, mediaUrl = url))
+                SupabaseManager.client.from("messages").insert(NewMessage(chatId = chatId, senderId = userId, mediaUrl = url, viewOnce = viewOnce))
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo enviar la foto."
             }
         }
+    }
+
+    /** Abre una foto real "para ver una vez", comparado con
+     * WhatsApp/Instagram DM/Snapchat -- solo tiene sentido llamarlo sobre
+     * un mensaje ajeno (RLS/`protect_message_columns` ya lo exigen: el
+     * propio remitente NUNCA puede marcarla como abierta,
+     * 0105_view_once_messages.sql). El propio servidor vacía media_url de
+     * verdad al marcar opened_at -- por eso aquí se guarda la URL real
+     * ANTES de mandar el UPDATE, para poder mostrarla una última vez en
+     * el visor a pantalla completa sin depender de una segunda consulta
+     * (que ya la vería vacía). */
+    fun openViewOnceMessage(messageId: String): String? {
+        val message = _messages.value.firstOrNull { it.id == messageId } ?: return null
+        val mediaUrl = message.mediaUrl ?: return null
+        _messages.update { list -> list.map { if (it.id == messageId) it.copy(openedAt = java.time.Instant.now().toString(), mediaUrl = null) else it } }
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("messages")
+                    .update({ set("opened_at", java.time.Instant.now().toString()) }) { filter { eq("id", messageId) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo abrir la foto."
+            }
+        }
+        return mediaUrl
     }
 
     /** Última pieza real de "chat funcional con fotos, voz, reacciones,
