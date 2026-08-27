@@ -63,7 +63,11 @@ data class Post(
     // Desactivar los comentarios de una publicación, comparado con
     // Instagram/TikTok -- los comentarios previos se quedan, solo se
     // cierra la puerta a comentarios NUEVOS (0086_disable_comments.sql).
-    @SerialName("comments_disabled") val commentsDisabled: Boolean = false
+    @SerialName("comments_disabled") val commentsDisabled: Boolean = false,
+    // Ocultar el número de "me gusta" real, comparado con Instagram/
+    // Facebook -- el autor sigue viendo su cifra real siempre, solo
+    // desaparece el número para los demás (0094_hide_like_count.sql).
+    @SerialName("hide_like_count") val hideLikeCount: Boolean = false
 )
 
 @Serializable

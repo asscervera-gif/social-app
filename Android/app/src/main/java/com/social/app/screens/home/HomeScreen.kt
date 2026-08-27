@@ -399,8 +399,13 @@ private fun PostCard(
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(top = 8.dp)) {
+                // Ocultar el número de "me gusta" real, comparado con
+                // Instagram/Facebook -- el propio autor sigue viendo su
+                // cifra real siempre, solo desaparece para los demás. Ver
+                // 0094_hide_like_count.sql.
+                val showLikeCount = !post.hideLikeCount || post.authorId == myId
                 Text(
-                    "${if (isLiked) "❤" else "🤍"} ${post.likeCount}",
+                    if (showLikeCount) "${if (isLiked) "❤" else "🤍"} ${post.likeCount}" else if (isLiked) "❤" else "🤍",
                     modifier = Modifier.clickable(onClick = onLike).padding(end = 4.dp)
                 )
                 Text("💬 ${post.commentCount}", modifier = Modifier.clickable(onClick = onOpenComments))

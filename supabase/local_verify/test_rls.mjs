@@ -2104,6 +2104,27 @@ async function main() {
   const receiptsSeenByOther = (await db.query(`select read_receipts_enabled from profiles where id = $1`, [u2])).rows[0];
   check('profiles_select_public: u1 real SÍ ve el recibo desactivado de u2 (necesario para no pintarle "Leído" en el chat)', receiptsSeenByOther.read_receipts_enabled === false);
 
+  // --- posts.hide_like_count/reels.hide_like_count
+  // (0094_hide_like_count.sql): ocultar el número de "me gusta" real,
+  // comparado con Instagram/Facebook -- columna normal sin trigger ni
+  // política nueva (mismo criterio que read_receipts_enabled arriba):
+  // posts_write_own/reels_write_own (ya "for all") ya dejan al autor
+  // tocar cualquier columna propia, y like_count sigue siendo pública
+  // para cualquiera -- aquí solo se confirma el valor por defecto real y
+  // que el propio autor de verdad puede activarlo. ---
+  await asUser(u1);
+  const likeCountPost = (await db.query(
+    `insert into posts (author_id, caption) values ($1, 'publicación real para ocultar likes') returning id, hide_like_count`, [u1]
+  )).rows[0];
+  check('posts.hide_like_count: arranca en false por defecto', likeCountPost.hide_like_count === false);
+
+  await expectOk('posts_write_own: u1 SÍ puede ocultar el número de me gusta de su propia publicación', async () => {
+    await db.query(`update posts set hide_like_count = true where id = $1`, [likeCountPost.id]);
+  });
+  await asUser(u2);
+  const likeCountSeenByOther = (await db.query(`select hide_like_count, like_count from posts where id = $1`, [likeCountPost.id])).rows[0];
+  check('posts_select: u2 real SÍ ve hide_like_count activado (necesario para no pintarle el número en su cliente)', likeCountSeenByOther.hide_like_count === true);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

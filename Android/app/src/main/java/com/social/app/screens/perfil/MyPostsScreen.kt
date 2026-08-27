@@ -127,6 +127,25 @@ class MyPostsViewModel : ViewModel() {
         }
     }
 
+    /** Ocultar el número de "me gusta" real, comparado con Instagram/
+     * Facebook -- el propio autor sigue viendo su cifra real siempre,
+     * solo desaparece para los demás (0094_hide_like_count.sql).
+     * `posts_write_own` ya es `for all`, mismo criterio que
+     * toggleCommentsDisabled(): sin política RLS nueva. */
+    fun toggleHideLikeCount(post: Post) {
+        val newValue = !post.hideLikeCount
+        _posts.value = _posts.value.map { if (it.id == post.id) it.copy(hideLikeCount = newValue) else it }
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("posts")
+                    .update({ set("hide_like_count", newValue) }) { filter { eq("id", post.id) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo cambiar la visibilidad del número de me gusta."
+                load()
+            }
+        }
+    }
+
     fun editCaption(post: Post, newCaption: String) {
         if (newCaption.length > 2200) {
             _errorMessage.value = "El texto no puede tener más de 2200 caracteres."
@@ -293,6 +312,15 @@ fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
                                     onClick = { viewModel.toggleCommentsDisabled(post) },
                                     modifier = Modifier.padding(end = 8.dp)
                                 ) { Text(if (post.commentsDisabled) "Activar comentarios" else "Desactivar comentarios") }
+                                // Ocultar el número de "me gusta" real,
+                                // comparado con Instagram/Facebook -- el
+                                // propio autor sigue viendo su cifra real
+                                // siempre, solo desaparece para los demás.
+                                // Ver 0094_hide_like_count.sql.
+                                OutlinedButton(
+                                    onClick = { viewModel.toggleHideLikeCount(post) },
+                                    modifier = Modifier.padding(end = 8.dp)
+                                ) { Text(if (post.hideLikeCount) "Mostrar número de me gusta" else "Ocultar número de me gusta") }
                                 OutlinedButton(onClick = { viewModel.delete(post) }) { Text("Borrar") }
                             }
                         }

@@ -150,7 +150,8 @@ fun ReelsScreen(
                         // comparado con Instagram/TikTok -- ver
                         // ReelsViewModel.toggleCommentsDisabled(),
                         // 0086_disable_comments.sql.
-                        onToggleCommentsDisabled = { viewModel.toggleCommentsDisabled(reel) }
+                        onToggleCommentsDisabled = { viewModel.toggleCommentsDisabled(reel) },
+                        onToggleHideLikeCount = { viewModel.toggleHideLikeCount(reel) }
                     )
                 }
             }
@@ -202,7 +203,8 @@ private fun ReelPage(
     // HomeScreen.kt.PostCard.onOpenMentionProfile.
     onOpenMentionProfile: (String) -> Unit = {},
     onOpenComments: () -> Unit,
-    onToggleCommentsDisabled: () -> Unit
+    onToggleCommentsDisabled: () -> Unit,
+    onToggleHideLikeCount: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val mentionResolver = remember { MentionResolver() }
@@ -264,8 +266,13 @@ private fun ReelPage(
                     style = MaterialTheme.typography.headlineSmall,
                     modifier = Modifier.clickable(onClick = onLike)
                 )
+                // Ocultar el número de "me gusta" real, comparado con
+                // Instagram/Facebook -- el propio autor (isMine) sigue
+                // viendo su cifra real siempre, solo desaparece para los
+                // demás. Ver 0094_hide_like_count.sql.
+                val showLikeCount = !reel.hideLikeCount || isMine
                 Text(
-                    " ${reel.likeCount}   💬 ${reel.commentCount}",
+                    if (showLikeCount) " ${reel.likeCount}   💬 ${reel.commentCount}" else "💬 ${reel.commentCount}",
                     modifier = Modifier.clickable(onClick = onOpenComments),
                     color = androidx.compose.ui.graphics.Color.White
                 )
@@ -279,6 +286,17 @@ private fun ReelPage(
                         modifier = Modifier
                             .padding(start = 10.dp)
                             .clickable(onClick = onToggleCommentsDisabled),
+                        color = androidx.compose.ui.graphics.Color.White
+                    )
+                    // Ocultar el número de "me gusta" real, comparado
+                    // con Instagram/Facebook -- ver
+                    // ReelsViewModel.toggleHideLikeCount(),
+                    // 0094_hide_like_count.sql.
+                    Text(
+                        if (reel.hideLikeCount) "🙈❤" else "👁❤",
+                        modifier = Modifier
+                            .padding(start = 10.dp)
+                            .clickable(onClick = onToggleHideLikeCount),
                         color = androidx.compose.ui.graphics.Color.White
                     )
                 }

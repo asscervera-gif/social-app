@@ -96,6 +96,27 @@ final class MyPostsViewModel: ObservableObject {
         }
     }
 
+    /// Ocultar el número de "me gusta" real, comparado con Instagram/
+    /// Facebook -- el propio autor sigue viendo su cifra real siempre,
+    /// solo desaparece para los demás (0094_hide_like_count.sql).
+    /// Equivalente de MyPostsViewModel.kt.toggleHideLikeCount().
+    func toggleHideLikeCount(_ post: Post) async {
+        let newValue = !post.hideLikeCount
+        if let index = posts.firstIndex(where: { $0.id == post.id }) {
+            posts[index].hideLikeCount = newValue
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("posts")
+                .update(["hide_like_count": newValue])
+                .eq("id", value: post.id)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo cambiar la visibilidad del número de me gusta."
+            await load()
+        }
+    }
+
     /// Hallazgo real, comparado con Instagram: no había forma de editar el
     /// caption de una publicación ya hecha, solo borrarla entera --
     /// `posts_write_own` (0002_rls.sql) ya es `for all`, así que editar la
@@ -243,6 +264,14 @@ struct MyPostsView: View {
                         Task { await viewModel.toggleCommentsDisabled(post) }
                     }
                     .tint(.indigo)
+                    // Ocultar el número de "me gusta" real, comparado con
+                    // Instagram/Facebook -- el propio autor sigue viendo
+                    // su cifra real siempre, solo desaparece para los
+                    // demás. Ver 0094_hide_like_count.sql.
+                    Button(post.hideLikeCount ? "Mostrar número de me gusta" : "Ocultar número de me gusta") {
+                        Task { await viewModel.toggleHideLikeCount(post) }
+                    }
+                    .tint(.purple)
                 }
             }
         }

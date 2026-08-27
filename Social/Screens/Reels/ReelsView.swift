@@ -126,7 +126,8 @@ struct ReelsView: View {
             isMine: reel.authorID == myID,
             onLike: { Task { await viewModel.toggleLike(reel) } },
             onOpenComments: { commentingReelID = reel.id },
-            onToggleCommentsDisabled: { Task { await viewModel.toggleCommentsDisabled(reel) } }
+            onToggleCommentsDisabled: { Task { await viewModel.toggleCommentsDisabled(reel) } },
+            onToggleHideLikeCount: { Task { await viewModel.toggleHideLikeCount(reel) } }
         )
     }
 }
@@ -142,6 +143,10 @@ private struct ReelRow: View {
     let onLike: () -> Void
     let onOpenComments: () -> Void
     let onToggleCommentsDisabled: () -> Void
+    // Ocultar el número de "me gusta" real, comparado con Instagram/
+    // Facebook -- el control solo tiene sentido sobre el reel propio
+    // (0094_hide_like_count.sql).
+    let onToggleHideLikeCount: () -> Void
     @State private var player: AVPlayer?
     // Nombre de usuario único real (@handle, 0073_profile_username.sql) +
     // notificación real de mención (0074_mentions.sql), comparado con
@@ -180,7 +185,13 @@ private struct ReelRow: View {
                 Button(action: onLike) {
                     Text(isLiked ? "❤" : "🤍")
                 }
-                Text("\(reel.likeCount)")
+                // Ocultar el número de "me gusta" real, comparado con
+                // Instagram/Facebook -- el propio autor (isMine) sigue
+                // viendo su cifra real siempre, solo desaparece para los
+                // demás. Ver 0094_hide_like_count.sql.
+                if !reel.hideLikeCount || isMine {
+                    Text("\(reel.likeCount)")
+                }
                 Button(action: onOpenComments) {
                     Text("💬 \(reel.commentCount)")
                         .foregroundStyle(.secondary)
@@ -193,6 +204,10 @@ private struct ReelRow: View {
                 if isMine {
                     Button(action: onToggleCommentsDisabled) {
                         Text(reel.commentsDisabled ? "🔕" : "🔔")
+                    }
+                    .buttonStyle(.plain)
+                    Button(action: onToggleHideLikeCount) {
+                        Text(reel.hideLikeCount ? "🙈❤" : "👁❤")
                     }
                     .buttonStyle(.plain)
                 }

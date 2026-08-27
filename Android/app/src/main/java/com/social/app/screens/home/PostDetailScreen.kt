@@ -23,6 +23,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import io.github.jan.supabase.gotrue.auth
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -135,8 +136,14 @@ fun PostDetailScreen(postId: String, onOpenProfile: (String) -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(top = 8.dp)) {
+                // Ocultar el número de "me gusta" real, comparado con
+                // Instagram/Facebook -- el propio autor sigue viendo su
+                // cifra real siempre, solo desaparece para los demás. Ver
+                // 0094_hide_like_count.sql.
+                val myId = com.social.app.backend.SupabaseManager.client.auth.currentUserOrNull()?.id
+                val showLikeCount = !post.hideLikeCount || post.authorId == myId
                 Text(
-                    "${if (isLiked) "❤" else "🤍"} ${post.likeCount}",
+                    if (showLikeCount) "${if (isLiked) "❤" else "🤍"} ${post.likeCount}" else if (isLiked) "❤" else "🤍",
                     modifier = Modifier.clickable { viewModel.toggleLike() }
                 )
                 Text("💬 ${post.commentCount}", modifier = Modifier.clickable { showComments = true })

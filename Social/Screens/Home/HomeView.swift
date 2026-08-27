@@ -405,8 +405,17 @@ private struct PostCard: View {
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 20) {
+                // Ocultar el número de "me gusta" real, comparado con
+                // Instagram/Facebook -- el propio autor sigue viendo su
+                // cifra real siempre, solo desaparece para los demás. Ver
+                // 0094_hide_like_count.sql.
+                let showLikeCount = !post.hideLikeCount || post.authorID == myID
                 Button(action: onLike) {
-                    Label("\(post.likeCount)", systemImage: isLiked ? "heart.fill" : "heart")
+                    if showLikeCount {
+                        Label("\(post.likeCount)", systemImage: isLiked ? "heart.fill" : "heart")
+                    } else {
+                        Image(systemName: isLiked ? "heart.fill" : "heart")
+                    }
                 }
                 .foregroundStyle(isLiked ? .red : .primary)
                 Button {

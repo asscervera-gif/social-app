@@ -27,6 +27,10 @@ struct Reel: Codable, Identifiable {
     // TikTok -- los comentarios previos se quedan, solo se cierra la
     // puerta a comentarios NUEVOS (0086_disable_comments.sql).
     var commentsDisabled: Bool = false
+    // Ocultar el número de "me gusta" real, comparado con Instagram/
+    // Facebook -- el autor sigue viendo su cifra real siempre, solo
+    // desaparece el número para los demás (0094_hide_like_count.sql).
+    var hideLikeCount: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -40,6 +44,7 @@ struct Reel: Codable, Identifiable {
         case viewCount = "view_count"
         case createdAt = "created_at"
         case commentsDisabled = "comments_disabled"
+        case hideLikeCount = "hide_like_count"
     }
 }
 
@@ -189,6 +194,27 @@ final class ReelsViewModel: ObservableObject {
                 .execute()
         } catch {
             errorMessage = "No se pudo cambiar el estado de los comentarios."
+            await load()
+        }
+    }
+
+    /// Ocultar el número de "me gusta" real, comparado con Instagram/
+    /// Facebook -- el propio autor sigue viendo su cifra real siempre,
+    /// solo desaparece para los demás (0094_hide_like_count.sql).
+    /// Equivalente de ReelsViewModel.kt.toggleHideLikeCount().
+    func toggleHideLikeCount(_ reel: Reel) async {
+        let newValue = !reel.hideLikeCount
+        if let index = reels.firstIndex(where: { $0.id == reel.id }) {
+            reels[index].hideLikeCount = newValue
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("reels")
+                .update(["hide_like_count": newValue])
+                .eq("id", value: reel.id)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo cambiar la visibilidad del número de me gusta."
             await load()
         }
     }

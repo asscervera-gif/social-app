@@ -35,6 +35,9 @@ struct PostDetailView: View {
     // solo texto plano; se corrige de paso al construir el componente
     // compartido MentionHashtagText.swift.
     @State private var mentionProfileID: UUID?
+    // Ocultar el número de "me gusta" real, comparado con Instagram/
+    // Facebook -- ver 0094_hide_like_count.sql.
+    @State private var myID: UUID?
 
     var body: some View {
         ScrollView {
@@ -106,8 +109,17 @@ struct PostDetailView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                     HStack(spacing: 20) {
+                        // Ocultar el número de "me gusta" real, comparado
+                        // con Instagram/Facebook -- el propio autor sigue
+                        // viendo su cifra real siempre, solo desaparece
+                        // para los demás. Ver 0094_hide_like_count.sql.
+                        let showLikeCount = !post.hideLikeCount || post.authorID == myID
                         Button { toggleLike() } label: {
-                            Label("\(post.likeCount)", systemImage: isLiked ? "heart.fill" : "heart")
+                            if showLikeCount {
+                                Label("\(post.likeCount)", systemImage: isLiked ? "heart.fill" : "heart")
+                            } else {
+                                Image(systemName: isLiked ? "heart.fill" : "heart")
+                            }
                         }
                         .foregroundStyle(isLiked ? .red : .primary)
                         Button { showComments = true } label: {
@@ -192,6 +204,7 @@ struct PostDetailView: View {
             extraMedia = media.map { $0.mediaURL }
 
             if let userID = try? await SupabaseManager.shared.client.auth.session.user.id {
+                myID = userID
                 struct LikeRow: Decodable { let post_id: UUID }
                 let likes: [LikeRow] = (try? await SupabaseManager.shared.client
                     .from("likes")

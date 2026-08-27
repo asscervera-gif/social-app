@@ -34,7 +34,11 @@ data class Reel(
     // Desactivar los comentarios de un reel, comparado con Instagram/
     // TikTok -- los comentarios previos se quedan, solo se cierra la
     // puerta a comentarios NUEVOS (0086_disable_comments.sql).
-    @SerialName("comments_disabled") val commentsDisabled: Boolean = false
+    @SerialName("comments_disabled") val commentsDisabled: Boolean = false,
+    // Ocultar el número de "me gusta" real, comparado con Instagram/
+    // Facebook -- el autor sigue viendo su cifra real siempre, solo
+    // desaparece el número para los demás (0094_hide_like_count.sql).
+    @SerialName("hide_like_count") val hideLikeCount: Boolean = false
 )
 
 /**
@@ -200,6 +204,25 @@ class ReelsViewModel : ViewModel() {
                     .update({ set("comments_disabled", newValue) }) { filter { eq("id", reel.id) } }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo cambiar el estado de los comentarios."
+                load()
+            }
+        }
+    }
+
+    /** Ocultar el número de "me gusta" real, comparado con Instagram/
+     * Facebook -- el propio autor sigue viendo su cifra real siempre,
+     * solo desaparece para los demás (0094_hide_like_count.sql).
+     * `reels_write_own` ya es `for all`, mismo criterio que
+     * toggleCommentsDisabled(): sin política RLS nueva. */
+    fun toggleHideLikeCount(reel: Reel) {
+        val newValue = !reel.hideLikeCount
+        _reels.update { list -> list.map { if (it.id == reel.id) it.copy(hideLikeCount = newValue) else it } }
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("reels")
+                    .update({ set("hide_like_count", newValue) }) { filter { eq("id", reel.id) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo cambiar la visibilidad del número de me gusta."
                 load()
             }
         }

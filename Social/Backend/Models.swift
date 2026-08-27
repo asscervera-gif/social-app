@@ -88,6 +88,10 @@ struct Post: Codable, Identifiable {
     // Instagram/TikTok -- los comentarios previos se quedan, solo se
     // cierra la puerta a comentarios NUEVOS (0086_disable_comments.sql).
     var commentsDisabled: Bool = false
+    // Ocultar el número de "me gusta" real, comparado con Instagram/
+    // Facebook -- el autor sigue viendo su cifra real siempre, solo
+    // desaparece el número para los demás (0094_hide_like_count.sql).
+    var hideLikeCount: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -101,6 +105,7 @@ struct Post: Codable, Identifiable {
         case taggedProfileID = "tagged_profile_id"
         case archivedAt = "archived_at"
         case commentsDisabled = "comments_disabled"
+        case hideLikeCount = "hide_like_count"
     }
 }
 

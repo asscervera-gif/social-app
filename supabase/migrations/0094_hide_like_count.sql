@@ -1,0 +1,31 @@
+-- ============================================================================
+-- SOCIAL — Ocultar el número de "me gusta", comparado con Instagram/
+-- Facebook
+--
+-- Hallazgo real: las dos dejan al autor ocultar el NÚMERO de "me gusta"
+-- de una publicación (real desde 2019, tras la presión pública sobre la
+-- ansiedad social que genera comparar contadores) -- el resto de gente
+-- sigue pudiendo dar like con normalidad, y el propio autor sigue viendo
+-- su cifra real siempre; solo desaparece el número para los DEMÁS.
+-- Confirmado en el propio código: `posts.like_count`/`reels.like_count`
+-- siempre se mostraban en bruto (HomeScreen.kt/PostDetailScreen.kt), sin
+-- ningún interruptor real para ocultarlo.
+--
+-- Diseño deliberado, sin tocar RLS ni triggers en absoluto: `like_count`
+-- sigue siendo una columna pública normal, exactamente igual que antes
+-- (sigue haciendo falta el número real para el propio autor, y
+-- `protect_post_counts`/`sync_post_like_count` ya garantizan que sea
+-- correcto -- ver 0004/0008). Esto es puramente una preferencia de
+-- VISUALIZACIÓN, resuelta en el cliente: `posts_write_own`/`reels_write_own`
+-- (ya "for all") ya permiten al autor tocar esta columna nueva de su
+-- propia fila sin necesitar ninguna política adicional.
+--
+-- Aviso de honestidad, mismo criterio ya documentado en
+-- 0091_read_receipts_toggle.sql: al seguir siendo `like_count` una
+-- columna de lectura pública normal, un cliente modificado podría
+-- ignorar `hide_like_count` y mostrar el número igual -- la misma
+-- limitación real que reconoce Instagram para esta función exacta.
+-- ============================================================================
+
+alter table posts add column hide_like_count boolean not null default false;
+alter table reels add column hide_like_count boolean not null default false;
