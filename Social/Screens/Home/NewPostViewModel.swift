@@ -27,7 +27,7 @@ final class NewPostViewModel: ObservableObject {
     /// (0055_post_media.sql) -- la primera va en `posts.media_url` como
     /// siempre, el resto en `post_media`. [taggedProfileID] es opcional --
     /// "con quién" (0051_post_social_tags.sql), comparado con SOCIAL_APP.html.
-    func post(caption: String, isSocialOnly: Bool, imageDataList: [Data], taggedProfileID: UUID? = nil) async -> Bool {
+    func post(caption: String, isSocialOnly: Bool, imageDataList: [Data], taggedProfileID: UUID? = nil, locationName: String? = nil) async -> Bool {
         guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return false }
         // Mismo límite real que posts_caption_length
         // (0023_text_length_limits.sql) — validado aquí también, mismo
@@ -37,12 +37,21 @@ final class NewPostViewModel: ObservableObject {
             errorMessage = "El texto no puede tener más de 2200 caracteres."
             return false
         }
+        // Mismo límite real que posts_location_name_length
+        // (0095_post_location_tag.sql).
+        let trimmedLocation = locationName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalLocation = (trimmedLocation?.isEmpty ?? true) ? nil : trimmedLocation
+        guard (finalLocation?.count ?? 0) <= 100 else {
+            errorMessage = "El nombre del sitio no puede tener más de 100 caracteres."
+            return false
+        }
         struct NewPost: Encodable {
             let author_id: UUID
             let caption: String
             let is_social_only: Bool
             let media_url: String?
             let tagged_profile_id: UUID?
+            let location_name: String?
         }
         struct NewPostMedia: Encodable {
             let post_id: UUID
@@ -60,7 +69,7 @@ final class NewPostViewModel: ObservableObject {
             }
             let insertedPost: Post = try await SupabaseManager.shared.client
                 .from("posts")
-                .insert(NewPost(author_id: userID, caption: caption, is_social_only: isSocialOnly, media_url: mediaURLs.first, tagged_profile_id: taggedProfileID))
+                .insert(NewPost(author_id: userID, caption: caption, is_social_only: isSocialOnly, media_url: mediaURLs.first, tagged_profile_id: taggedProfileID, location_name: finalLocation))
                 .select()
                 .single()
                 .execute()

@@ -67,7 +67,11 @@ data class Post(
     // Ocultar el número de "me gusta" real, comparado con Instagram/
     // Facebook -- el autor sigue viendo su cifra real siempre, solo
     // desaparece el número para los demás (0094_hide_like_count.sql).
-    @SerialName("hide_like_count") val hideLikeCount: Boolean = false
+    @SerialName("hide_like_count") val hideLikeCount: Boolean = false,
+    // Etiqueta de ubicación real (texto libre, no geocodificado),
+    // comparado con Instagram/Facebook/Twitter/Snapchat -- ver
+    // 0095_post_location_tag.sql.
+    @SerialName("location_name") val locationName: String? = null
 )
 
 @Serializable

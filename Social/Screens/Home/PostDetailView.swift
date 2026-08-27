@@ -58,6 +58,15 @@ struct PostDetailView: View {
                         }
                     }
 
+                    // Etiqueta de ubicación real (texto libre, no
+                    // geocodificado), comparado con Instagram/Facebook/
+                    // Twitter/Snapchat -- ver 0095_post_location_tag.sql.
+                    if let location = post.locationName {
+                        Text("📍 \(location)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
                     if let firstURL = post.mediaURL {
                         // Carrusel de varias fotos (post_media), mismo
                         // patrón exacto que HomeView.swift.PostCard.

@@ -1,0 +1,31 @@
+-- ============================================================================
+-- SOCIAL — Etiqueta de ubicación en una publicación, comparado con
+-- Instagram/Facebook/Twitter/Snapchat
+--
+-- Hallazgo real: las cuatro dejan añadir un nombre de sitio real a una
+-- publicación/story ("Madrid, España", "Café Comercial"...), mostrado
+-- bajo el nombre del autor. Confirmado en el propio código: `posts` no
+-- tiene ninguna columna de ubicación en absoluto -- lo único parecido
+-- que existe es `profiles.last_lat/last_lng` (posición GPS real del
+-- perfil, para "Find") y `events.venue_lat/venue_lng` (coordenadas de un
+-- evento concreto), ninguna de las dos pensada para etiquetar UNA
+-- publicación puntual.
+--
+-- Diseño deliberado, texto libre (no coordenadas ni API de sitios real):
+-- coherente con la preferencia real ya aplicada en esta sesión de
+-- herramientas gratuitas/de código abierto antes que servicios de pago
+-- -- integrar una API de sitios real (Google Places/Foursquare) para
+-- autocompletar y verificar el nombre exacto de un lugar requeriría una
+-- clave de pago, evitable aquí sin perder la función real (el propio
+-- Instagram deja escribir un nombre libre si el sitio buscado no
+-- aparece en su base de datos). Aviso de honestidad: sin geocodificación
+-- real, `location_name` es solo el texto que quien publica decide
+-- escribir -- no verificado contra ninguna base de datos de sitios
+-- reales, ni enlazado a un mapa.
+--
+-- Límite real de longitud, mismo criterio que el resto de columnas de
+-- texto libre de la sesión (bio/caption/reports.details...).
+-- ============================================================================
+
+alter table posts add column location_name text;
+alter table posts add constraint posts_location_name_length check (location_name is null or char_length(location_name) <= 100);

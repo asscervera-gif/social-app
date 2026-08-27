@@ -71,6 +71,17 @@ fun PostDetailScreen(postId: String, onOpenProfile: (String) -> Unit) {
                     modifier = Modifier.padding(start = 10.dp)
                 )
             }
+            // Etiqueta de ubicación real (texto libre, no geocodificado),
+            // comparado con Instagram/Facebook/Twitter/Snapchat -- ver
+            // 0095_post_location_tag.sql.
+            post.locationName?.let { location ->
+                Text(
+                    "📍 $location",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+            }
             post.mediaUrl?.let { firstUrl ->
                 // Carrusel de varias fotos (post_media), mismo patrón exacto
                 // que HomeScreen.kt.PostCard.

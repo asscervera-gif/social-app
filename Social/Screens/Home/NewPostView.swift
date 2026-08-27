@@ -26,6 +26,10 @@ struct NewPostView: View {
     // lista de socials aceptados que ya construye SocialsListViewModel.
     @StateObject private var socialsViewModel = SocialsListViewModel()
     @State private var taggedProfileID: UUID?
+    // Etiqueta de ubicación real (texto libre, no geocodificado),
+    // comparado con Instagram/Facebook/Twitter/Snapchat -- ver
+    // NewPostViewModel.post(), 0095_post_location_tag.sql.
+    @State private var locationName = ""
     let onDismiss: () -> Void
     let onPosted: () -> Void
 
@@ -78,6 +82,9 @@ struct NewPostView: View {
                 }
             }
 
+            TextField("📍 Añadir ubicación (opcional)", text: $locationName)
+                .textFieldStyle(.roundedBorder)
+
             Toggle("Solo visible para tus socials aceptados", isOn: $isSocialOnly)
 
             if !socialsViewModel.socials.isEmpty {
@@ -105,7 +112,7 @@ struct NewPostView: View {
 
             Button {
                 Task {
-                    if await viewModel.post(caption: caption, isSocialOnly: isSocialOnly, imageDataList: imageDataList, taggedProfileID: taggedProfileID) {
+                    if await viewModel.post(caption: caption, isSocialOnly: isSocialOnly, imageDataList: imageDataList, taggedProfileID: taggedProfileID, locationName: locationName) {
                         onPosted()
                         onDismiss()
                     }

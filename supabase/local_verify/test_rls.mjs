@@ -2125,6 +2125,19 @@ async function main() {
   const likeCountSeenByOther = (await db.query(`select hide_like_count, like_count from posts where id = $1`, [likeCountPost.id])).rows[0];
   check('posts_select: u2 real SÍ ve hide_like_count activado (necesario para no pintarle el número en su cliente)', likeCountSeenByOther.hide_like_count === true);
 
+  // --- posts.location_name (0095_post_location_tag.sql): etiqueta de
+  // ubicación real (texto libre, no geocodificado), comparado con
+  // Instagram/Facebook/Twitter/Snapchat -- sin RLS ni trigger nuevos
+  // (posts_write_own ya cubre tocar la propia fila), solo se confirma el
+  // límite real de longitud y que un texto normal SÍ se guarda. ---
+  await asUser(u1);
+  await expectOk('posts_write_own: u1 SÍ puede etiquetar su propia publicación con un nombre de sitio real', async () => {
+    await db.query(`insert into posts (author_id, caption, location_name) values ($1, 'en el café', 'Café Comercial, Madrid')`, [u1]);
+  });
+  await expectFail('posts_location_name_length: más de 100 caracteres reales NO se puede guardar', async () => {
+    await db.query(`insert into posts (author_id, caption, location_name) values ($1, 'texto', $2)`, [u1, 'x'.repeat(101)]);
+  });
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

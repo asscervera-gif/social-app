@@ -92,6 +92,10 @@ struct Post: Codable, Identifiable {
     // Facebook -- el autor sigue viendo su cifra real siempre, solo
     // desaparece el número para los demás (0094_hide_like_count.sql).
     var hideLikeCount: Bool = false
+    // Etiqueta de ubicación real (texto libre, no geocodificado),
+    // comparado con Instagram/Facebook/Twitter/Snapchat -- ver
+    // 0095_post_location_tag.sql.
+    var locationName: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -106,6 +110,7 @@ struct Post: Codable, Identifiable {
         case archivedAt = "archived_at"
         case commentsDisabled = "comments_disabled"
         case hideLikeCount = "hide_like_count"
+        case locationName = "location_name"
     }
 }
 

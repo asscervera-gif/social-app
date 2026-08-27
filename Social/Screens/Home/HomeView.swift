@@ -330,6 +330,15 @@ private struct PostCard: View {
             }
             .buttonStyle(.plain)
 
+            // Etiqueta de ubicación real (texto libre, no geocodificado),
+            // comparado con Instagram/Facebook/Twitter/Snapchat -- ver
+            // 0095_post_location_tag.sql.
+            if let location = post.locationName {
+                Text("📍 \(location)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             // Hallazgo real: esta caja gris con icono de foto era siempre
             // decorativa, para TODOS los posts, sin importar si tenían
             // media_url — no había ninguna integración de Storage. Ahora

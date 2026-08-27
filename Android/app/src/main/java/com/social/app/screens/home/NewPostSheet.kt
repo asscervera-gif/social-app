@@ -69,6 +69,10 @@ fun NewPostSheet(
     // lista de socials aceptados que ya construye SocialsListViewModel,
     // sin duplicar esa consulta.
     var taggedProfileId by remember { mutableStateOf<String?>(null) }
+    // Etiqueta de ubicación real (texto libre, no geocodificado),
+    // comparado con Instagram/Facebook/Twitter/Snapchat -- ver
+    // NewPostViewModel.post(), 0095_post_location_tag.sql.
+    var locationName by remember { mutableStateOf("") }
     val socialsViewModel: SocialsListViewModel = viewModel()
     val socials by socialsViewModel.socials.collectAsState()
     LaunchedEffect(Unit) { socialsViewModel.load() }
@@ -131,6 +135,14 @@ fun NewPostSheet(
                 Text(if (imageUris.isEmpty()) "Añadir fotos" else "Cambiar fotos (${imageUris.size})")
             }
 
+            OutlinedTextField(
+                value = locationName,
+                onValueChange = { locationName = it },
+                label = { Text("📍 Añadir ubicación (opcional)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+            )
+
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -167,7 +179,7 @@ fun NewPostSheet(
             Button(
                 onClick = {
                     scope.launch {
-                        if (viewModel.post(context, caption, isSocialOnly, imageUris, taggedProfileId)) {
+                        if (viewModel.post(context, caption, isSocialOnly, imageUris, taggedProfileId, locationName)) {
                             onPosted()
                             onDismiss()
                         }

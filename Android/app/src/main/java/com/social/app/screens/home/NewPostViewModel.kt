@@ -37,7 +37,11 @@ class NewPostViewModel : ViewModel() {
         val caption: String,
         @SerialName("is_social_only") val isSocialOnly: Boolean,
         @SerialName("media_url") val mediaUrl: String? = null,
-        @SerialName("tagged_profile_id") val taggedProfileId: String? = null
+        @SerialName("tagged_profile_id") val taggedProfileId: String? = null,
+        // Etiqueta de ubicación real (texto libre, no geocodificado),
+        // comparado con Instagram/Facebook/Twitter/Snapchat -- ver
+        // 0095_post_location_tag.sql.
+        @SerialName("location_name") val locationName: String? = null
     )
 
     @Serializable
@@ -56,7 +60,7 @@ class NewPostViewModel : ViewModel() {
      * siempre (sin cambiar nada para quien solo muestra una miniatura),
      * el resto en `post_media`. [taggedProfileId] es opcional -- "con
      * quién" (0051_post_social_tags.sql), comparado con SOCIAL_APP.html. */
-    suspend fun post(context: Context, caption: String, isSocialOnly: Boolean, imageUris: List<Uri>, taggedProfileId: String? = null): Boolean {
+    suspend fun post(context: Context, caption: String, isSocialOnly: Boolean, imageUris: List<Uri>, taggedProfileId: String? = null, locationName: String? = null): Boolean {
         val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return false
         // Mismo límite real que posts_caption_length
         // (0023_text_length_limits.sql) — validado aquí también para dar
@@ -67,11 +71,18 @@ class NewPostViewModel : ViewModel() {
             _errorMessage.value = "El texto no puede tener más de 2200 caracteres."
             return false
         }
+        // Mismo límite real que posts_location_name_length
+        // (0095_post_location_tag.sql).
+        val trimmedLocation = locationName?.trim()?.ifEmpty { null }
+        if ((trimmedLocation?.length ?: 0) > 100) {
+            _errorMessage.value = "El nombre del sitio no puede tener más de 100 caracteres."
+            return false
+        }
         _isPosting.value = true
         return try {
             val mediaUrls = imageUris.mapNotNull { StorageUploader.uploadImage(context, it, userId) }
             val insertedPost = SupabaseManager.client.from("posts")
-                .insert(NewPost(userId, caption, isSocialOnly, mediaUrls.firstOrNull(), taggedProfileId)) { select() }
+                .insert(NewPost(userId, caption, isSocialOnly, mediaUrls.firstOrNull(), taggedProfileId, trimmedLocation)) { select() }
                 .decodeSingle<Post>()
             if (mediaUrls.size > 1) {
                 val extraMedia = mediaUrls.drop(1).mapIndexed { index, url ->

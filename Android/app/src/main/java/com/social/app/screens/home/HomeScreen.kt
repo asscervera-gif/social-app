@@ -334,6 +334,17 @@ private fun PostCard(
                     )
                 }
             }
+            // Etiqueta de ubicación real (texto libre, no geocodificado),
+            // comparado con Instagram/Facebook/Twitter/Snapchat -- ver
+            // 0095_post_location_tag.sql.
+            post.locationName?.let { location ->
+                Text(
+                    "📍 $location",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+            }
             post.mediaUrl?.let { firstUrl ->
                 // Comparado con Instagram/Facebook: publicaciones con varias
                 // fotos (0055_post_media.sql) -- `post.mediaUrl` es siempre
