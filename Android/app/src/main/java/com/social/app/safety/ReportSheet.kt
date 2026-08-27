@@ -108,6 +108,20 @@ fun ReportSheet(
             ) {
                 Text("Bloquear a este usuario")
             }
+            // Restringir una cuenta real, comparado con Instagram --
+            // deliberadamente MÁS SUAVE que bloquear (arriba): sus
+            // comentarios dejan de verse para los demás sin que se
+            // entere de nada, sin cortar del todo la relación. Ver
+            // SafetyManager.restrict(), 0093_restrict_account.sql.
+            OutlinedButton(
+                onClick = {
+                    safety.restrict(reporterId, reportedId)
+                    onDismiss()
+                },
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+            ) {
+                Text("Restringir a este usuario")
+            }
         }
     }
 }

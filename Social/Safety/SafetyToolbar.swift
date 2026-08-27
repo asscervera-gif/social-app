@@ -71,6 +71,20 @@ struct ReportSheet: View {
                 Text("\(details.count)/1000")
                     .font(.caption2)
                     .foregroundStyle(details.count > 1000 ? .red : .secondary)
+
+                // Restringir una cuenta real, comparado con Instagram --
+                // deliberadamente más suave que bloquear (abajo): sus
+                // comentarios dejan de verse para los demás sin que se
+                // entere de nada, sin cortar del todo la relación. Ver
+                // SafetyManager.restrict(), 0093_restrict_account.sql.
+                Section {
+                    Button("Restringir a este usuario") {
+                        Task {
+                            await safety.restrict(userID: userID, restrictedID: reportedID)
+                            dismiss()
+                        }
+                    }
+                }
             }
             .navigationTitle("Denunciar")
             .toolbar {

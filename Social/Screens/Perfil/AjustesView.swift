@@ -225,6 +225,17 @@ struct AjustesView: View {
             }
             .buttonStyle(.bordered)
 
+            // Restringir una cuenta real, comparado con Instagram --
+            // deliberadamente más suave que bloquear (arriba): sus
+            // comentarios dejan de verse para los demás sin que se
+            // entere de nada. Ver SafetyManager.restrict()/
+            // SafetyToolbar.swift, RestrictedUsersViewModel/View,
+            // 0093_restrict_account.sql.
+            NavigationLink("Cuentas restringidas") {
+                RestrictedUsersView()
+            }
+            .buttonStyle(.bordered)
+
             // Hallazgo real de seguridad, comparado con Instagram/
             // Snapchat: `stories_select` no tenía NINGUNA restricción de
             // audiencia -- cualquiera veía la historia de cualquiera. Ver

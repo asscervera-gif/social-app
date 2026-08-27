@@ -77,6 +77,7 @@ private val NOTIFICATION_CATEGORIES: List<Pair<String, List<String>>> = listOf(
 fun AjustesScreen(
     onAccountDeleted: () -> Unit,
     onOpenBlockedUsers: () -> Unit,
+    onOpenRestrictedUsers: () -> Unit = {},
     onOpenCompatShares: () -> Unit = {},
     onOpenPrivacyPolicy: () -> Unit = {},
     onOpenModeration: () -> Unit = {},
@@ -364,6 +365,18 @@ fun AjustesScreen(
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
         ) {
             Text("Usuarios bloqueados")
+        }
+
+        // Restringir una cuenta real, comparado con Instagram --
+        // deliberadamente más suave que bloquear (arriba): sus
+        // comentarios dejan de verse para los demás sin que se entere de
+        // nada. Ver SafetyManager.restrict()/ReportSheet.kt,
+        // RestrictedUsersViewModel/Screen, 0093_restrict_account.sql.
+        OutlinedButton(
+            onClick = onOpenRestrictedUsers,
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+        ) {
+            Text("Cuentas restringidas")
         }
 
         // Hallazgo real de seguridad, comparado con Instagram/Snapchat:

@@ -51,6 +51,41 @@ final class SafetyManager: ObservableObject {
         }
     }
 
+    /// Restringir una cuenta real, comparado con Instagram -- deliberadamente
+    /// MÁS SUAVE que bloquear (arriba): sus comentarios en TUS publicaciones/
+    /// reels dejan de verse para todos los demás (siguen viéndose con
+    /// normalidad para quien los escribió, que nunca se entera de nada). A
+    /// diferencia de block(), nunca se avisa ni se nota nada del lado de la
+    /// persona restringida -- ver 0093_restrict_account.sql. Equivalente de
+    /// SafetyManager.kt.restrict().
+    func restrict(userID: UUID, restrictedID: UUID) async {
+        struct RestrictRow: Encodable {
+            let restricter_id: UUID
+            let restricted_id: UUID
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("restricts")
+                .insert(RestrictRow(restricter_id: userID, restricted_id: restrictedID))
+                .execute()
+        } catch {
+            errorMessage = "No se pudo restringir a este usuario."
+        }
+    }
+
+    func unrestrict(userID: UUID, restrictedID: UUID) async {
+        do {
+            try await SupabaseManager.shared.client
+                .from("restricts")
+                .delete()
+                .eq("restricter_id", value: userID)
+                .eq("restricted_id", value: restrictedID)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo deshacer la restricción."
+        }
+    }
+
     /// Envía una denuncia. Se revisa manualmente por moderación (fuera del alcance de la app cliente).
     func report(
         reporterID: UUID, reportedID: UUID, reason: String, details: String?,

@@ -78,6 +78,7 @@ private const val COMPAT_SHARES_ROUTE = "compat_shares"
 private const val PRIVACY_POLICY_ROUTE = "privacy_policy"
 private const val TERMS_ROUTE = "terms"
 private const val BLOCKED_USERS_ROUTE = "blocked_users"
+private const val RESTRICTED_USERS_ROUTE = "restricted_users"
 private const val CLOSE_FRIENDS_ROUTE = "close_friends"
 private const val HASHTAG_SEARCH_ROUTE = "search_hashtag/{tag}"
 private const val DUEL_HISTORY_ROUTE = "duel_history"
@@ -471,6 +472,7 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                                 // ninguna pantalla de login a la que volver).
                             },
                             onOpenBlockedUsers = { navController.navigate(BLOCKED_USERS_ROUTE) },
+                            onOpenRestrictedUsers = { navController.navigate(RESTRICTED_USERS_ROUTE) },
                             onOpenCompatShares = { navController.navigate(COMPAT_SHARES_ROUTE) },
                             onOpenPrivacyPolicy = { navController.navigate(PRIVACY_POLICY_ROUTE) },
                             onOpenModeration = { navController.navigate(MODERATION_ROUTE) },
@@ -508,6 +510,11 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                 composable(BLOCKED_USERS_ROUTE) {
                     com.social.app.ui.theme.BackScaffold(title = "Usuarios bloqueados", onBack = { navController.popBackStack() }) {
                         com.social.app.screens.perfil.BlockedUsersScreen()
+                    }
+                }
+                composable(RESTRICTED_USERS_ROUTE) {
+                    com.social.app.ui.theme.BackScaffold(title = "Cuentas restringidas", onBack = { navController.popBackStack() }) {
+                        com.social.app.screens.perfil.RestrictedUsersScreen()
                     }
                 }
 

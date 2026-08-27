@@ -61,6 +61,40 @@ class SafetyManager : ViewModel() {
     }
 
     @Serializable
+    private data class RestrictRow(
+        @SerialName("restricter_id") val restricterId: String,
+        @SerialName("restricted_id") val restrictedId: String
+    )
+
+    /** Restringir una cuenta real, comparado con Instagram -- deliberadamente
+     * MÁS SUAVE que bloquear: sus comentarios en TUS publicaciones/reels
+     * dejan de verse para todos los demás (siguen viéndose con
+     * normalidad para quien los escribió, que nunca se entera de nada).
+     * A diferencia de block(), nunca se avisa ni se nota nada del lado
+     * de la persona restringida -- ver 0093_restrict_account.sql. */
+    fun restrict(userId: String, restrictedId: String) {
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("restricts").insert(RestrictRow(userId, restrictedId))
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo restringir a este usuario."
+            }
+        }
+    }
+
+    fun unrestrict(userId: String, restrictedId: String) {
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("restricts").delete {
+                    filter { eq("restricter_id", userId); eq("restricted_id", restrictedId) }
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo deshacer la restricción."
+            }
+        }
+    }
+
+    @Serializable
     private data class ReportRow(
         @SerialName("reporter_id") val reporterId: String,
         @SerialName("reported_id") val reportedId: String,

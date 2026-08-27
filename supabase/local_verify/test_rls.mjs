@@ -1591,6 +1591,50 @@ async function main() {
   const reelCommentsAsStranger = (await db.query(`select id from reel_comments where reel_id = $1`, [mutedWordsReel.id])).rows;
   check('reel_comments_select: un tercero real (u4) SÍ ve el comentario de reel con la palabra silenciada de OTRO', reelCommentsAsStranger.length === 1);
 
+  // --- restricts / private.is_restricted (0093_restrict_account.sql):
+  // restringir una cuenta real, comparado con Instagram -- a diferencia
+  // de muted_keywords (arriba, oculta SOLO al dueño), aquí se oculta a
+  // TODOS MENOS al dueño y a quien escribió el comentario. Publicación
+  // real NUEVA y propia (no mutedWordsPost, ya usada arriba): un
+  // comentario real que se queda ahí para siempre contaminaría el
+  // recuento fijo de "2 comentarios" que comprueba más abajo la ronda de
+  // comments_disabled (0086) sobre esa misma publicación. u1 restringe a
+  // u2. ---
+  await asUser(u1);
+  const restrictPost = (await db.query(
+    `insert into posts (author_id, caption) values ($1, 'publicación real para restringir') returning id`, [u1]
+  )).rows[0];
+  await db.query(`insert into restricts (restricter_id, restricted_id) values ($1, $2)`, [u1, u2]);
+
+  await asUser(u2);
+  const restrictedComment = (await db.query(
+    `insert into comments (post_id, author_id, body) values ($1, $2, 'comentario real ya restringido') returning id`, [restrictPost.id, u2]
+  )).rows[0];
+  const restrictedCommentAsAuthor = (await db.query(`select id from comments where id = $1`, [restrictedComment.id])).rows;
+  check('comments_select: quien escribió el comentario real restringido (u2) SIGUE viéndolo con normalidad, sin enterarse de nada', restrictedCommentAsAuthor.length === 1);
+
+  await asUser(u1);
+  const restrictedCommentAsOwner = (await db.query(`select id from comments where id = $1`, [restrictedComment.id])).rows;
+  check('comments_select: el dueño real (u1), que restringió, SÍ sigue viendo el comentario (puede moderarlo en privado)', restrictedCommentAsOwner.length === 1);
+
+  await asUser(u4);
+  const restrictedCommentAsStranger = (await db.query(`select id from comments where id = $1`, [restrictedComment.id])).rows;
+  check('comments_select: un tercero real (u4) NO ve el comentario de un usuario real restringido por el dueño', restrictedCommentAsStranger.length === 0);
+
+  await asUser(u2);
+  const restrictsSeenByRestricted = (await db.query(`select 1 from restricts where restricted_id = $1`, [u2])).rows;
+  check('restricts_select_own: la persona restringida real (u2) NUNCA puede ver que está restringida (0 filas, ni siquiera un error)', restrictsSeenByRestricted.length === 0);
+
+  await asUser(u1);
+  await expectOk('restricts_delete_own: quien restringió (u1) SÍ puede deshacerlo', async () => {
+    await db.query(`delete from restricts where restricter_id = $1 and restricted_id = $2`, [u1, u2]);
+  });
+  const restrictedCommentAfterUndo = (await db.query(`select id from comments where id = $1`, [restrictedComment.id])).rows;
+  check('comments_select: tras deshacer la restricción real, el dueño (u1) vuelve a verlo con normalidad (ya lo veía, pero confirma que el UPDATE de verdad se aplicó)', restrictedCommentAfterUndo.length === 1);
+  await asUser(u4);
+  const restrictedCommentAfterUndoAsStranger = (await db.query(`select id from comments where id = $1`, [restrictedComment.id])).rows;
+  check('comments_select: tras deshacer la restricción real, un tercero (u4) vuelve a ver el comentario con normalidad', restrictedCommentAfterUndoAsStranger.length === 1);
+
   // --- comments.is_pinned/reel_comments.is_pinned (0084_pin_comments.sql):
   // fijar un comentario, comparado con Instagram/Twitter -- primer caso
   // real de esta sesión donde alguien DISTINTO del autor de la fila
