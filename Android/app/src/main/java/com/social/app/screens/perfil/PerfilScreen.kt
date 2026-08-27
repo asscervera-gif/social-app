@@ -175,6 +175,24 @@ fun PerfilScreen(
                         )
                     }
                 }
+                // Compartir perfil, comparado con Instagram/Twitter/
+                // TikTok -- hueco real, básico y universal, ausente
+                // hasta ahora. Aviso de honestidad: sin enlace real
+                // (ningún esquema de deep link registrado todavía en
+                // AndroidManifest.xml) -- comparte el @usuario real
+                // como texto, para buscarlo dentro de la app, no un
+                // enlace que abriría nada al tocarlo.
+                profile?.username?.let { username ->
+                    IconButton(onClick = {
+                        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(android.content.Intent.EXTRA_TEXT, "Añádeme en SOCIAL: @$username")
+                        }
+                        context.startActivity(android.content.Intent.createChooser(intent, "Compartir perfil"))
+                    }) {
+                        Text("📤")
+                    }
+                }
                 IconButton(onClick = onOpenAjustes) {
                     Icon(Icons.Filled.Settings, contentDescription = "Ajustes")
                 }

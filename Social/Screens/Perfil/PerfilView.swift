@@ -99,6 +99,18 @@ struct PerfilView: View {
                 // Antes no existía ninguna pantalla de Ajustes en absoluto,
                 // en ninguna plataforma, pese a que privacy_policy_es.md ya
                 // prometía "borrado completo... desde Ajustes".
+                // Compartir perfil, comparado con Instagram/Twitter/
+                // TikTok -- hueco real, básico y universal, ausente
+                // hasta ahora. Aviso de honestidad: sin enlace real
+                // (ningún esquema de deep link registrado todavía) --
+                // comparte el @usuario real como texto, para buscarlo
+                // dentro de la app, no un enlace que abriría nada al
+                // tocarlo. Equivalente de PerfilScreen.kt.
+                if let username = viewModel.profile?.username {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        ShareLink(item: "Añádeme en SOCIAL: @\(username)")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showAjustes = true
