@@ -233,6 +233,31 @@ fun GroupChatScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                        // Responder a un mensaje concreto (cita), comparado
+                        // con WhatsApp/Telegram/iMessage/Instagram DM --
+                        // busca el mensaje real citado en los ya cargados
+                        // (mismo grupo); si no está, se omite sin más, sin
+                        // texto de relleno inventado. Ver
+                        // 0102_message_reply.sql.
+                        message.replyToMessageId?.let { repliedId ->
+                            val repliedMessage = messages.firstOrNull { it.id == repliedId }
+                            if (repliedMessage != null) {
+                                Column(
+                                    modifier = Modifier
+                                        .padding(bottom = 2.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        repliedMessage.body?.take(80)
+                                            ?: if (repliedMessage.mediaUrl != null) "📷 Foto" else if (repliedMessage.audioUrl != null) "🎤 Nota de voz" else "Mensaje",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
                         // Nota de voz real (0062_group_message_audio.sql),
                         // comparado con WhatsApp/Messenger/Telegram --
                         // mismo reproductor nativo que ChatScreen.kt (1:1).
@@ -357,12 +382,20 @@ fun GroupChatScreen(
                             )
                         }
                         if (message.body != null || message.mediaUrl != null || message.audioUrl != null) {
-                            Text(
-                                "↪ Reenviar",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.clickable { forwardingMessage = message }
-                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text(
+                                    "↩ Responder",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.clickable { viewModel.setReplyingTo(message) }
+                                )
+                                Text(
+                                    "↪ Reenviar",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.clickable { forwardingMessage = message }
+                                )
+                            }
                         }
                         // "Visto por" real (0061_group_message_reads.sql),
                         // comparado con WhatsApp/Messenger -- solo en los
@@ -400,6 +433,39 @@ fun GroupChatScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                 )
+            }
+            // Responder a un mensaje concreto (cita), comparado con
+            // WhatsApp/Telegram/iMessage/Instagram DM -- vista previa real
+            // de a qué se está respondiendo, encima del compositor, con
+            // una forma real de cancelarlo antes de enviar. Ver
+            // GroupChatViewModel.replyingTo(), 0102_message_reply.sql.
+            val replyingTo by viewModel.replyingTo.collectAsState()
+            replyingTo?.let { quoted ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Respondiendo",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            quoted.body?.take(80) ?: if (quoted.mediaUrl != null) "📷 Foto" else if (quoted.audioUrl != null) "🎤 Nota de voz" else "Mensaje",
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1
+                        )
+                    }
+                    TextButton(onClick = { viewModel.setReplyingTo(null) }) {
+                        Text("✕")
+                    }
+                }
             }
             Row(modifier = Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 // Fotos reales en un chat de grupo, comparado con
@@ -495,6 +561,14 @@ fun GroupChatScreen(
             },
             dismissButton = {
                 Row {
+                    // Responder a un mensaje concreto (cita), comparado con
+                    // WhatsApp/Telegram/iMessage/Instagram DM -- sobre
+                    // CUALQUIER mensaje (propio o ajeno), ver
+                    // GroupChatViewModel.setReplyingTo(), 0102_message_reply.sql.
+                    TextButton(onClick = {
+                        viewModel.setReplyingTo(message)
+                        managingMessage = null
+                    }) { Text("Responder") }
                     // Fijar un mensaje de grupo real (propio o ajeno),
                     // VISIBLE PARA TODOS los miembros -- a diferencia de
                     // "Destacar" (arriba), totalmente privado. Ver

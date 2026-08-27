@@ -56,7 +56,11 @@ data class GroupMessage(
     // starred_messages (totalmente privado), comparado con
     // WhatsApp/Telegram, ver 0089_pin_message.sql.
     @SerialName("pinned_at") val pinnedAt: String? = null,
-    @SerialName("pinned_by") val pinnedBy: String? = null
+    @SerialName("pinned_by") val pinnedBy: String? = null,
+    // Responder a un mensaje concreto (cita), comparado con
+    // WhatsApp/Telegram/iMessage/Instagram DM -- referencia al mensaje
+    // real citado, nunca una copia. Ver 0102_message_reply.sql.
+    @SerialName("reply_to_message_id") val replyToMessageId: String? = null
 )
 
 /**
@@ -71,6 +75,17 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
 
     private val _messages = MutableStateFlow<List<GroupMessage>>(emptyList())
     val messages: StateFlow<List<GroupMessage>> = _messages.asStateFlow()
+
+    // Responder a un mensaje concreto (cita), comparado con
+    // WhatsApp/Telegram/iMessage/Instagram DM -- mensaje real que se está
+    // citando ahora mismo en el compositor, ver 0102_message_reply.sql.
+    // Equivalente de ChatViewModel.kt.replyingTo (chat 1:1).
+    private val _replyingTo = MutableStateFlow<GroupMessage?>(null)
+    val replyingTo: StateFlow<GroupMessage?> = _replyingTo.asStateFlow()
+
+    fun setReplyingTo(message: GroupMessage?) {
+        _replyingTo.value = message
+    }
 
     private val _members = MutableStateFlow<List<Profile>>(emptyList())
     val members: StateFlow<List<Profile>> = _members.asStateFlow()
@@ -615,7 +630,8 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
         @SerialName("sender_id") val senderId: String,
         val body: String? = null,
         @SerialName("media_url") val mediaUrl: String? = null,
-        @SerialName("audio_url") val audioUrl: String? = null
+        @SerialName("audio_url") val audioUrl: String? = null,
+        @SerialName("reply_to_message_id") val replyToMessageId: String? = null
     )
 
     /** Borrar el propio mensaje en un grupo real
@@ -663,11 +679,17 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
             _errorMessage.value = "El mensaje no puede tener más de 2000 caracteres."
             return
         }
+        // Responder a un mensaje concreto (cita), comparado con
+        // WhatsApp/Telegram/iMessage/Instagram DM -- se consume aquí y se
+        // limpia, tanto si el envío sale bien como si falla (mismo
+        // criterio real que ChatViewModel.kt.sendMessage(), chat 1:1).
+        val replyToId = _replyingTo.value?.id
+        _replyingTo.value = null
         viewModelScope.launch {
             try {
                 val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
                 val inserted = SupabaseManager.client.from("group_messages")
-                    .insert(NewGroupMessage(groupChatId, userId, body = text)) { select() }
+                    .insert(NewGroupMessage(groupChatId, userId, body = text, replyToMessageId = replyToId)) { select() }
                     .decodeSingle<GroupMessage>()
                 if (_messages.value.none { it.id == inserted.id }) {
                     _messages.update { it + inserted }

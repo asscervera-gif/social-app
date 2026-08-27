@@ -52,6 +52,16 @@ struct GroupChatView: View {
     // WhatsApp/Telegram/Messenger.
     @State private var forwardingMessage: GroupMessage?
 
+    // Responder a un mensaje concreto (cita) -- precalculado aparte,
+    // mismo motivo que GroupMessageBubble.repliedPreviewText más abajo.
+    private var replyingToPreviewText: String? {
+        guard let replyingTo = viewModel.replyingTo else { return nil }
+        if let body = replyingTo.body { return String(body.prefix(80)) }
+        if replyingTo.mediaURL != nil { return "📷 Foto" }
+        if replyingTo.audioURL != nil { return "🎤 Nota de voz" }
+        return "Mensaje"
+    }
+
     init(groupChatID: UUID, groupName: String) {
         self._viewModel = StateObject(wrappedValue: GroupChatViewModel(groupChatID: groupChatID))
         self.groupName = groupName
@@ -111,12 +121,16 @@ struct GroupChatView: View {
                                 sharedPostAuthor: message.sharedPostID
                                     .flatMap { viewModel.sharedPosts[$0] }
                                     .flatMap { viewModel.sharedPostAuthors[$0.authorID] },
+                                repliedMessage: message.replyToMessageID.flatMap { repliedID in
+                                    viewModel.messages.first { $0.id == repliedID }
+                                },
                                 onToggleReaction: { emoji in
                                     Task { await viewModel.toggleReaction(groupMessageID: message.id, emoji: emoji) }
                                 },
                                 onOpenFullScreen: { url in fullScreenURL = url },
                                 onManage: { managingMessage = message },
-                                onForward: { forwardingMessage = message }
+                                onForward: { forwardingMessage = message },
+                                onReply: { viewModel.replyingTo = message }
                             )
                             .id(message.id)
                         }
@@ -144,6 +158,28 @@ struct GroupChatView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal)
+            }
+            // Responder a un mensaje concreto (cita), comparado con
+            // WhatsApp/Telegram/iMessage/Instagram DM -- vista previa
+            // real de a qué se está respondiendo, encima del compositor,
+            // con una forma real de cancelarlo antes de enviar. Ver
+            // GroupChatViewModel.replyingTo, 0102_message_reply.sql.
+            if let replyingToPreviewText {
+                HStack {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Respondiendo")
+                            .font(.caption2)
+                            .foregroundStyle(Color.accentColor)
+                        Text(replyingToPreviewText)
+                            .font(.caption)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Button("✕") { viewModel.replyingTo = nil }
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 6)
+                .background(Color.gray.opacity(0.12))
             }
             HStack {
                 // Fotos reales en un chat de grupo, comparado con
@@ -283,6 +319,13 @@ struct GroupChatView: View {
                     Button("Denunciar") {
                         reportMessage = managingMessage
                     }
+                }
+                // Responder a un mensaje concreto (cita), comparado con
+                // WhatsApp/Telegram/iMessage/Instagram DM -- sobre
+                // CUALQUIER mensaje (propio o ajeno), ver
+                // GroupChatViewModel.replyingTo, 0102_message_reply.sql.
+                Button("Responder") {
+                    viewModel.replyingTo = managingMessage
                 }
                 // Fijar un mensaje de grupo real (propio o ajeno), VISIBLE
                 // PARA TODOS los miembros -- a diferencia de "Destacar"
@@ -458,6 +501,12 @@ private struct GroupMessageBubble: View {
     // Twitter/Snapchat.
     var sharedPost: Post? = nil
     var sharedPostAuthor: Profile? = nil
+    // Responder a un mensaje concreto (cita), comparado con
+    // WhatsApp/Telegram/iMessage/Instagram DM -- resuelto por el llamador
+    // (GroupChatView.body) entre los ya cargados del mismo grupo; si es
+    // nil, se omite sin más, sin texto de relleno inventado. Ver
+    // 0102_message_reply.sql.
+    var repliedMessage: GroupMessage? = nil
     let onToggleReaction: (String) -> Void
     var onOpenFullScreen: (URL) -> Void = { _ in }
     // Editar/borrar un mensaje ya enviado en un grupo real
@@ -472,9 +521,24 @@ private struct GroupMessageBubble: View {
     // Reenviar un mensaje real (0072_message_forward.sql), comparado con
     // WhatsApp/Telegram/Messenger.
     var onForward: () -> Void = {}
+    // Responder a un mensaje concreto (cita), comparado con
+    // WhatsApp/Telegram/iMessage/Instagram DM.
+    var onReply: () -> Void = {}
 
     @State private var showPicker = false
     private let reactionEmojis = ["❤", "😂", "😮", "😢", "👍"]
+
+    // Precalculado aparte, no inline dentro del ViewBuilder -- mismo
+    // motivo real ya documentado esta sesión de por qué el compilador de
+    // Swift puede tardar demasiado en type-checkear una expresión
+    // compleja anidada dentro de un ViewBuilder.
+    private var repliedPreviewText: String? {
+        guard let repliedMessage else { return nil }
+        if let body = repliedMessage.body { return String(body.prefix(80)) }
+        if repliedMessage.mediaURL != nil { return "📷 Foto" }
+        if repliedMessage.audioURL != nil { return "🎤 Nota de voz" }
+        return "Mensaje"
+    }
 
     var body: some View {
         VStack(alignment: isMine ? .trailing : .leading, spacing: 2) {
@@ -482,6 +546,15 @@ private struct GroupMessageBubble: View {
                 Text(senderName ?? "…")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+            }
+            if let repliedPreviewText {
+                Text(repliedPreviewText)
+                    .font(.caption2)
+                    .lineLimit(1)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.gray.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
             }
             // Nota de voz real (0062_group_message_audio.sql), comparado
             // con WhatsApp/Messenger/Telegram -- mismo reproductor nativo
@@ -589,9 +662,14 @@ private struct GroupMessageBubble: View {
                     .foregroundStyle(.secondary)
             }
             if message.body != nil || message.mediaURL != nil || message.audioURL != nil {
-                Button("↪ Reenviar", action: onForward)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 10) {
+                    Button("↩ Responder", action: onReply)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Button("↪ Reenviar", action: onForward)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
             // "Visto por" real (0061_group_message_reads.sql), comparado
             // con WhatsApp/Messenger -- solo en los propios mensajes,

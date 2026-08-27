@@ -41,6 +41,10 @@ struct GroupMessage: Codable, Identifiable {
     // WhatsApp/Telegram, ver 0089_pin_message.sql.
     var pinnedAt: String? = nil
     var pinnedBy: UUID? = nil
+    // Responder a un mensaje concreto (cita), comparado con
+    // WhatsApp/Telegram/iMessage/Instagram DM -- referencia al mensaje
+    // real citado, nunca una copia. Ver 0102_message_reply.sql.
+    var replyToMessageID: UUID? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -55,6 +59,7 @@ struct GroupMessage: Codable, Identifiable {
         case isForwarded = "is_forwarded"
         case pinnedAt = "pinned_at"
         case pinnedBy = "pinned_by"
+        case replyToMessageID = "reply_to_message_id"
     }
 }
 
@@ -65,6 +70,11 @@ final class GroupChatViewModel: ObservableObject {
     @Published var messages: [GroupMessage] = []
     @Published var members: [Profile] = []
     @Published var errorMessage: String?
+    // Responder a un mensaje concreto (cita), comparado con
+    // WhatsApp/Telegram/iMessage/Instagram DM -- mensaje real que se está
+    // citando ahora mismo en el compositor, ver 0102_message_reply.sql.
+    // Equivalente de ChatViewModel.swift.replyingTo (chat 1:1).
+    @Published var replyingTo: GroupMessage?
 
     // Nombre editable y foto de grupo real (0063_group_chat_photo.sql),
     // comparado con WhatsApp/Messenger/Telegram -- `group_chats_update_own`
@@ -689,11 +699,18 @@ final class GroupChatViewModel: ObservableObject {
             let group_chat_id: UUID
             let sender_id: UUID
             let body: String
+            var reply_to_message_id: UUID? = nil
         }
+        // Responder a un mensaje concreto (cita), comparado con
+        // WhatsApp/Telegram/iMessage/Instagram DM -- se consume aquí y se
+        // limpia, tanto si el envío sale bien como si falla (mismo
+        // criterio real que ChatViewModel.swift.sendMessage(), chat 1:1).
+        let replyToID = replyingTo?.id
+        replyingTo = nil
         do {
             let inserted: GroupMessage = try await SupabaseManager.shared.client
                 .from("group_messages")
-                .insert(NewGroupMessage(group_chat_id: groupChatID, sender_id: userID, body: trimmed))
+                .insert(NewGroupMessage(group_chat_id: groupChatID, sender_id: userID, body: trimmed, reply_to_message_id: replyToID))
                 .select()
                 .single()
                 .execute()
