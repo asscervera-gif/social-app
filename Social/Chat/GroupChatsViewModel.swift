@@ -49,12 +49,20 @@ struct GroupChat: Codable, Identifiable {
     // Fuera de CodingKeys a propósito, mismo criterio que isMutedForMe.
     var hasUnread: Bool = false
     var markedUnreadForMe: Bool = false
+    // Mensajes que desaparecen real también en el chat de grupo,
+    // comparado con WhatsApp/Instagram DM -- cierra el alcance
+    // deliberado documentado desde 0115_disappearing_messages.sql (solo
+    // 1:1 esa ronda). Solo el creador/admin puede tocarlo
+    // (group_chats_update_own/_by_admin), ver
+    // 0124_group_disappearing_messages.sql.
+    var disappearingSeconds: Int? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, name
         case createdBy = "created_by"
         case createdAt = "created_at"
         case photoURL = "photo_url"
+        case disappearingSeconds = "disappearing_seconds"
     }
 }
 

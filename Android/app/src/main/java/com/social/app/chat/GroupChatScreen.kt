@@ -24,6 +24,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -137,6 +139,13 @@ fun GroupChatScreen(
     // WhatsApp/Telegram/Messenger.
     var forwardingMessage by remember { mutableStateOf<GroupMessage?>(null) }
     val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
+    // Mensajes que desaparecen real también en el chat de grupo,
+    // comparado con WhatsApp/Instagram DM -- solo el creador/admin puede
+    // tocarlo, ver GroupChatViewModel.setDisappearingSeconds(),
+    // 0124_group_disappearing_messages.sql.
+    val currentGroupChat = groupChat
+    val isCreatorForDisappearing = currentGroupChat != null && currentGroupChat.createdBy == myId
+    val isAdminForDisappearing = myId != null && myId in adminIds
     // "Eliminar para mí" real, comparado con WhatsApp -- resuelto en el
     // cliente (mismo criterio que ChatScreen.kt, 0118). Ver
     // GroupChatViewModel.deleteForMe(), 0120_delete_group_message_for_me.sql.
@@ -200,6 +209,38 @@ fun GroupChatScreen(
             IconButton(onClick = { callManager?.startGroupCall(groupChatId, "video") }) {
                 Icon(Icons.Filled.Videocam, contentDescription = "Videollamada de grupo")
             }
+            // Mensajes que desaparecen real también en el chat de grupo,
+            // comparado con WhatsApp/Instagram DM -- cierra el alcance
+            // deliberado documentado desde 0115_disappearing_messages.sql
+            // (solo 1:1 esa ronda). Botón solo visible para quien ya
+            // puede tocar el grupo (creador/admin), mismo criterio que
+            // renombrar/cambiar la foto.
+            if (isCreatorForDisappearing || isAdminForDisappearing) {
+                var showDisappearingMenu by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(onClick = { showDisappearingMenu = true }) {
+                        Text(if (currentGroupChat?.disappearingSeconds != null) "🔥" else "🕐")
+                    }
+                    DropdownMenu(expanded = showDisappearingMenu, onDismissRequest = { showDisappearingMenu = false }) {
+                        DropdownMenuItem(text = { Text("Desactivado") }, onClick = {
+                            showDisappearingMenu = false
+                            viewModel.setDisappearingSeconds(null)
+                        })
+                        DropdownMenuItem(text = { Text("24 horas") }, onClick = {
+                            showDisappearingMenu = false
+                            viewModel.setDisappearingSeconds(86400)
+                        })
+                        DropdownMenuItem(text = { Text("7 días") }, onClick = {
+                            showDisappearingMenu = false
+                            viewModel.setDisappearingSeconds(604800)
+                        })
+                        DropdownMenuItem(text = { Text("90 días") }, onClick = {
+                            showDisappearingMenu = false
+                            viewModel.setDisappearingSeconds(7776000)
+                        })
+                    }
+                }
+            }
             TextButton(onClick = { showMembers = true }) { Text("👥 ${members.size}") }
         }
     ) {
@@ -211,6 +252,20 @@ fun GroupChatScreen(
             if (onlineMemberIds.isNotEmpty()) {
                 Text(
                     "🟢 ${onlineMemberIds.size} en línea",
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (currentGroupChat?.disappearingSeconds != null) {
+                val label = when (currentGroupChat.disappearingSeconds) {
+                    86400 -> "24 horas"
+                    604800 -> "7 días"
+                    else -> "90 días"
+                }
+                Text(
+                    "🔥 Los mensajes nuevos desaparecen a las $label",
                     modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     style = MaterialTheme.typography.labelSmall,

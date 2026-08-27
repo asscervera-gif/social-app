@@ -3324,6 +3324,67 @@ async function main() {
   const shareLastActiveSeenByOther = (await db.query(`select share_last_active from profiles where id = $1`, [vidU2])).rows[0];
   check('profiles_select_public: vidU1 real SÍ ve la "Últ. vez" desactivada de vidU2 (necesario para no pintarla en el chat)', shareLastActiveSeenByOther.share_last_active === false);
 
+  // --- group_chats.disappearing_seconds/group_messages.disappear_at
+  // (0124_group_disappearing_messages.sql): mensajes que desaparecen
+  // también en el chat de GRUPO, comparado con WhatsApp/Instagram DM --
+  // cierra el alcance deliberado documentado en 0115. A diferencia del
+  // 1:1, solo el creador/admin puede activarlo (group_chats_update_own,
+  // 0057), no cualquier miembro. Usuarios NUEVOS a propósito. ---
+  await asSuperuser();
+  const gdisU1 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const gdisU2 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(`insert into profiles (id, display_name) values ($1,'Gdis1'),($2,'Gdis2') on conflict (id) do update set display_name=excluded.display_name`, [gdisU1, gdisU2]);
+  await asUser(gdisU1);
+  const gdisGroupId = crypto.randomUUID();
+  await db.query(`insert into group_chats (id, name, created_by) values ($1, $2, $3)`, [gdisGroupId, 'Grupo desvanecimiento', gdisU1]);
+  await db.query(`insert into group_chat_members (group_chat_id, user_id) values ($1, $2)`, [gdisGroupId, gdisU2]);
+
+  const gdisChat = (await db.query(`select disappearing_seconds from group_chats where id = $1`, [gdisGroupId])).rows[0];
+  check('group_chats.disappearing_seconds: arranca en null (desactivado) por defecto', gdisChat.disappearing_seconds === null);
+
+  await expectFail('group_chats_disappearing_seconds_valid: un valor real fuera de las 3 opciones (3600) NO se puede guardar', async () => {
+    await db.query(`update group_chats set disappearing_seconds = 3600 where id = $1`, [gdisGroupId]);
+  });
+
+  await asUser(gdisU2);
+  await db.query(`update group_chats set disappearing_seconds = 86400 where id = $1`, [gdisGroupId]);
+  const gdisAfterMemberAttempt = (await db.query(`select disappearing_seconds from group_chats where id = $1`, [gdisGroupId])).rows[0];
+  check('group_chats_update_own: gdisU2 (miembro normal, no creador) NO puede activar el modo (0 filas afectadas, no un error)', gdisAfterMemberAttempt.disappearing_seconds === null);
+
+  await asUser(gdisU1);
+  await expectOk('group_chats_update_own: el creador real (gdisU1) SÍ puede activar 24h reales', async () => {
+    await db.query(`update group_chats set disappearing_seconds = 86400 where id = $1`, [gdisGroupId]);
+  });
+
+  const gdisMsg1 = (await db.query(`insert into group_messages (group_chat_id, sender_id, body) values ($1, $2, 'este desaparece') returning id, disappear_at`, [gdisGroupId, gdisU1])).rows[0];
+  check('set_group_message_disappear_at: un mensaje real de grupo enviado con el modo activo SÍ recibe un disappear_at real futuro', gdisMsg1.disappear_at !== null && new Date(gdisMsg1.disappear_at) > new Date());
+
+  await expectOk('group_chats_update_own: el creador real SÍ puede desactivar el modo de nuevo', async () => {
+    await db.query(`update group_chats set disappearing_seconds = null where id = $1`, [gdisGroupId]);
+  });
+  const gdisMsg2 = (await db.query(`insert into group_messages (group_chat_id, sender_id, body) values ($1, $2, 'este NO desaparece') returning id, disappear_at`, [gdisGroupId, gdisU1])).rows[0];
+  check('set_group_message_disappear_at: desactivar NO es retroactivo -- un mensaje real nuevo tras desactivar no recibe disappear_at', gdisMsg2.disappear_at === null);
+
+  await expectOk('protect_group_message_identity: gdisU1 (el propio remitente) NO consigue tocar disappear_at directamente (revertido de verdad)', async () => {
+    await db.query(`update group_messages set disappear_at = now() + interval '1 year' where id = $1`, [gdisMsg1.id]);
+  });
+  const gdisMsg1AfterAttempt = (await db.query(`select disappear_at from group_messages where id = $1`, [gdisMsg1.id])).rows[0];
+  check('protect_group_message_identity: disappear_at real de grupo queda igual tras el intento (inmutable de verdad)', new Date(gdisMsg1AfterAttempt.disappear_at).getTime() === new Date(gdisMsg1.disappear_at).getTime());
+
+  await asUser(gdisU2);
+  const gdisVisibleBeforeExpiry = (await db.query(`select id from group_messages where id = $1`, [gdisMsg1.id])).rows;
+  check('group_messages_select: gdisU2 real SÍ ve el mensaje real de grupo antes de que caduque', gdisVisibleBeforeExpiry.length === 1);
+
+  await asSuperuser();
+  await db.query(`update group_messages set disappear_at = now() - interval '1 minute' where id = $1`, [gdisMsg1.id]);
+
+  await asUser(gdisU1);
+  const gdisHiddenFromSender = (await db.query(`select id from group_messages where id = $1`, [gdisMsg1.id])).rows;
+  check('group_messages_select: el propio remitente real (gdisU1) YA NO ve su mensaje de grupo una vez caducado', gdisHiddenFromSender.length === 0);
+  await asUser(gdisU2);
+  const gdisHiddenFromMember = (await db.query(`select id from group_messages where id = $1`, [gdisMsg1.id])).rows;
+  check('group_messages_select: gdisU2 tampoco lo ve una vez caducado', gdisHiddenFromMember.length === 0);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

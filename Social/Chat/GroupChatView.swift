@@ -105,6 +105,13 @@ struct GroupChatView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
             }
+            if let seconds = viewModel.groupChat?.disappearingSeconds {
+                let label = seconds == 86400 ? "24 horas" : (seconds == 604800 ? "7 días" : "90 días")
+                Text("🔥 Los mensajes nuevos desaparecen a las \(label)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+            }
             // Fijar un mensaje de grupo real (propio o ajeno) para que
             // aparezca destacado arriba del chat, VISIBLE PARA TODOS los
             // miembros -- a diferencia de starred_messages (totalmente
@@ -362,6 +369,24 @@ struct GroupChatView: View {
                     callManager.startGroupCall(groupChatID: viewModel.groupChatID, kind: "audio")
                 } label: {
                     Image(systemName: "phone.fill")
+                }
+            }
+            // Mensajes que desaparecen real también en el chat de grupo,
+            // comparado con WhatsApp/Instagram DM -- cierra el alcance
+            // deliberado documentado desde 0115_disappearing_messages.sql
+            // (solo 1:1 esa ronda). Botón solo visible para quien ya
+            // puede tocar el grupo (creador/admin), mismo criterio que
+            // renombrar/cambiar la foto.
+            if isCreator || isAdmin {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button("Desactivado") { Task { await viewModel.setDisappearingSeconds(nil) } }
+                        Button("24 horas") { Task { await viewModel.setDisappearingSeconds(86400) } }
+                        Button("7 días") { Task { await viewModel.setDisappearingSeconds(604800) } }
+                        Button("90 días") { Task { await viewModel.setDisappearingSeconds(7776000) } }
+                    } label: {
+                        Text(viewModel.groupChat?.disappearingSeconds != nil ? "🔥" : "🕐")
+                    }
                 }
             }
         }

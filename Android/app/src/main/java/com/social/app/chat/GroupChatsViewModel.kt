@@ -35,6 +35,12 @@ data class GroupChat(
     // WhatsApp/Telegram/Messenger -- ver 0081_pin_chats.sql, mismo
     // criterio que isMutedForMe: viene de la propia fila de membresía.
     val isPinnedForMe: Boolean = false,
+    // Mensajes que desaparecen real también en el chat de grupo,
+    // comparado con WhatsApp/Instagram DM -- cierra el alcance
+    // deliberado documentado desde 0115_disappearing_messages.sql (solo
+    // 1:1 esa ronda). Solo el creador/admin puede tocarlo
+    // (group_chats_update_own/_by_admin), ver 0124_group_disappearing_messages.sql.
+    @SerialName("disappearing_seconds") val disappearingSeconds: Int? = null,
     // Marcar un chat de grupo como no leído manualmente, comparado con
     // WhatsApp/Telegram/Messenger -- combina el flag manual real con la
     // detección real de no leído (`group_chat_members.last_read_at`

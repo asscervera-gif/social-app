@@ -452,7 +452,7 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
     private suspend fun loadGroupChat() {
         try {
             _groupChat.value = SupabaseManager.client.from("group_chats")
-                .select(columns = Columns.raw("id,name,created_by,created_at,photo_url")) {
+                .select(columns = Columns.raw("id,name,created_by,created_at,photo_url,disappearing_seconds")) {
                     filter { eq("id", groupChatId) }
                 }
                 .decodeSingle<GroupChat>()
@@ -467,6 +467,32 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
         val name: String? = null,
         @SerialName("photo_url") val photoUrl: String? = null
     )
+
+    @Serializable
+    private data class GroupDisappearingUpdate(@SerialName("disappearing_seconds") val disappearingSeconds: Int?)
+
+    /** Activar/desactivar mensajes que desaparecen real para TODO el
+     * grupo, comparado con WhatsApp/Instagram DM -- cierra el alcance
+     * deliberado documentado desde 0115_disappearing_messages.sql (solo
+     * 1:1 esa ronda). A diferencia del 1:1 (cualquiera de los dos
+     * participantes puede tocarlo), aquí solo el creador/admin puede
+     * (`group_chats_update_own`/`_by_admin`, 0057/0108) -- la propia UI
+     * (GroupChatScreen.kt) solo ofrece el botón a quien ya puede tocar
+     * el grupo, mismo criterio que renombrar/cambiar la foto. `seconds`
+     * en null desactiva el modo real. Solo afecta a mensajes NUEVOS --
+     * nunca retroactivo (0124_group_disappearing_messages.sql). */
+    fun setDisappearingSeconds(seconds: Int?) {
+        _groupChat.update { it?.copy(disappearingSeconds = seconds) }
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("group_chats").update(GroupDisappearingUpdate(seconds)) {
+                    filter { eq("id", groupChatId) }
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo cambiar el modo de mensajes que desaparecen."
+            }
+        }
+    }
 
     /** Renombrar el grupo real, comparado con WhatsApp/Messenger/Telegram
      * -- RLS (`group_chats_update_own`, 0057_group_chats.sql) ya limitaba

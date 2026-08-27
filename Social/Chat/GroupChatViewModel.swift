@@ -500,6 +500,30 @@ final class GroupChatViewModel: ObservableObject {
         }
     }
 
+    /// Activar/desactivar mensajes que desaparecen real para TODO el
+    /// grupo, comparado con WhatsApp/Instagram DM -- cierra el alcance
+    /// deliberado documentado desde 0115_disappearing_messages.sql (solo
+    /// 1:1 esa ronda). A diferencia del 1:1 (cualquiera de los dos
+    /// participantes puede tocarlo), aquí solo el creador/admin puede
+    /// (`group_chats_update_own`/`_by_admin`, 0057/0108) -- la propia UI
+    /// (GroupChatView.swift) solo ofrece el botón a quien ya puede tocar
+    /// el grupo, mismo criterio que renombrar/cambiar la foto. `seconds`
+    /// en nil desactiva el modo real. Solo afecta a mensajes NUEVOS --
+    /// nunca retroactivo (0124_group_disappearing_messages.sql).
+    /// Equivalente de GroupChatViewModel.kt.setDisappearingSeconds().
+    func setDisappearingSeconds(_ seconds: Int?) async {
+        groupChat?.disappearingSeconds = seconds
+        do {
+            try await SupabaseManager.shared.client
+                .from("group_chats")
+                .update(["disappearing_seconds": seconds])
+                .eq("id", value: groupChatID)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo cambiar el modo de mensajes que desaparecen."
+        }
+    }
+
     private func loadMembers() async {
         struct MemberIDRow: Decodable {
             let user_id: UUID
