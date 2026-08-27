@@ -2501,6 +2501,56 @@ async function main() {
     );
   });
 
+  // --- broadcast_lists/broadcast_list_members (0103_broadcast_lists.sql):
+  // listas de difusión reales, comparado con WhatsApp -- totalmente
+  // privadas, ni siquiera el propio miembro añadido sabe que está en la
+  // lista de otro (mismo criterio real que close_friends). Usuarios
+  // NUEVOS a propósito (mismo motivo ya documentado varias veces esta
+  // sesión): sin ninguna relación previa de bloqueo que pueda contaminar
+  // esta prueba. ---
+  await asSuperuser();
+  const blOwner = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const blMemberA = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const blMemberB = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const blBlocked = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name) values ($1, 'Difunde'), ($2, 'Miembro A'), ($3, 'Miembro B'), ($4, 'Bloqueado')
+     on conflict (id) do update set display_name = excluded.display_name`,
+    [blOwner, blMemberA, blMemberB, blBlocked]
+  );
+
+  await asUser(blOwner);
+  const broadcastList = (await db.query(
+    `insert into broadcast_lists (owner_id, name) values ($1, 'Amigos cercanos') returning id`, [blOwner]
+  )).rows[0];
+  await expectOk('broadcast_list_members_write_own: blOwner SÍ puede añadir miembros reales a su propia lista', async () => {
+    await db.query(`insert into broadcast_list_members (broadcast_list_id, member_id) values ($1, $2), ($1, $3)`, [broadcastList.id, blMemberA, blMemberB]);
+  });
+
+  await db.query(`insert into blocks (blocker_id, blocked_id) values ($1, $2)`, [blOwner, blBlocked]);
+  await expectFail('broadcast_list_members_write_own: blOwner NO puede añadir a alguien ya bloqueado real a su propia lista', async () => {
+    await db.query(`insert into broadcast_list_members (broadcast_list_id, member_id) values ($1, $2)`, [broadcastList.id, blBlocked]);
+  });
+
+  await asUser(blMemberA);
+  const listAsMember = (await db.query(`select id from broadcast_lists where id = $1`, [broadcastList.id])).rows;
+  check('broadcast_lists_select_own: ni siquiera el propio miembro añadido (blMemberA) puede leer la lista de blOwner', listAsMember.length === 0);
+  const broadcastMembersAsMember = (await db.query(`select id from broadcast_list_members where broadcast_list_id = $1`, [broadcastList.id])).rows;
+  check('broadcast_list_members_select_own: ni siquiera el propio miembro añadido (blMemberA) puede leer con quién más se comparte la lista', broadcastMembersAsMember.length === 0);
+
+  await expectFail('broadcast_list_members_write_own: un tercero real (blMemberA) NO puede añadirse a sí mismo a la lista ajena de blOwner', async () => {
+    await db.query(`insert into broadcast_list_members (broadcast_list_id, member_id) values ($1, $2)`, [broadcastList.id, blMemberA]);
+  });
+
+  await asUser(blOwner);
+  const membersAsOwner = (await db.query(`select member_id from broadcast_list_members where broadcast_list_id = $1`, [broadcastList.id])).rows;
+  check('broadcast_list_members_select_own: blOwner SÍ ve los dos miembros reales de su propia lista', membersAsOwner.length === 2);
+  await expectOk('broadcast_list_members_write_own: blOwner SÍ puede quitar un miembro real de su propia lista', async () => {
+    await db.query(`delete from broadcast_list_members where broadcast_list_id = $1 and member_id = $2`, [broadcastList.id, blMemberB]);
+  });
+  const membersAfterRemoval = (await db.query(`select member_id from broadcast_list_members where broadcast_list_id = $1`, [broadcastList.id])).rows;
+  check('broadcast_list_members_write_own: tras quitarlo de verdad, la lista se queda con un solo miembro real', membersAfterRemoval.length === 1);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

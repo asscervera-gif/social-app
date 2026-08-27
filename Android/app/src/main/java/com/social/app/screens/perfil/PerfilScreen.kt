@@ -95,7 +95,8 @@ fun PerfilScreen(
     onOpenReels: () -> Unit = {},
     onOpenLive: () -> Unit = {},
     onOpenGroupChats: () -> Unit = {},
-    onOpenStarredMessages: () -> Unit = {}
+    onOpenStarredMessages: () -> Unit = {},
+    onOpenBroadcastLists: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val profile by viewModel.profile.collectAsState()
@@ -136,7 +137,11 @@ fun PerfilScreen(
         // Mensajes destacados reales, comparado con WhatsApp
         // (0087_starred_messages.sql) -- mismo criterio que Reels/
         // Directos/Grupos: se añade sin quitar ninguno de los ya reales.
-        ProfileNavItem("⭐", "Destacados", onOpenStarredMessages)
+        ProfileNavItem("⭐", "Destacados", onOpenStarredMessages),
+        // Listas de difusión reales, comparado con WhatsApp
+        // (0103_broadcast_lists.sql) -- mismo criterio que el resto:
+        // se añade sin quitar ninguno de los ya reales.
+        ProfileNavItem("📢", "Difusión", onOpenBroadcastLists)
     )
     val filledSections = sections.count { it.content["texto"]?.isNotBlank() == true }
     val completion = (filledSections * 100) / PerfilViewModel.SECTION_KEYS.size.coerceAtLeast(1)

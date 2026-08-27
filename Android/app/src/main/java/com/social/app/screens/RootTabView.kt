@@ -86,6 +86,7 @@ private const val CHAT_LIST_ROUTE = "chat_list"
 private const val MY_POSTS_ROUTE = "my_posts"
 private const val SAVED_POSTS_ROUTE = "saved_posts"
 private const val STARRED_MESSAGES_ROUTE = "starred_messages"
+private const val BROADCAST_LISTS_ROUTE = "broadcast_lists"
 private const val SOCIALS_LIST_ROUTE = "socials_list"
 private const val FOLLOW_LIST_ROUTE = "follow_list/{tab}"
 private const val REELS_ROUTE = "reels"
@@ -316,7 +317,8 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                         onOpenReels = { navController.navigate(REELS_ROUTE) },
                         onOpenLive = { navController.navigate(LIVE_STREAMS_ROUTE) },
                         onOpenGroupChats = { navController.navigate(GROUP_CHATS_LIST_ROUTE) },
-                        onOpenStarredMessages = { navController.navigate(STARRED_MESSAGES_ROUTE) }
+                        onOpenStarredMessages = { navController.navigate(STARRED_MESSAGES_ROUTE) },
+                        onOpenBroadcastLists = { navController.navigate(BROADCAST_LISTS_ROUTE) }
                     )
                 }
                 // Reels (0050_reels.sql) -- primera UI de cliente real
@@ -441,6 +443,14 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                                 navController.navigate("group_chat/$groupId/$encodedName")
                             }
                         )
+                    }
+                }
+                // Listas de difusión reales, comparado con WhatsApp --
+                // mismo patrón que STARRED_MESSAGES_ROUTE de arriba
+                // (0103_broadcast_lists.sql).
+                composable(BROADCAST_LISTS_ROUTE) {
+                    com.social.app.ui.theme.BackScaffold(title = "Difusión", onBack = { navController.popBackStack() }) {
+                        com.social.app.chat.BroadcastListsScreen()
                     }
                 }
                 composable(SOCIALS_LIST_ROUTE) {

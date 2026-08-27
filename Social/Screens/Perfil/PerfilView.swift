@@ -42,6 +42,7 @@ struct PerfilView: View {
     // Mensajes destacados reales, comparado con WhatsApp -- mismo
     // criterio que showSavedPosts de arriba (0087_starred_messages.sql).
     @State private var showStarredMessages = false
+    @State private var showBroadcastLists = false
     // Hallazgo real, comparado con Instagram/Twitter/TikTok: los
     // contadores "Siguiendo"/"Seguidores" ya eran reales, pero tocarlos no
     // hacía nada -- ver FollowListViewModel.swift.
@@ -157,6 +158,11 @@ struct PerfilView: View {
             .sheet(isPresented: $showStarredMessages) {
                 NavigationStack {
                     StarredMessagesView()
+                }
+            }
+            .sheet(isPresented: $showBroadcastLists) {
+                NavigationStack {
+                    BroadcastListsView()
                 }
             }
             .sheet(isPresented: $showSocialsList) {
@@ -286,7 +292,11 @@ struct PerfilView: View {
             // (0087_starred_messages.sql) -- mismo criterio que el resto
             // de esta rejilla: se añade sin quitar ninguno de los ya
             // reales.
-            ("Destacados", "star.fill", { showStarredMessages = true })
+            ("Destacados", "star.fill", { showStarredMessages = true }),
+            // Listas de difusión reales, comparado con WhatsApp
+            // (0103_broadcast_lists.sql) -- mismo criterio que el resto de
+            // esta rejilla: se añade sin quitar ninguno de los ya reales.
+            ("Difusión", "megaphone.fill", { showBroadcastLists = true })
         ]
     }
 
