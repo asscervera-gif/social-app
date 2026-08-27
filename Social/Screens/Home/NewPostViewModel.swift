@@ -27,7 +27,7 @@ final class NewPostViewModel: ObservableObject {
     /// (0055_post_media.sql) -- la primera va en `posts.media_url` como
     /// siempre, el resto en `post_media`. [taggedProfileID] es opcional --
     /// "con quién" (0051_post_social_tags.sql), comparado con SOCIAL_APP.html.
-    func post(caption: String, isSocialOnly: Bool, imageDataList: [Data], taggedProfileID: UUID? = nil, locationName: String? = nil, isSensitive: Bool = false, replyAudience: String = "everyone") async -> Bool {
+    func post(caption: String, isSocialOnly: Bool, imageDataList: [Data], taggedProfileID: UUID? = nil, locationName: String? = nil, isSensitive: Bool = false, replyAudience: String = "everyone", pollQuestion: String = "", pollOptions: [String] = []) async -> Bool {
         guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return false }
         // Mismo límite real que posts_caption_length
         // (0023_text_length_limits.sql) — validado aquí también, mismo
@@ -60,6 +60,13 @@ final class NewPostViewModel: ObservableObject {
             let media_url: String
             let position: Int
         }
+        // Encuesta real, comparado con Twitter/X/Facebook -- ver
+        // 0113_post_polls.sql.
+        struct NewPostPoll: Encodable {
+            let post_id: UUID
+            let question: String
+            let options: [String]
+        }
         isPosting = true
         defer { isPosting = false }
         do {
@@ -83,6 +90,17 @@ final class NewPostViewModel: ObservableObject {
                 try await SupabaseManager.shared.client
                     .from("post_media")
                     .insert(extraMedia)
+                    .execute()
+            }
+            // Encuesta real, comparado con Twitter/X/Facebook -- mismo
+            // límite real del CHECK de post_polls.question (200
+            // caracteres) y de options (2 a 4), 0113_post_polls.sql.
+            let trimmedPollQuestion = String(pollQuestion.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200))
+            let cleanOptions = pollOptions.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+            if !trimmedPollQuestion.isEmpty && (2...4).contains(cleanOptions.count) {
+                try await SupabaseManager.shared.client
+                    .from("post_polls")
+                    .insert(NewPostPoll(post_id: insertedPost.id, question: trimmedPollQuestion, options: cleanOptions))
                     .execute()
             }
             // Hallazgo real, mismo criterio ya aplicado en la versión

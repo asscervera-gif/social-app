@@ -57,6 +57,15 @@ class NewPostViewModel : ViewModel() {
         val position: Int
     )
 
+    // Encuesta real en una publicación normal, comparado con Twitter/X/
+    // Facebook -- ver 0113_post_polls.sql.
+    @Serializable
+    private data class NewPostPoll(
+        @SerialName("post_id") val postId: String,
+        val question: String,
+        val options: List<String>
+    )
+
     /** [imageUris] es opcional (lista vacía) a propósito: `posts.media_url`
      * es nullable (0001_schema.sql), así que una publicación de solo texto
      * sigue siendo válida — la foto es un extra, no un requisito. Ver
@@ -66,7 +75,7 @@ class NewPostViewModel : ViewModel() {
      * siempre (sin cambiar nada para quien solo muestra una miniatura),
      * el resto en `post_media`. [taggedProfileId] es opcional -- "con
      * quién" (0051_post_social_tags.sql), comparado con SOCIAL_APP.html. */
-    suspend fun post(context: Context, caption: String, isSocialOnly: Boolean, imageUris: List<Uri>, taggedProfileId: String? = null, locationName: String? = null, isSensitive: Boolean = false, replyAudience: String = "everyone"): Boolean {
+    suspend fun post(context: Context, caption: String, isSocialOnly: Boolean, imageUris: List<Uri>, taggedProfileId: String? = null, locationName: String? = null, isSensitive: Boolean = false, replyAudience: String = "everyone", pollQuestion: String = "", pollOptions: List<String> = emptyList()): Boolean {
         val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return false
         // Mismo límite real que posts_caption_length
         // (0023_text_length_limits.sql) — validado aquí también para dar
@@ -95,6 +104,14 @@ class NewPostViewModel : ViewModel() {
                     NewPostMedia(insertedPost.id, url, index + 1)
                 }
                 SupabaseManager.client.from("post_media").insert(extraMedia)
+            }
+            // Encuesta real, comparado con Twitter/X/Facebook -- mismo
+            // límite real del CHECK de post_polls.question (200
+            // caracteres) y de options (2 a 4), 0113_post_polls.sql.
+            val trimmedPollQuestion = pollQuestion.trim().take(200)
+            val cleanOptions = pollOptions.map { it.trim() }.filter { it.isNotEmpty() }
+            if (trimmedPollQuestion.isNotEmpty() && cleanOptions.size in 2..4) {
+                SupabaseManager.client.from("post_polls").insert(NewPostPoll(insertedPost.id, trimmedPollQuestion, cleanOptions))
             }
             // Hallazgo real: publicar es la acción de activación más
             // importante del feed y no se registraba — comparado con

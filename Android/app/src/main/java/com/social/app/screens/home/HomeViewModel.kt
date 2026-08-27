@@ -74,6 +74,37 @@ class HomeViewModel : ViewModel() {
     private val _extraMediaByPost = MutableStateFlow<Map<String, List<String>>>(emptyMap())
     val extraMediaByPost: StateFlow<Map<String, List<String>>> = _extraMediaByPost.asStateFlow()
 
+    // Encuesta real en una publicación normal, comparado con Twitter/X/
+    // Facebook -- ver 0113_post_polls.sql, mismo diseño exacto que las
+    // encuestas de historias (StoriesViewModel.storyPolls()).
+    @Serializable
+    data class PostPollRow(
+        val id: String,
+        @SerialName("post_id") val postId: String,
+        val question: String,
+        val options: List<String>,
+        @SerialName("vote_counts") val voteCounts: List<Int> = emptyList()
+    )
+
+    @Serializable
+    private data class MyPostPollVoteRow(
+        @SerialName("poll_id") val pollId: String,
+        @SerialName("option_index") val optionIndex: Int
+    )
+
+    @Serializable
+    private data class NewPostPollVote(
+        @SerialName("poll_id") val pollId: String,
+        @SerialName("voter_id") val voterId: String,
+        @SerialName("option_index") val optionIndex: Int
+    )
+
+    private val _postPolls = MutableStateFlow<Map<String, PostPollRow>>(emptyMap())
+    val postPolls: StateFlow<Map<String, PostPollRow>> = _postPolls.asStateFlow()
+
+    private val _myPostPollVotes = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val myPostPollVotes: StateFlow<Map<String, Int>> = _myPostPollVotes.asStateFlow()
+
     fun load() {
         viewModelScope.launch {
             _isLoading.value = true
@@ -127,6 +158,27 @@ class HomeViewModel : ViewModel() {
                     } catch (e: Exception) {
                         // No bloquea el resto del feed si falla -- los posts
                         // se siguen mostrando con solo su primera foto.
+                    }
+                }
+
+                if (feedIds.isNotEmpty()) {
+                    try {
+                        val polls = SupabaseManager.client.from("post_polls")
+                            .select(columns = Columns.raw("id,post_id,question,options,vote_counts")) { filter { isIn("post_id", feedIds) } }
+                            .decodeList<PostPollRow>()
+                        _postPolls.value = polls.associateBy { it.postId }
+                        val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
+                        _myPostPollVotes.value = if (polls.isEmpty() || myId == null) emptyMap() else try {
+                            SupabaseManager.client.from("post_poll_votes")
+                                .select(columns = Columns.raw("poll_id,option_index")) { filter { eq("voter_id", myId); isIn("poll_id", polls.map { it.id }) } }
+                                .decodeList<MyPostPollVoteRow>()
+                                .associate { it.pollId to it.optionIndex }
+                        } catch (e: Exception) {
+                            emptyMap()
+                        }
+                    } catch (e: Exception) {
+                        // No bloquea el resto del feed si falla -- los posts
+                        // se siguen mostrando sin su encuesta.
                     }
                 }
 
@@ -371,6 +423,31 @@ class HomeViewModel : ViewModel() {
                 // Restricción unique(post_id, user_id) en el caso de guardar
                 // dos veces seguidas: el estado deseado ya se cumple, no es
                 // un error real de usuario (mismo criterio que like()).
+            }
+        }
+    }
+
+    /** Votar/cambiar de opción en la encuesta de una publicación,
+     * comparado con Twitter/X/Facebook -- mismo patrón exacto que
+     * StoriesViewModel.voteOnPoll() (0100), `upsert` real con
+     * `onConflict` cubre insertar el primer voto y cambiar de opción con
+     * una sola llamada, cada una ya cubierta por su propia política RLS
+     * real (0113_post_polls.sql). */
+    fun voteOnPostPoll(pollId: String, optionIndex: Int) {
+        _myPostPollVotes.update { it + (pollId to optionIndex) }
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                SupabaseManager.client.from("post_poll_votes")
+                    .upsert(NewPostPollVote(pollId, userId, optionIndex), onConflict = "poll_id,voter_id")
+                val updated = SupabaseManager.client.from("post_polls")
+                    .select(columns = Columns.raw("id,post_id,question,options,vote_counts")) { filter { eq("id", pollId) } }
+                    .decodeSingleOrNull<PostPollRow>()
+                if (updated != null) {
+                    _postPolls.update { it + (updated.postId to updated) }
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo registrar el voto."
             }
         }
     }

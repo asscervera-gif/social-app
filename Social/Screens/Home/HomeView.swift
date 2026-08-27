@@ -199,6 +199,13 @@ struct HomeView: View {
                     onOpenHashtag: { tag in hashtagToOpen = tag },
                     onRequestCompat: {
                         Task { await viewModel.requestCompatibility(profileID: post.authorID) }
+                    },
+                    poll: viewModel.postPolls[post.id],
+                    myPollVote: viewModel.postPolls[post.id].flatMap { viewModel.myPostPollVotes[$0.id] },
+                    onVotePoll: { optionIndex in
+                        if let pollID = viewModel.postPolls[post.id]?.id {
+                            Task { await viewModel.voteOnPostPoll(pollID: pollID, optionIndex: optionIndex) }
+                        }
                     }
                 )
             }
@@ -272,6 +279,12 @@ private struct PostCard: View {
     let onToggleSave: () -> Void
     var onOpenHashtag: (String) -> Void = { _ in }
     var onRequestCompat: () -> Void = {}
+    // Encuesta real en una publicación normal, comparado con Twitter/X/
+    // Facebook -- ver HomeViewModel.postPolls/voteOnPostPoll(),
+    // 0113_post_polls.sql.
+    var poll: HomeViewModel.PostPollRow? = nil
+    var myPollVote: Int? = nil
+    var onVotePoll: (Int) -> Void = { _ in }
     @State private var showComments = false
     // Hallazgo real, comparado con SOCIAL_APP.html: cada post del feed
     // muestra el % de compatibilidad con el autor en su cabecera, no solo
@@ -431,6 +444,37 @@ private struct PostCard: View {
                         Task { mentionProfileID = await MentionResolver.resolveProfileID(username: username) }
                     }
                 )
+            }
+            // Encuesta real en una publicación normal, comparado con
+            // Twitter/X/Facebook -- ver HomeViewModel.postPolls/
+            // voteOnPostPoll(), 0113_post_polls.sql. Mismo patrón visual
+            // que la encuesta de historias (StoriesBar.swift): botones
+            // antes de votar, barras de porcentaje después.
+            if let poll {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(poll.question).font(.subheadline.bold())
+                    let totalVotes = poll.vote_counts.reduce(0, +)
+                    ForEach(Array(poll.options.enumerated()), id: \.offset) { optionIndex, optionText in
+                        if let myPollVote {
+                            let votesForOption = optionIndex < poll.vote_counts.count ? poll.vote_counts[optionIndex] : 0
+                            let percent = totalVotes == 0 ? 0 : (votesForOption * 100) / totalVotes
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 8).fill(.gray.opacity(0.15))
+                                GeometryReader { geo in
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(optionIndex == myPollVote ? Color.accentColor : .gray.opacity(0.35))
+                                        .frame(width: geo.size.width * CGFloat(percent) / 100)
+                                }
+                                Text("\(optionText) · \(percent)%").padding(.horizontal, 10).padding(.vertical, 6)
+                            }
+                            .frame(height: 32)
+                        } else {
+                            Button(optionText) { onVotePoll(optionIndex) }
+                                .buttonStyle(.bordered)
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                }
             }
             Text(relativeTime(post.createdAt))
                 .font(.caption2)

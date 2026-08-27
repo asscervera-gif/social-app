@@ -40,6 +40,20 @@ final class HomeViewModel: ObservableObject {
     // aquí solo las adicionales, indexadas por post.
     @Published var extraMediaByPost: [UUID: [String]] = [:]
 
+    // Encuesta real en una publicación normal, comparado con Twitter/X/
+    // Facebook -- ver 0113_post_polls.sql, mismo diseño exacto que las
+    // encuestas de historias (StoriesViewModel.storyPolls). Equivalente
+    // de HomeViewModel.kt.postPolls/myPostPollVotes.
+    struct PostPollRow: Decodable, Identifiable {
+        let id: UUID
+        let post_id: UUID
+        let question: String
+        let options: [String]
+        var vote_counts: [Int] = []
+    }
+    @Published var postPolls: [UUID: PostPollRow] = [:]
+    @Published var myPostPollVotes: [UUID: Int] = [:]
+
     func load() async {
         isLoading = true
         defer { isLoading = false }
@@ -91,6 +105,40 @@ final class HomeViewModel: ObservableObject {
                     .value {
                     extraMediaByPost = Dictionary(grouping: rows, by: { $0.post_id })
                         .mapValues { group in group.map { $0.media_url } }
+                }
+
+                // Encuesta real en una publicación normal, comparado con
+                // Twitter/X/Facebook -- se carga junto con el resto del
+                // feed, igual que extraMediaByPost arriba.
+                if let pollRows: [PostPollRow] = try? await client
+                    .from("post_polls")
+                    .select("id,post_id,question,options,vote_counts")
+                    .in("post_id", values: feedIDs)
+                    .execute()
+                    .value {
+                    postPolls = Dictionary(uniqueKeysWithValues: pollRows.map { ($0.post_id, $0) })
+                    struct MyVoteRow: Decodable { let poll_id: UUID; let option_index: Int }
+                    // `voter_id = userID` explícito -- sin este filtro, la
+                    // política post_poll_votes_select también deja ver
+                    // TODOS los votos de una encuesta propia (para el
+                    // autor real de la publicación), y eso contaminaría
+                    // myPostPollVotes con votos ajenos. Mismo filtro real
+                    // ya usado en StoriesViewModel.swift.
+                    if !pollRows.isEmpty, let userID = try? await client.auth.session.user.id,
+                       let voteRows: [MyVoteRow] = try? await client
+                        .from("post_poll_votes")
+                        .select("poll_id,option_index")
+                        .eq("voter_id", value: userID)
+                        .in("poll_id", values: pollRows.map { $0.id })
+                        .execute()
+                        .value {
+                        myPostPollVotes = Dictionary(uniqueKeysWithValues: voteRows.map { ($0.poll_id, $0.option_index) })
+                    } else {
+                        myPostPollVotes = [:]
+                    }
+                } else {
+                    postPolls = [:]
+                    myPostPollVotes = [:]
                 }
             }
 
@@ -318,6 +366,37 @@ final class HomeViewModel: ObservableObject {
             // Restricción unique(post_id, user_id) en el caso de guardar dos
             // veces seguidas: el estado deseado ya se cumple, no es un error
             // real de usuario (mismo criterio que like()).
+        }
+    }
+
+    /// Votar/cambiar de opción en la encuesta de una publicación,
+    /// comparado con Twitter/X/Facebook -- mismo patrón exacto que
+    /// StoriesViewModel.voteOnPoll() (0100). Equivalente de
+    /// HomeViewModel.kt.voteOnPostPoll().
+    func voteOnPostPoll(pollID: UUID, optionIndex: Int) async {
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        myPostPollVotes[pollID] = optionIndex
+        struct NewPostPollVote: Encodable {
+            let poll_id: UUID
+            let voter_id: UUID
+            let option_index: Int
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("post_poll_votes")
+                .upsert(NewPostPollVote(poll_id: pollID, voter_id: userID, option_index: optionIndex), onConflict: "poll_id,voter_id")
+                .execute()
+            if let updated: PostPollRow = try? await SupabaseManager.shared.client
+                .from("post_polls")
+                .select("id,post_id,question,options,vote_counts")
+                .eq("id", value: pollID)
+                .single()
+                .execute()
+                .value {
+                postPolls[updated.post_id] = updated
+            }
+        } catch {
+            errorMessage = "No se pudo registrar el voto."
         }
     }
 }

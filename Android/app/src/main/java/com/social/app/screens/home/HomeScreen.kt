@@ -81,6 +81,8 @@ fun HomeScreen(
     val likedPostIds by viewModel.likedPostIds.collectAsState()
     val authorProfiles by viewModel.authorProfiles.collectAsState()
     val extraMediaByPost by viewModel.extraMediaByPost.collectAsState()
+    val postPolls by viewModel.postPolls.collectAsState()
+    val myPostPollVotes by viewModel.myPostPollVotes.collectAsState()
     var commentsPostId by remember { mutableStateOf<String?>(null) }
     // Hallazgo real: no había ninguna forma de crear una publicación en
     // toda la app (ver NewPostViewModel.kt para el detalle completo).
@@ -175,6 +177,7 @@ fun HomeScreen(
             }
             items(feed) { post ->
                 val author = authorProfiles[post.authorId]
+                val poll = postPolls[post.id]
                 PostCard(
                     post = post,
                     author = author,
@@ -188,7 +191,10 @@ fun HomeScreen(
                     onOpenHashtag = onOpenHashtag,
                     onOpenProfile = { onOpenProfile(post.authorId) },
                     onOpenMentionProfile = onOpenProfile,
-                    onRequestCompat = { viewModel.requestCompatibility(post.authorId) }
+                    onRequestCompat = { viewModel.requestCompatibility(post.authorId) },
+                    poll = poll,
+                    myPollVote = poll?.let { myPostPollVotes[it.id] },
+                    onVotePoll = { optionIndex -> poll?.let { viewModel.voteOnPostPoll(it.id, optionIndex) } }
                 )
             }
         }
@@ -276,7 +282,13 @@ private fun PostCard(
     // al AUTOR del post): aquí el perfil de destino se resuelve en tiempo
     // real a partir del @usuario tocado dentro del propio caption.
     onOpenMentionProfile: (String) -> Unit = {},
-    onRequestCompat: () -> Unit = {}
+    onRequestCompat: () -> Unit = {},
+    // Encuesta real en una publicación normal, comparado con Twitter/X/
+    // Facebook -- ver HomeViewModel.postPolls()/voteOnPostPoll(),
+    // 0113_post_polls.sql.
+    poll: HomeViewModel.PostPollRow? = null,
+    myPollVote: Int? = null,
+    onVotePoll: (Int) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -425,6 +437,45 @@ private fun PostCard(
                         scope.launch { mentionResolver.resolveProfileId(username)?.let(onOpenMentionProfile) }
                     }
                 )
+            }
+            // Encuesta real en una publicación normal, comparado con
+            // Twitter/X/Facebook -- ver HomeViewModel.postPolls()/
+            // voteOnPostPoll(), 0113_post_polls.sql. Mismo patrón visual
+            // que la encuesta de historias (StoriesBar.kt): botones antes
+            // de votar, barras de porcentaje después.
+            poll?.let { p ->
+                Column(modifier = Modifier.padding(top = 8.dp).fillMaxWidth()) {
+                    Text(p.question, style = MaterialTheme.typography.titleSmall)
+                    val totalVotes = p.voteCounts.sum()
+                    p.options.forEachIndexed { optionIndex, optionText ->
+                        if (myPollVote != null) {
+                            val votesForOption = p.voteCounts.getOrElse(optionIndex) { 0 }
+                            val percent = if (totalVotes == 0) 0 else (votesForOption * 100) / totalVotes
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 6.dp)
+                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth(percent / 100f)
+                                        .background(
+                                            if (optionIndex == myPollVote) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                            androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                        )
+                                )
+                                Text("$optionText · $percent%", modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                            }
+                        } else {
+                            androidx.compose.material3.OutlinedButton(
+                                onClick = { onVotePoll(optionIndex) },
+                                modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
+                            ) { Text(optionText) }
+                        }
+                    }
+                }
             }
             if (post.createdAt.isNotBlank()) {
                 Text(

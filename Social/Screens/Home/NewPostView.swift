@@ -36,6 +36,13 @@ struct NewPostView: View {
     // "¿Quién puede comentar?" real, comparado con Twitter/X/TikTok --
     // ver NewPostViewModel.post(), 0097_reply_audience.sql.
     @State private var replyAudience = "everyone"
+    // Encuesta real en una publicación normal, comparado con Twitter/X/
+    // Facebook -- ver NewPostViewModel.post(), 0113_post_polls.sql. Solo
+    // 2 opciones en el compositor, mismo alcance deliberado que la
+    // encuesta de historias (StoriesBar.swift).
+    @State private var pollQuestion = ""
+    @State private var pollOptionA = ""
+    @State private var pollOptionB = ""
     let onDismiss: () -> Void
     let onPosted: () -> Void
 
@@ -126,13 +133,24 @@ struct NewPostView: View {
                 }
             }
 
+            // Encuesta real, comparado con Twitter/X/Facebook -- ver
+            // 0113_post_polls.sql.
+            TextField("📊 Añadir encuesta (opcional)", text: $pollQuestion)
+                .textFieldStyle(.roundedBorder)
+            if !pollQuestion.isEmpty {
+                TextField("Opción 1", text: $pollOptionA)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Opción 2", text: $pollOptionB)
+                    .textFieldStyle(.roundedBorder)
+            }
+
             if let error = viewModel.errorMessage {
                 Text(error).font(.footnote).foregroundStyle(.red)
             }
 
             Button {
                 Task {
-                    if await viewModel.post(caption: caption, isSocialOnly: isSocialOnly, imageDataList: imageDataList, taggedProfileID: taggedProfileID, locationName: locationName, isSensitive: isSensitive, replyAudience: replyAudience) {
+                    if await viewModel.post(caption: caption, isSocialOnly: isSocialOnly, imageDataList: imageDataList, taggedProfileID: taggedProfileID, locationName: locationName, isSensitive: isSensitive, replyAudience: replyAudience, pollQuestion: pollQuestion, pollOptions: [pollOptionA, pollOptionB]) {
                         onPosted()
                         onDismiss()
                     }

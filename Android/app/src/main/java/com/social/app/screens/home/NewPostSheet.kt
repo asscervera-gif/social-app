@@ -79,6 +79,14 @@ fun NewPostSheet(
     // "¿Quién puede comentar?" real, comparado con Twitter/X/TikTok --
     // ver NewPostViewModel.post(), 0097_reply_audience.sql.
     var replyAudience by remember { mutableStateOf("everyone") }
+    // Encuesta real en una publicación normal, comparado con Twitter/X/
+    // Facebook -- ver NewPostViewModel.post(), 0113_post_polls.sql. Solo
+    // 2 opciones en el compositor, mismo alcance deliberado que la
+    // encuesta de historias (StoriesBar.kt) -- el esquema del servidor
+    // ya admite hasta 4.
+    var pollQuestion by remember { mutableStateOf("") }
+    var pollOptionA by remember { mutableStateOf("") }
+    var pollOptionB by remember { mutableStateOf("") }
     val socialsViewModel: SocialsListViewModel = viewModel()
     val socials by socialsViewModel.socials.collectAsState()
     LaunchedEffect(Unit) { socialsViewModel.load() }
@@ -212,12 +220,39 @@ fun NewPostSheet(
                 }
             }
 
+            // Encuesta real, comparado con Twitter/X/Facebook -- ver
+            // 0113_post_polls.sql.
+            OutlinedTextField(
+                value = pollQuestion,
+                onValueChange = { pollQuestion = it },
+                label = { Text("📊 Añadir encuesta (opcional)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+            )
+            if (pollQuestion.isNotBlank()) {
+                OutlinedTextField(
+                    value = pollOptionA,
+                    onValueChange = { pollOptionA = it },
+                    label = { Text("Opción 1") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                )
+                OutlinedTextField(
+                    value = pollOptionB,
+                    onValueChange = { pollOptionB = it },
+                    label = { Text("Opción 2") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                )
+            }
+
             errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
 
             Button(
                 onClick = {
                     scope.launch {
-                        if (viewModel.post(context, caption, isSocialOnly, imageUris, taggedProfileId, locationName, isSensitive, replyAudience)) {
+                        val pollOptions = listOf(pollOptionA, pollOptionB)
+                        if (viewModel.post(context, caption, isSocialOnly, imageUris, taggedProfileId, locationName, isSensitive, replyAudience, pollQuestion, pollOptions)) {
                             onPosted()
                             onDismiss()
                         }

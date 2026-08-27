@@ -2999,6 +2999,64 @@ async function main() {
     await db.query(`insert into compatibility_votes (chat_id, voter_id, delta) values ($1, $2, 10)`, [cvChat.id, cvU2]);
   });
 
+  // --- post_polls/post_poll_votes/sync_post_poll_counts
+  // (0113_post_polls.sql): encuesta real en una publicación normal,
+  // comparado con Twitter/X/Facebook -- mismo diseño que
+  // 0100_story_polls.sql, aplicado a posts. Usuarios NUEVOS a
+  // propósito. ---
+  await asSuperuser();
+  const ppAuthor = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const ppVoter1 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const ppVoter2 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const ppBlocked = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name) values ($1, 'PpAutor'), ($2, 'PpVoto1'), ($3, 'PpVoto2'), ($4, 'PpBloqueado')
+     on conflict (id) do update set display_name = excluded.display_name`,
+    [ppAuthor, ppVoter1, ppVoter2, ppBlocked]
+  );
+
+  await asUser(ppAuthor);
+  const ppPost = (await db.query(`insert into posts (author_id, caption) values ($1, 'publicación real con encuesta') returning id`, [ppAuthor])).rows[0];
+  const ppPoll = (await db.query(
+    `insert into post_polls (post_id, question, options) values ($1, '¿Pizza o sushi?', '["Pizza", "Sushi"]'::jsonb) returning id`, [ppPost.id]
+  )).rows[0];
+  await db.query(`insert into blocks (blocker_id, blocked_id) values ($1, $2)`, [ppAuthor, ppBlocked]);
+
+  await asUser(ppVoter1);
+  await expectFail('post_poll_votes_insert_own: un option_index real fuera de rango (2, solo hay 0 y 1) NO se puede votar', async () => {
+    await db.query(`insert into post_poll_votes (poll_id, voter_id, option_index) values ($1, $2, 2)`, [ppPoll.id, ppVoter1]);
+  });
+  await expectOk('post_poll_votes_insert_own: ppVoter1 SÍ puede votar de verdad ("Pizza")', async () => {
+    await db.query(`insert into post_poll_votes (poll_id, voter_id, option_index) values ($1, $2, 0)`, [ppPoll.id, ppVoter1]);
+  });
+
+  await asUser(ppVoter2);
+  await expectOk('post_poll_votes_insert_own: ppVoter2 SÍ puede votar de verdad ("Sushi")', async () => {
+    await db.query(`insert into post_poll_votes (poll_id, voter_id, option_index) values ($1, $2, 1)`, [ppPoll.id, ppVoter2]);
+  });
+  const ppOwnVote = (await db.query(`select option_index from post_poll_votes where poll_id = $1 and voter_id = $2`, [ppPoll.id, ppVoter2])).rows;
+  check('post_poll_votes_select: ppVoter2 SÍ ve su propio voto real', ppOwnVote.length === 1 && ppOwnVote[0].option_index === 1);
+  const ppOtherVote = (await db.query(`select id from post_poll_votes where poll_id = $1 and voter_id = $2`, [ppPoll.id, ppVoter1])).rows;
+  check('post_poll_votes_select: ppVoter2 NO ve el voto real de ppVoter1 (ni siquiera que existe)', ppOtherVote.length === 0);
+
+  const ppCounts = (await db.query(`select vote_counts from post_polls where id = $1`, [ppPoll.id])).rows[0];
+  check('sync_post_poll_counts: el reparto agregado real es visible para cualquier votante ([1,1])', JSON.stringify(ppCounts.vote_counts) === '[1,1]');
+
+  await expectOk('post_poll_votes_update_own: ppVoter2 SÍ puede cambiar de opción real ("Pizza" en vez de "Sushi")', async () => {
+    await db.query(`update post_poll_votes set option_index = 0 where poll_id = $1 and voter_id = $2`, [ppPoll.id, ppVoter2]);
+  });
+  const ppCountsAfterChange = (await db.query(`select vote_counts from post_polls where id = $1`, [ppPoll.id])).rows[0];
+  check('sync_post_poll_counts: cambiar de opción reagrega bien de verdad ([2,0])', JSON.stringify(ppCountsAfterChange.vote_counts) === '[2,0]');
+
+  await asUser(ppAuthor);
+  const ppVotesAsAuthor = (await db.query(`select voter_id, option_index from post_poll_votes where poll_id = $1 order by voter_id`, [ppPoll.id])).rows;
+  check('post_poll_votes_select: el autor real de la publicación SÍ ve TODOS los votos individuales, con quién los emitió', ppVotesAsAuthor.length === 2);
+
+  await asUser(ppBlocked);
+  await expectFail('post_poll_votes_insert_own: ppBlocked (bloqueado por el autor real) NO puede votar', async () => {
+    await db.query(`insert into post_poll_votes (poll_id, voter_id, option_index) values ($1, $2, 0)`, [ppPoll.id, ppBlocked]);
+  });
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado
