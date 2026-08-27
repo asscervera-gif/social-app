@@ -51,6 +51,16 @@ data class StoryPollRow(
     @SerialName("vote_counts") val voteCounts: List<Int> = emptyList()
 )
 
+// Destacados reales de historias en el perfil, comparado con Instagram --
+// ver 0101_story_highlights.sql.
+@Serializable
+data class StoryHighlightRow(
+    val id: String,
+    @SerialName("author_id") val authorId: String,
+    val title: String,
+    @SerialName("cover_story_id") val coverStoryId: String? = null
+)
+
 data class StoryGroup(
     val authorId: String,
     val authorName: String,
@@ -102,6 +112,12 @@ class StoriesViewModel : ViewModel() {
     // bandeja tras votar.
     private val _myPollVotes = MutableStateFlow<Map<String, Int>>(emptyMap())
     val myPollVotes: StateFlow<Map<String, Int>> = _myPollVotes.asStateFlow()
+
+    // Destacados reales de historias en el perfil, comparado con
+    // Instagram -- solo los MÍOS (para poder elegir a cuál añadir una
+    // historia real activa desde el visor), ver 0101_story_highlights.sql.
+    private val _myHighlights = MutableStateFlow<List<StoryHighlightRow>>(emptyList())
+    val myHighlights: StateFlow<List<StoryHighlightRow>> = _myHighlights.asStateFlow()
 
     @Serializable
     private data class NameRow(@SerialName("display_name") val displayName: String)
@@ -247,6 +263,17 @@ class StoriesViewModel : ViewModel() {
                 // el cliente -- nunca oculto del todo, mismo criterio real
                 // que Instagram/Snapchat (a diferencia de un bloqueo).
                 _groups.value = groups.sortedBy { it.isMuted }
+
+                // Destacados reales de historias en el perfil, comparado
+                // con Instagram -- solo los propios, para poder elegir a
+                // cuál añadir una historia activa desde el visor.
+                _myHighlights.value = if (myId == null) emptyList() else try {
+                    SupabaseManager.client.from("story_highlights")
+                        .select(columns = Columns.raw("id,author_id,title,cover_story_id")) { filter { eq("author_id", myId) } }
+                        .decodeList<StoryHighlightRow>()
+                } catch (e: Exception) {
+                    emptyList()
+                }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudieron cargar las historias."
             }
@@ -489,6 +516,47 @@ class StoriesViewModel : ViewModel() {
             rows.map { StoryQuestionResponse(names[it.responderId]?.displayName ?: "Alguien", it.body) }
         } catch (e: Exception) {
             emptyList()
+        }
+    }
+
+    @Serializable
+    private data class NewHighlight(
+        @SerialName("author_id") val authorId: String,
+        val title: String,
+        @SerialName("cover_story_id") val coverStoryId: String
+    )
+
+    @Serializable
+    private data class NewHighlightItem(
+        @SerialName("highlight_id") val highlightId: String,
+        @SerialName("story_id") val storyId: String
+    )
+
+    /** Crea un destacado real NUEVO a partir de una historia real propia
+     * activa, comparado con Instagram -- solo tiene sentido sobre tu
+     * propia historia (RLS ya lo exige por partida doble: dueño real del
+     * destacado Y de la historia, 0101_story_highlights.sql). Alcance
+     * deliberado: siempre crea un destacado nuevo, sin ofrecer añadir a
+     * uno ya existente desde este mismo diálogo -- eso sigue siendo un
+     * hueco real aparte, documentado en LOOP_STATE.md. */
+    fun createHighlight(storyId: String, title: String, onDone: () -> Unit = {}) {
+        val trimmed = title.trim().take(50)
+        if (trimmed.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                val created = SupabaseManager.client.from("story_highlights")
+                    .insert(NewHighlight(userId, trimmed, storyId)) { select() }
+                    .decodeSingle<StoryHighlightRow>()
+                SupabaseManager.client.from("story_highlight_items")
+                    .insert(NewHighlightItem(created.id, storyId))
+                _myHighlights.update { it + created }
+                com.social.app.backend.AnalyticsManager.track("story_highlight_created")
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo crear el destacado."
+            } finally {
+                onDone()
+            }
         }
     }
 }

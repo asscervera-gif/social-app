@@ -239,6 +239,11 @@ private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewMod
     val mutedAuthorIds by viewModel.mutedAuthorIds.collectAsState()
     var showViewers by remember { mutableStateOf(false) }
     var viewers by remember { mutableStateOf<List<StoriesViewModel.StoryViewer>>(emptyList()) }
+    // Destacados reales de historias en el perfil, comparado con
+    // Instagram -- ver StoriesViewModel.createHighlight(),
+    // 0101_story_highlights.sql.
+    var showHighlightDialog by remember { mutableStateOf(false) }
+    var highlightTitleInput by remember { mutableStateOf("") }
     val progress = remember(index) { androidx.compose.animation.core.Animatable(0f) }
     // Responder a una historia real (0071_message_story_reply.sql),
     // comparado con Instagram/WhatsApp Status/Snapchat.
@@ -447,6 +452,15 @@ private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewMod
                         style = MaterialTheme.typography.labelLarge,
                         modifier = Modifier.clickable(onClick = { showViewers = true })
                     )
+                    // Destacados reales de historias en el perfil,
+                    // comparado con Instagram -- solo tiene sentido sobre
+                    // tu propia historia, mientras sigue activa.
+                    Text(
+                        "⭐ Destacar",
+                        color = androidx.compose.ui.graphics.Color.White,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(top = 6.dp).clickable { showHighlightDialog = true }
+                    )
                     if (question != null) {
                         Text(
                             "💬 Ver respuestas a: \"${question.prompt}\"",
@@ -591,6 +605,42 @@ private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewMod
                 }
             }
         }
+    }
+
+    // Destacados reales de historias en el perfil, comparado con
+    // Instagram -- crea siempre un destacado NUEVO a partir de la
+    // historia real activa que se está viendo (alcance deliberado: sin
+    // ofrecer añadir a uno ya existente desde este mismo diálogo, ver
+    // StoriesViewModel.createHighlight()).
+    if (showHighlightDialog) {
+        AlertDialog(
+            onDismissRequest = { showHighlightDialog = false; highlightTitleInput = "" },
+            title = { Text("Nuevo destacado") },
+            text = {
+                androidx.compose.material3.OutlinedTextField(
+                    value = highlightTitleInput,
+                    onValueChange = { highlightTitleInput = it },
+                    label = { Text("Título (p. ej. \"Viajes\")") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (highlightTitleInput.isNotBlank()) {
+                            viewModel.createHighlight(story.id, highlightTitleInput)
+                        }
+                        showHighlightDialog = false
+                        highlightTitleInput = ""
+                    },
+                    enabled = highlightTitleInput.isNotBlank()
+                ) { Text("Crear") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showHighlightDialog = false; highlightTitleInput = "" }) { Text("Cancelar") }
+            }
+        )
     }
 
     // Adhesivo de pregunta real en una historia ("Pregúntame algo"),

@@ -248,6 +248,12 @@ struct PerfilView: View {
                 Link(websiteURLString.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: ""), destination: url)
                     .font(.subheadline)
             }
+            // Destacados reales de historias en el perfil, comparado con
+            // Instagram -- fila de círculos justo debajo de la bio, ver
+            // StoryHighlightsRow.swift/0101_story_highlights.sql.
+            if let profileID = viewModel.profile?.id {
+                StoryHighlightsRow(profileID: profileID)
+            }
         }
     }
 

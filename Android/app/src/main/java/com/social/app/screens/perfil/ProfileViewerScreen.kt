@@ -134,6 +134,12 @@ fun ProfileViewerScreen(profileId: String) {
             }
             errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
+            // Destacados reales de historias en el perfil, comparado con
+            // Instagram -- misma fila que en el propio perfil
+            // (PerfilScreen.kt), ver StoryHighlightsRow.kt/
+            // 0101_story_highlights.sql.
+            StoryHighlightsRow(profileId = profileId)
+
             if (myId != null && myId != profileId) {
                 Row(modifier = Modifier.padding(top = 12.dp)) {
                     val onToggle = {

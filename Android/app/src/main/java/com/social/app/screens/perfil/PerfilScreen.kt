@@ -246,6 +246,11 @@ fun PerfilScreen(
                 Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
             }
 
+            // Destacados reales de historias en el perfil, comparado con
+            // Instagram -- fila de círculos justo debajo de la bio, ver
+            // StoryHighlightsRow.kt/0101_story_highlights.sql.
+            profile?.let { StoryHighlightsRow(profileId = it.id) }
+
             // Tarjeta "tu perfil completo" con el % real (secciones con
             // texto de verdad / 15) -- mismo hallazgo del boceto, pero con
             // un número calculado de los datos reales, no inventado.

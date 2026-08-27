@@ -44,6 +44,16 @@ struct StoryPollRow: Decodable, Identifiable {
     var vote_counts: [Int] = []
 }
 
+// Destacados reales de historias en el perfil, comparado con Instagram --
+// ver 0101_story_highlights.sql. Equivalente de StoryHighlightRow en
+// StoriesViewModel.kt.
+struct StoryHighlightRow: Decodable, Identifiable {
+    let id: UUID
+    let author_id: UUID
+    let title: String
+    let cover_story_id: UUID?
+}
+
 struct StoryGroup: Identifiable {
     var id: UUID { authorID }
     let authorID: UUID
@@ -76,6 +86,11 @@ final class StoriesViewModel: ObservableObject {
     // Voto propio por encuesta (clave = poll id), comparado con
     // Instagram/Twitter/X -- ver StoriesViewModel.kt.myPollVotes.
     @Published var myPollVotes: [UUID: Int] = [:]
+    // Destacados reales de historias en el perfil, comparado con
+    // Instagram -- solo los propios (para poder elegir a cuál añadir una
+    // historia real activa desde el visor), ver 0101_story_highlights.sql.
+    // Equivalente de StoriesViewModel.kt.myHighlights.
+    @Published var myHighlights: [StoryHighlightRow] = []
 
     private struct BlockRow: Decodable { let blocked_id: UUID }
     private struct MutedStoryAuthorRow: Decodable { let muted_id: UUID }
@@ -174,6 +189,21 @@ final class StoriesViewModel: ObservableObject {
             } else {
                 storyPolls = [:]
                 myPollVotes = [:]
+            }
+
+            // Destacados reales de historias en el perfil, comparado con
+            // Instagram -- solo los propios, para poder elegir a cuál
+            // añadir una historia activa desde el visor.
+            if let userID = try? await SupabaseManager.shared.client.auth.session.user.id,
+               let highlightRows: [StoryHighlightRow] = try? await SupabaseManager.shared.client
+                .from("story_highlights")
+                .select("id,author_id,title,cover_story_id")
+                .eq("author_id", value: userID)
+                .execute()
+                .value {
+                myHighlights = highlightRows
+            } else {
+                myHighlights = []
             }
 
             let byAuthor = Dictionary(grouping: stories, by: { $0.author_id })
@@ -483,6 +513,45 @@ final class StoriesViewModel: ObservableObject {
             }
         } catch {
             errorMessage = "No se pudo registrar el voto."
+        }
+    }
+
+    /// Crea un destacado real NUEVO a partir de una historia real propia
+    /// activa, comparado con Instagram -- solo tiene sentido sobre tu
+    /// propia historia (RLS ya lo exige por partida doble: dueño real del
+    /// destacado Y de la historia, 0101_story_highlights.sql). Alcance
+    /// deliberado: siempre crea un destacado nuevo, sin ofrecer añadir a
+    /// uno ya existente desde este mismo diálogo -- eso sigue siendo un
+    /// hueco real aparte, documentado en LOOP_STATE.md. Equivalente de
+    /// StoriesViewModel.kt.createHighlight().
+    func createHighlight(storyID: UUID, title: String) async {
+        let trimmed = String(title.trimmingCharacters(in: .whitespacesAndNewlines).prefix(50))
+        guard !trimmed.isEmpty, let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        struct NewHighlight: Encodable {
+            let author_id: UUID
+            let title: String
+            let cover_story_id: UUID
+        }
+        struct NewHighlightItem: Encodable {
+            let highlight_id: UUID
+            let story_id: UUID
+        }
+        do {
+            let created: StoryHighlightRow = try await SupabaseManager.shared.client
+                .from("story_highlights")
+                .insert(NewHighlight(author_id: userID, title: trimmed, cover_story_id: storyID))
+                .select()
+                .single()
+                .execute()
+                .value
+            try await SupabaseManager.shared.client
+                .from("story_highlight_items")
+                .insert(NewHighlightItem(highlight_id: created.id, story_id: storyID))
+                .execute()
+            myHighlights.append(created)
+            AnalyticsManager.track("story_highlight_created")
+        } catch {
+            errorMessage = "No se pudo crear el destacado."
         }
     }
 }

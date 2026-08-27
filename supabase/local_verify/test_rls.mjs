@@ -1531,6 +1531,118 @@ async function main() {
   const closeFriendsStoryAfterRemoval = (await db.query(`select id from stories where id = $1`, [closeFriendsStory.id])).rows;
   check('stories_select: tras quitarlo de la lista real, u2 ya NO ve la historia "close_friends"', closeFriendsStoryAfterRemoval.length === 0);
 
+  // --- story_highlights/story_highlight_items (0101_story_highlights.sql):
+  // destacados reales de historias en el perfil, comparado con Instagram --
+  // una historia DENTRO de un destacado deja de caducar para quien ya
+  // podía verla por su propia regla de visibilidad. Usuarios NUEVOS a
+  // propósito (mismo motivo ya documentado arriba con
+  // storyResponder/storyOtherViewer): sin ninguna relación previa de
+  // bloqueo/mejores amigos que pueda contaminar esta prueba. ---
+  await asSuperuser();
+  const hlAuthor = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const hlFriend = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const hlStranger = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name) values ($1, 'Destaca'), ($2, 'Amigo'), ($3, 'Extraño')
+     on conflict (id) do update set display_name = excluded.display_name`,
+    [hlAuthor, hlFriend, hlStranger]
+  );
+
+  await asUser(hlAuthor);
+  const hlActiveStory = (await db.query(
+    `insert into stories (author_id, media_url) values ($1, 'activa.jpg') returning id`, [hlAuthor]
+  )).rows[0];
+  const highlight = (await db.query(
+    `insert into story_highlights (author_id, title) values ($1, 'Viajes') returning id`, [hlAuthor]
+  )).rows[0];
+
+  await expectOk('story_highlight_items_insert_own: hlAuthor SÍ puede añadir su propia historia real activa a su propio destacado', async () => {
+    await db.query(`insert into story_highlight_items (highlight_id, story_id) values ($1, $2)`, [highlight.id, hlActiveStory.id]);
+  });
+
+  await asUser(hlStranger);
+  const hlStrangerStory = (await db.query(
+    `insert into stories (author_id, media_url) values ($1, 'extrano.jpg') returning id`, [hlStranger]
+  )).rows[0];
+  await expectFail('story_highlight_items_insert_own: hlStranger NO puede añadir SU historia real a un destacado ajeno (highlight_id de hlAuthor)', async () => {
+    await db.query(`insert into story_highlight_items (highlight_id, story_id) values ($1, $2)`, [highlight.id, hlStrangerStory.id]);
+  });
+  const hlOwnHighlight = (await db.query(
+    `insert into story_highlights (author_id, title) values ($1, 'Robo') returning id`, [hlStranger]
+  )).rows[0];
+  await expectFail('story_highlight_items_insert_own: hlStranger NO puede añadir la historia AJENA de hlAuthor a su propio destacado', async () => {
+    await db.query(`insert into story_highlight_items (highlight_id, story_id) values ($1, $2)`, [hlOwnHighlight.id, hlActiveStory.id]);
+  });
+
+  await asUser(hlFriend);
+  const highlightSeenByAnyone = (await db.query(`select title from story_highlights where id = $1`, [highlight.id])).rows;
+  check('story_highlights_select: cualquier persona real (hlFriend) SÍ ve el título de un destacado ajeno', highlightSeenByAnyone.length === 1 && highlightSeenByAnyone[0].title === 'Viajes');
+
+  // Aviso de honestidad confirmado de verdad, no solo documentado (y
+  // corregido en el camino -- ver 0101_story_highlights.sql): una
+  // historia YA caducada sigue siendo visible para su propio autor
+  // (stories_write_own, "for all", se combina con OR sobre el propio
+  // SELECT) -- un tercero real, en cambio, ya no la ve. Por eso destacar
+  // una historia YA caducada SÍ funciona de un tirón, sin excepción
+  // nueva: el autor real siempre pudo "verla" para pasar el EXISTS del
+  // INSERT, esté caducada o no.
+  await asSuperuser();
+  const expiredStoryId = crypto.randomUUID();
+  await db.query(
+    `insert into stories (id, author_id, media_url, expires_at) values ($1, $2, 'caducada.jpg', now() - interval '1 hour')`,
+    [expiredStoryId, hlAuthor]
+  );
+  await asUser(hlAuthor);
+  const expiredAsAuthor = (await db.query(`select id from stories where id = $1`, [expiredStoryId])).rows;
+  check('stories_select: el propio autor (hlAuthor) SIGUE viendo su historia real ya caducada (stories_write_own, "for all", se combina con OR)', expiredAsAuthor.length === 1);
+  await asUser(hlStranger);
+  const expiredAsStrangerBeforeHighlight = (await db.query(`select id from stories where id = $1`, [expiredStoryId])).rows;
+  check('stories_select: un tercero real (hlStranger) NO ve esa historia ya caducada mientras no esté en ningún destacado', expiredAsStrangerBeforeHighlight.length === 0);
+
+  await asUser(hlAuthor);
+  await expectOk('story_highlight_items_insert_own: hlAuthor SÍ puede destacar de un tirón una historia real YA caducada (sin excepción nueva -- el autor siempre pudo verla)', async () => {
+    await db.query(`insert into story_highlight_items (highlight_id, story_id) values ($1, $2)`, [highlight.id, expiredStoryId]);
+  });
+  await asUser(hlStranger);
+  const expiredAsStrangerAfterHighlight = (await db.query(`select id from stories where id = $1`, [expiredStoryId])).rows;
+  check('stories_select: tras destacarla, un tercero real (hlStranger) SÍ ve ahora esa historia YA caducada -- "destacar desde el archivo" real, comparado con Instagram', expiredAsStrangerAfterHighlight.length === 1);
+
+  // La prueba real de fondo de esta migración: una vez DENTRO de un
+  // destacado, una historia real deja de caducar de verdad para quien ya
+  // podía verla -- aquí se caduca a propósito una historia que ya estaba
+  // en el destacado desde antes.
+  await asSuperuser();
+  await db.query(`update stories set expires_at = now() - interval '1 hour' where id = $1`, [hlActiveStory.id]);
+  await asUser(hlFriend);
+  const highlightedStoryAfterExpiry = (await db.query(`select id from stories where id = $1`, [hlActiveStory.id])).rows;
+  check('stories_select: una historia real DENTRO de un destacado SÍ se sigue viendo después de caducar (hlFriend, un tercero cualquiera)', highlightedStoryAfterExpiry.length === 1);
+
+  // Destacar NO salta la regla real de "mejores amigos" -- la excepción
+  // de más arriba es SOLO sobre la caducidad, nunca sobre la audiencia.
+  await asUser(hlAuthor);
+  const closeFriendsHighlightStory = (await db.query(
+    `insert into stories (author_id, media_url, visibility) values ($1, 'privada_destacada.jpg', 'close_friends') returning id`, [hlAuthor]
+  )).rows[0];
+  await expectOk('story_highlight_items_insert_own: hlAuthor SÍ puede destacar también una historia real de "close_friends" mientras sigue activa', async () => {
+    await db.query(`insert into story_highlight_items (highlight_id, story_id) values ($1, $2)`, [highlight.id, closeFriendsHighlightStory.id]);
+  });
+  await asUser(hlStranger);
+  const closeFriendsHighlightAsStranger = (await db.query(`select id from stories where id = $1`, [closeFriendsHighlightStory.id])).rows;
+  check('stories_select: destacar NO salta la regla real de "mejores amigos" -- hlStranger sigue sin ver esta historia aunque esté en un destacado', closeFriendsHighlightAsStranger.length === 0);
+
+  await db.query(`delete from story_highlight_items where highlight_id = $1 and story_id = $2`, [highlight.id, hlActiveStory.id]);
+  await asSuperuser();
+  const itemStillThereAfterStranger = (await db.query(`select 1 from story_highlight_items where highlight_id = $1 and story_id = $2`, [highlight.id, hlActiveStory.id])).rows;
+  check('story_highlight_items_delete_own: hlStranger NO puede quitar una historia real de un destacado ajeno (0 filas afectadas por RLS, no un error)', itemStillThereAfterStranger.length === 1);
+
+  await asUser(hlAuthor);
+  await expectOk('story_highlight_items_delete_own: hlAuthor SÍ puede quitar su propia historia real de su propio destacado', async () => {
+    await db.query(`delete from story_highlight_items where highlight_id = $1 and story_id = $2`, [highlight.id, hlActiveStory.id]);
+  });
+  await asUser(hlFriend);
+  const storyAfterRemovalFromHighlight = (await db.query(`select id from stories where id = $1`, [hlActiveStory.id])).rows;
+  check('stories_select: tras quitarla del destacado real, la historia YA caducada vuelve a desaparecer de verdad, incluso para un tercero', storyAfterRemovalFromHighlight.length === 0);
+
   // --- muted_story_authors (0085_muted_story_authors.sql): silenciar las
   // historias de alguien sin dejar de seguirlo, comparado con Instagram/
   // Snapchat -- a diferencia de close_friends, esto NO es control de

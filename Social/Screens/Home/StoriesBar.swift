@@ -197,6 +197,11 @@ private struct StoryViewer: View {
     @State private var questionAnswerSent = false
     @State private var showQuestionResponses = false
     @State private var questionResponses: [StoriesViewModel.StoryQuestionResponse] = []
+    // Destacados reales de historias en el perfil, comparado con
+    // Instagram -- ver StoriesViewModel.createHighlight(),
+    // 0101_story_highlights.sql.
+    @State private var showHighlightDialog = false
+    @State private var highlightTitleInput = ""
 
     private func goNext() {
         if index < group.stories.count - 1 {
@@ -325,6 +330,16 @@ private struct StoryViewer: View {
                         } label: {
                             Text("👁 \(viewers.count) \(viewers.count == 1 ? "vista" : "vistas")")
                                 .foregroundStyle(.white)
+                        }
+                        // Destacados reales de historias en el perfil,
+                        // comparado con Instagram -- solo tiene sentido
+                        // sobre tu propia historia, mientras sigue activa.
+                        Button {
+                            showHighlightDialog = true
+                        } label: {
+                            Text("⭐ Destacar")
+                                .foregroundStyle(.white)
+                                .font(.subheadline)
                         }
                         if let question {
                             Button {
@@ -503,6 +518,42 @@ private struct StoryViewer: View {
                 }
                 .navigationTitle("Respuestas")
             }
+        }
+        // Destacados reales de historias en el perfil, comparado con
+        // Instagram -- crea siempre un destacado NUEVO a partir de la
+        // historia real activa que se está viendo (alcance deliberado:
+        // sin ofrecer añadir a uno ya existente desde este mismo diálogo,
+        // ver StoriesViewModel.createHighlight()).
+        .sheet(isPresented: Binding(
+            get: { showHighlightDialog },
+            set: { isPresented in
+                showHighlightDialog = isPresented
+                if !isPresented { highlightTitleInput = "" }
+            }
+        )) {
+            NavigationStack {
+                Form {
+                    TextField("Título (p. ej. \"Viajes\")", text: $highlightTitleInput)
+                }
+                .navigationTitle("Nuevo destacado")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancelar") { showHighlightDialog = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Crear") {
+                            if let story = group.stories[safe: index], !highlightTitleInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                let title = highlightTitleInput
+                                Task { await viewModel.createHighlight(storyID: story.id, title: title) }
+                            }
+                            showHighlightDialog = false
+                        }
+                        .disabled(highlightTitleInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+            }
+            .presentationDetents([.height(160)])
         }
     }
 }

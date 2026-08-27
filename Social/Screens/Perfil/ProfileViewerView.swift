@@ -74,6 +74,12 @@ struct ProfileViewerView: View {
                     Text(errorMessage).font(.footnote).foregroundStyle(.red)
                 }
 
+                // Destacados reales de historias en el perfil, comparado
+                // con Instagram -- misma fila que en el propio perfil
+                // (PerfilView.swift), ver StoryHighlightsRow.swift/
+                // 0101_story_highlights.sql.
+                StoryHighlightsRow(profileID: profileID)
+
                 // Hallazgo real: no había ningún botón "Seguir" directo en
                 // este visor, solo "seguir de vuelta" desde una
                 // notificación — ver FollowManager.swift para el detalle.
