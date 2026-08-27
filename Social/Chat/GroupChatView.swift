@@ -565,6 +565,11 @@ private struct GroupMessageBubble: View {
 
     @State private var showPicker = false
     private let reactionEmojis = ["❤", "😂", "😮", "😢", "👍"]
+    // Reaccionar con CUALQUIER emoji, comparado con Telegram/Messenger/
+    // Slack -- mismo hueco real ya cerrado en el chat 1:1
+    // (ChatView.swift).
+    @State private var showCustomEmojiEntry = false
+    @State private var customEmoji = ""
 
     // Precalculado aparte, no inline dentro del ViewBuilder -- mismo
     // motivo real ya documentado esta sesión de por qué el compilador de
@@ -680,6 +685,11 @@ private struct GroupMessageBubble: View {
                             showPicker = false
                         }
                     }
+                    Text("➕").onTapGesture {
+                        customEmoji = ""
+                        showCustomEmojiEntry = true
+                        showPicker = false
+                    }
                 }
             }
             // Editar un mensaje ya enviado en un grupo real
@@ -720,6 +730,13 @@ private struct GroupMessageBubble: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: isMine ? .trailing : .leading)
+        .alert("Reaccionar con...", isPresented: $showCustomEmojiEntry) {
+            TextField("Escribe un emoji real (usa el teclado 😊)", text: $customEmoji)
+            Button("Reaccionar") {
+                if !customEmoji.isEmpty { onToggleReaction(customEmoji) }
+            }
+            Button("Cancelar", role: .cancel) {}
+        }
     }
 }
 

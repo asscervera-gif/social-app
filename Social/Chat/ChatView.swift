@@ -627,6 +627,12 @@ private struct MessageBubble: View {
     // la miniatura recortada de 200pt.
     @State private var fullScreenURL: URL?
     private let reactionEmojis = ["❤", "😂", "😮", "😢", "👍"]
+    // Reaccionar con CUALQUIER emoji, comparado con Telegram/Messenger/
+    // Slack -- antes solo existían los 5 fijos. Reutiliza el teclado
+    // real del sistema (con su propia tecla de emoji), sin construir un
+    // selector propio. Equivalente de ChatScreen.kt.
+    @State private var showCustomEmojiEntry = false
+    @State private var customEmoji = ""
 
     // Responder a un mensaje concreto (cita) -- precalculado aparte, no
     // inline dentro del ViewBuilder: mismo motivo real ya documentado
@@ -812,6 +818,11 @@ private struct MessageBubble: View {
                             showPicker = false
                         }
                     }
+                    Text("➕").onTapGesture {
+                        customEmoji = ""
+                        showCustomEmojiEntry = true
+                        showPicker = false
+                    }
                 }
             }
             // Hallazgo real, comparado con WhatsApp/Telegram/Messenger:
@@ -872,6 +883,13 @@ private struct MessageBubble: View {
             if let fullScreenURL {
                 FullScreenImageView(url: fullScreenURL, onDismiss: { self.fullScreenURL = nil })
             }
+        }
+        .alert("Reaccionar con...", isPresented: $showCustomEmojiEntry) {
+            TextField("Escribe un emoji real (usa el teclado 😊)", text: $customEmoji)
+            Button("Reaccionar") {
+                if !customEmoji.isEmpty { onToggleReaction(customEmoji) }
+            }
+            Button("Cancelar", role: .cancel) {}
         }
     }
 }

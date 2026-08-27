@@ -145,6 +145,9 @@ fun ChatScreen(
     // Snapchat -- se pregunta al elegir la foto, mismo momento real que
     // 0075_close_friends_stories.sql pregunta la audiencia de una
     // historia. Ver ChatViewModel.sendPhoto(), 0105_view_once_messages.sql.
+    // Reaccionar con CUALQUIER emoji, comparado con Telegram/Messenger/
+    // Slack -- antes solo existían los 5 fijos.
+    var customReactionMessageId by remember { mutableStateOf<String?>(null) }
     var showSearch by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -558,6 +561,20 @@ fun ChatScreen(
                                     }
                                 )
                             }
+                            // Reaccionar con CUALQUIER emoji, comparado
+                            // con Telegram/Messenger/Slack -- antes solo
+                            // existían los 5 fijos. Reutiliza el
+                            // teclado real del sistema (con su propia
+                            // tecla de emoji), sin construir un selector
+                            // propio.
+                            Text(
+                                "➕",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.clickable {
+                                    customReactionMessageId = message.id
+                                    showPicker = false
+                                }
+                            )
                         }
                     }
                     // Hallazgo real, comparado con WhatsApp/Telegram/
@@ -835,6 +852,34 @@ fun ChatScreen(
             },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = { showSearch = false }) { Text("Cerrar") }
+            }
+        )
+    }
+    customReactionMessageId?.let { messageId ->
+        var customEmoji by remember { mutableStateOf("") }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { customReactionMessageId = null },
+            title = { Text("Reaccionar con...") },
+            text = {
+                OutlinedTextField(
+                    value = customEmoji,
+                    onValueChange = { if (it.length <= 4) customEmoji = it },
+                    placeholder = { Text("Escribe un emoji real (usa el teclado 😊)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        if (customEmoji.isNotBlank()) viewModel.toggleReaction(messageId, customEmoji)
+                        customReactionMessageId = null
+                    },
+                    enabled = customEmoji.isNotBlank()
+                ) { Text("Reaccionar") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { customReactionMessageId = null }) { Text("Cancelar") }
             }
         )
     }

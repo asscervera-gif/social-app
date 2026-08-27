@@ -109,6 +109,7 @@ fun GroupChatScreen(
     // Telegram/Messenger -- mismo menú real que ChatScreen.kt (chat 1:1).
     var managingMessage by remember { mutableStateOf<GroupMessage?>(null) }
     val groupClipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+    var groupCustomReactionMessageId by remember { mutableStateOf<String?>(null) }
     var editingMessage by remember { mutableStateOf<GroupMessage?>(null) }
     var editedMessageText by remember { mutableStateOf("") }
     // Denunciar un mensaje concreto de un chat de grupo real
@@ -366,6 +367,18 @@ fun GroupChatScreen(
                                         }
                                     )
                                 }
+                                // Reaccionar con CUALQUIER emoji,
+                                // comparado con Telegram/Messenger/Slack
+                                // -- mismo hueco real ya cerrado en el
+                                // chat 1:1 (ChatScreen.kt).
+                                Text(
+                                    "➕",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.clickable {
+                                        groupCustomReactionMessageId = message.id
+                                        showPicker = false
+                                    }
+                                )
                             }
                         }
                         // Editar un mensaje ya enviado en un grupo real
@@ -541,6 +554,34 @@ fun GroupChatScreen(
     // Editar/borrar un mensaje ya enviado en un grupo real
     // (0065_group_messages_edit_delete.sql), comparado con WhatsApp/
     // Telegram/Messenger -- mismo menú real que ChatScreen.kt (chat 1:1).
+    groupCustomReactionMessageId?.let { messageId ->
+        var customEmoji by remember { mutableStateOf("") }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { groupCustomReactionMessageId = null },
+            title = { Text("Reaccionar con...") },
+            text = {
+                OutlinedTextField(
+                    value = customEmoji,
+                    onValueChange = { if (it.length <= 4) customEmoji = it },
+                    placeholder = { Text("Escribe un emoji real (usa el teclado 😊)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (customEmoji.isNotBlank()) viewModel.toggleReaction(messageId, customEmoji)
+                        groupCustomReactionMessageId = null
+                    },
+                    enabled = customEmoji.isNotBlank()
+                ) { Text("Reaccionar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { groupCustomReactionMessageId = null }) { Text("Cancelar") }
+            }
+        )
+    }
     managingMessage?.let { message ->
         val isMineMessage = message.senderId == myId
         // Mensajes destacados reales, comparado con WhatsApp -- sobre
