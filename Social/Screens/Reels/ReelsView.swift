@@ -176,6 +176,18 @@ private struct ReelRow: View {
     // TikTok -- estado local de la propia pantalla, ver
     // 0096_sensitive_content.sql.
     @State private var sensitiveRevealed = false
+    // Doble toque para dar "me gusta", comparado con Instagram/TikTok/
+    // Facebook -- mismo hueco real ya cerrado en el feed de
+    // publicaciones (HomeView.swift), ahora también en reels.
+    @State private var showDoubleTapHeart = false
+
+    private func likeViaDoubleTap() {
+        if !isLiked { onLike() }
+        withAnimation(.spring()) { showDoubleTapHeart = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            withAnimation { showDoubleTapHeart = false }
+        }
+    }
 
     var body: some View {
         let needsSensitiveWarning = reel.isSensitive && !isMine && !sensitiveRevealed
@@ -195,6 +207,13 @@ private struct ReelRow: View {
                     VideoPlayer(player: player ?? AVPlayer(url: url))
                         .onAppear { if player == nil { player = AVPlayer(url: url) } }
                         .onDisappear { player?.pause() }
+                        .onTapGesture(count: 2) { likeViaDoubleTap() }
+                    if showDoubleTapHeart {
+                        Text("❤")
+                            .font(.system(size: 80))
+                            .foregroundStyle(.white)
+                            .transition(.scale.combined(with: .opacity))
+                    }
                 }
             }
             .frame(height: 320)

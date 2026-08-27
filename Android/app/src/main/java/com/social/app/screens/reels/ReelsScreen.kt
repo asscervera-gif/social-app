@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -186,6 +187,7 @@ fun ReelsScreen(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun ReelPage(
     reel: Reel,
@@ -228,6 +230,39 @@ private fun ReelPage(
                 },
                 modifier = Modifier.fillMaxSize()
             )
+        }
+        // Doble toque para dar "me gusta", comparado con Instagram/
+        // TikTok/Facebook -- mismo hueco real ya cerrado en el feed de
+        // publicaciones (HomeScreen.kt), ahora también en reels. Doble
+        // toque SIEMPRE da like (nunca lo quita).
+        var showReelDoubleTapHeart by remember(reel.id) { mutableStateOf(false) }
+        if (isCurrent && !needsSensitiveWarning) {
+            Box(
+                modifier = Modifier.fillMaxSize().combinedClickable(
+                    onClick = {},
+                    onDoubleClick = {
+                        if (!isLiked) onLike()
+                        showReelDoubleTapHeart = true
+                    },
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null
+                ),
+                contentAlignment = Alignment.Center
+            ) {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = showReelDoubleTapHeart,
+                    enter = androidx.compose.animation.scaleIn(),
+                    exit = androidx.compose.animation.fadeOut()
+                ) {
+                    Text("❤", style = MaterialTheme.typography.displayLarge, color = androidx.compose.ui.graphics.Color.White)
+                }
+            }
+            if (showReelDoubleTapHeart) {
+                LaunchedEffect(showReelDoubleTapHeart) {
+                    kotlinx.coroutines.delay(600)
+                    showReelDoubleTapHeart = false
+                }
+            }
         }
         if (needsSensitiveWarning) {
             Column(
