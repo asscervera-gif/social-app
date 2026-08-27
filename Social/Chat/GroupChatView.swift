@@ -702,8 +702,19 @@ private struct GroupMessageBubble: View {
         return "Mensaje"
     }
 
+    // Deslizar para responder, comparado con WhatsApp/Telegram/iMessage --
+    // mismo patrón exacto que MessageBubble (ChatView.swift, chat 1:1).
+    @State private var swipeOffset: CGFloat = 0
+    private let swipeThreshold: CGFloat = 56
+
     var body: some View {
         VStack(alignment: isMine ? .trailing : .leading, spacing: 2) {
+            ZStack(alignment: .leading) {
+                Image(systemName: "arrowshape.turn.up.left.fill")
+                    .foregroundStyle(Color.accentColor)
+                    .opacity(Double(min(swipeOffset / swipeThreshold, 1)))
+                    .padding(.leading, 8)
+            VStack(alignment: isMine ? .trailing : .leading, spacing: 2) {
             if !isMine {
                 Text(senderName ?? "…")
                     .font(.caption2)
@@ -792,6 +803,21 @@ private struct GroupMessageBubble: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .onTapGesture { showPicker.toggle() }
                     .onLongPressGesture { onManage() }
+            }
+            }
+            .offset(x: swipeOffset)
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        swipeOffset = max(0, min(value.translation.width, swipeThreshold * 1.4))
+                    }
+                    .onEnded { _ in
+                        if swipeOffset > swipeThreshold {
+                            onReply()
+                        }
+                        withAnimation(.spring()) { swipeOffset = 0 }
+                    }
+            )
             }
             if !reactions.isEmpty {
                 HStack(spacing: 4) {

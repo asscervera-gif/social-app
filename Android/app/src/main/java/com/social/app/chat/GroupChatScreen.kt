@@ -4,12 +4,14 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -38,11 +40,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.social.app.backend.SupabaseManager
 import com.social.app.screens.perfil.SocialsListViewModel
@@ -247,9 +252,41 @@ fun GroupChatScreen(
                     // cierra un selector rápido de emojis.
                     var showPicker by remember(message.id) { mutableStateOf(false) }
                     val reactionEmojis = listOf("❤", "😂", "😮", "😢", "👍")
+                    // Deslizar para responder, comparado con WhatsApp/
+                    // Telegram/iMessage -- mismo patrón exacto que
+                    // ChatScreen.kt (chat 1:1).
+                    val swipeOffsetX = remember(message.id) { androidx.compose.animation.core.Animatable(0f) }
+                    val swipeScope = rememberCoroutineScope()
+                    val swipeThresholdPx = with(androidx.compose.ui.platform.LocalDensity.current) { 56.dp.toPx() }
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            "↩",
+                            modifier = Modifier
+                                .align(Alignment.CenterStart)
+                                .padding(start = 8.dp)
+                                .alpha((swipeOffsetX.value / swipeThresholdPx).coerceIn(0f, 1f)),
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     Column(
                         horizontalAlignment = if (isMine) Alignment.End else Alignment.Start,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .offset { androidx.compose.ui.unit.IntOffset(swipeOffsetX.value.roundToInt(), 0) }
+                            .draggable(
+                                orientation = androidx.compose.foundation.gestures.Orientation.Horizontal,
+                                state = androidx.compose.foundation.gestures.rememberDraggableState { delta ->
+                                    swipeScope.launch {
+                                        swipeOffsetX.snapTo((swipeOffsetX.value + delta).coerceIn(0f, swipeThresholdPx * 1.4f))
+                                    }
+                                },
+                                onDragStopped = {
+                                    if (swipeOffsetX.value > swipeThresholdPx) {
+                                        viewModel.setReplyingTo(message)
+                                    }
+                                    swipeScope.launch { swipeOffsetX.animateTo(0f) }
+                                }
+                            )
                     ) {
                         if (!isMine) {
                             Text(
@@ -461,6 +498,7 @@ fun GroupChatScreen(
                                 )
                             }
                         }
+                    }
                     }
                 }
             }

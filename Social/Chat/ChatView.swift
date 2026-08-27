@@ -745,6 +745,11 @@ private struct MessageBubble: View {
     // selector propio. Equivalente de ChatScreen.kt.
     @State private var showCustomEmojiEntry = false
     @State private var customEmoji = ""
+    // Deslizar para responder, comparado con WhatsApp/Telegram/iMessage --
+    // gesto más icónico de "responder" en cualquier app grande, ausente
+    // hasta ahora (solo existía el texto "↩ Responder" bajo el mensaje).
+    @State private var swipeOffset: CGFloat = 0
+    private let swipeThreshold: CGFloat = 56
 
     // Responder a un mensaje concreto (cita) -- precalculado aparte, no
     // inline dentro del ViewBuilder: mismo motivo real ya documentado
@@ -761,6 +766,11 @@ private struct MessageBubble: View {
 
     var body: some View {
         VStack(alignment: isMine ? .trailing : .leading, spacing: 2) {
+            ZStack(alignment: .leading) {
+                Image(systemName: "arrowshape.turn.up.left.fill")
+                    .foregroundStyle(Color.accentColor)
+                    .opacity(Double(min(swipeOffset / swipeThreshold, 1)))
+                    .padding(.leading, 8)
             HStack {
                 if isMine { Spacer() }
                 Group {
@@ -918,6 +928,20 @@ private struct MessageBubble: View {
                     onManage()
                 }
                 if !isMine { Spacer() }
+            }
+            .offset(x: swipeOffset)
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        swipeOffset = max(0, min(value.translation.width, swipeThreshold * 1.4))
+                    }
+                    .onEnded { _ in
+                        if swipeOffset > swipeThreshold {
+                            onReply()
+                        }
+                        withAnimation(.spring()) { swipeOffset = 0 }
+                    }
+            )
             }
             if !reactions.isEmpty {
                 HStack(spacing: 4) {
