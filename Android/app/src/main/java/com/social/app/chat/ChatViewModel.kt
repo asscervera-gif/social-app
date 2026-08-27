@@ -176,6 +176,9 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
     @Serializable
     private data class PresenceState(@SerialName("user_id") val userId: String)
 
+    @Serializable
+    private data class RestrictedRow(@SerialName("restricted_id") val restrictedId: String)
+
     // "Escribiendo..." — comparado con WhatsApp/Instagram DM, no había
     // ninguna señal de que la otra persona está escribiendo. Se usa
     // Broadcast de Realtime (efímero, sin tabla ni columna nueva) sobre el
@@ -189,10 +192,18 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
     @Serializable
     private data class TypingEvent(@SerialName("user_id") val userId: String)
 
+    // "Restringir" real, comparado con Instagram -- ver comprobación
+    // completa en subscribeToRealtime(), 0093_restrict_account.sql.
+    // Guardado aquí (no solo local a subscribeToRealtime()) porque
+    // notifyTyping() también necesita saberlo, y se llama por separado
+    // desde ChatScreen.kt en cada pulsación.
+    private var iRestrictedOpponent = false
+
     /** Llamado desde ChatScreen en cada pulsación del campo de texto — con
      * el mismo debounce de 300ms ya usado en SearchViewModel.kt para no
      * saturar la red con un broadcast por letra tecleada. */
     fun notifyTyping() {
+        if (iRestrictedOpponent) return
         typingSendJob?.cancel()
         typingSendJob = viewModelScope.launch {
             kotlinx.coroutines.delay(300)
@@ -763,6 +774,33 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
 
         viewModelScope.launch {
             val myId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+            // "Restringir" real, comparado con Instagram -- cierra el
+            // hueco deliberado documentado desde 0093_restrict_account.sql:
+            // esa ronda solo cubrió comentarios, dejando explícito que
+            // ocultar "en línea"/"escribiendo" a la persona restringida
+            // quedaba pendiente. Igual que en Instagram real, NUNCA hay
+            // ningún aviso real hacia la persona restringida -- su
+            // cliente simplemente deja de recibir presencia/typing de mi
+            // lado, sin enterarse de por qué. Comprobado UNA vez por
+            // sesión de chat (no cambia mientras el chat está abierto),
+            // reutiliza tal cual `restricts_select_own` (0093), sin
+            // política nueva. Guardado en la propiedad de clase porque
+            // notifyTyping() también lo necesita, y se llama por
+            // separado desde ChatScreen.kt en cada pulsación.
+            val opponentIdForRestrict = _opponentId.value
+            iRestrictedOpponent = if (opponentIdForRestrict != null) {
+                try {
+                    SupabaseManager.client.from("restricts")
+                        .select(columns = Columns.raw("restricted_id")) {
+                            filter { eq("restricter_id", myId); eq("restricted_id", opponentIdForRestrict) }
+                        }
+                        .decodeList<RestrictedRow>()
+                        .isNotEmpty()
+                } catch (e: Exception) {
+                    false
+                }
+            } else false
+            if (iRestrictedOpponent) return@launch
             try {
                 ch.track(Json.encodeToJsonElement(PresenceState.serializer(), PresenceState(myId)).let {
                     it as kotlinx.serialization.json.JsonObject

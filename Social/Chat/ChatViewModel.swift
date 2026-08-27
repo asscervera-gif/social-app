@@ -25,6 +25,12 @@ final class ChatViewModel: ObservableObject {
     @Published var suggestedActivity: String?
     @Published var errorMessage: String?
     @Published var opponentID: UUID?
+    // "Restringir" real, comparado con Instagram -- ver comprobación
+    // completa en subscribeToRealtime(), 0093_restrict_account.sql.
+    // Guardado aquí (no solo local) porque notifyTyping() también lo
+    // necesita, y se llama por separado desde ChatView.swift en cada
+    // pulsación. Equivalente de ChatViewModel.kt.iRestrictedOpponent.
+    private var iRestrictedOpponent = false
     // Recibo de lectura real ("Leído ✓✓"), comparado con WhatsApp/
     // Instagram/Messenger -- mismo criterio recíproco real que esas apps:
     // si CUALQUIERA de los dos (yo o la otra persona) desactivó su propio
@@ -404,6 +410,7 @@ final class ChatViewModel: ObservableObject {
     /// es el único sitio a ajustar, igual que el resto de APIs de
     /// supabase-swift marcadas así en esta sesión.
     func notifyTyping() {
+        if iRestrictedOpponent { return }
         typingSendTask?.cancel()
         typingSendTask = Task {
             try? await Task.sleep(nanoseconds: 300_000_000)
@@ -708,6 +715,27 @@ final class ChatViewModel: ObservableObject {
         // existe en la API actual).
         Task {
             let myID = currentUserID.uuidString
+            // "Restringir" real, comparado con Instagram -- cierra el
+            // hueco deliberado documentado desde 0093_restrict_account.sql:
+            // esa ronda solo cubrió comentarios, dejando explícito que
+            // ocultar "en línea"/"escribiendo" a la persona restringida
+            // quedaba pendiente. Igual que en Instagram real, NUNCA hay
+            // ningún aviso real hacia la persona restringida -- su
+            // cliente simplemente deja de recibir presencia/typing de mi
+            // lado, sin enterarse de por qué. Reutiliza tal cual
+            // `restricts_select_own` (0093), sin política nueva.
+            struct RestrictedRow: Decodable { let restricted_id: UUID }
+            if let opponentID {
+                let restrictRows: [RestrictedRow] = (try? await SupabaseManager.shared.client
+                    .from("restricts")
+                    .select("restricted_id")
+                    .eq("restricter_id", value: myID)
+                    .eq("restricted_id", value: opponentID)
+                    .execute()
+                    .value) ?? []
+                iRestrictedOpponent = !restrictRows.isEmpty
+            }
+            if iRestrictedOpponent { return }
             await ch.track(state: ["user_id": .string(myID)])
         }
         let presenceEvents = ch.presenceChange()
