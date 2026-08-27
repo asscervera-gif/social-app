@@ -112,10 +112,10 @@ final class HomeViewModel: ObservableObject {
             // su propio feed principal, justo lo que archivar debería
             // evitar. Mismo fix ya construido en la versión Kotlin
             // equivalente.
-            feed = allFeed.filter {
-                !blockedIDs.contains($0.authorID) && $0.archivedAt == nil &&
+            feed = allFeed.filter { post in
+                !blockedIDs.contains(post.authorID) && post.archivedAt == nil &&
                     !mutedFeedKeywords.contains { word in
-                        $0.caption?.range(of: word, options: .caseInsensitive) != nil
+                        post.caption?.range(of: word, options: .caseInsensitive) != nil
                     }
             }
 
