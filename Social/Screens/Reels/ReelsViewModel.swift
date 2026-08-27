@@ -121,10 +121,10 @@ final class ReelsViewModel: ObservableObject {
                 .limit(30)
                 .execute()
                 .value
-            var recentReels = allReels.filter {
-                !blockedIDs.contains($0.authorID) &&
+            var recentReels = allReels.filter { reel in
+                !blockedIDs.contains(reel.authorID) &&
                     !mutedFeedKeywords.contains { word in
-                        $0.caption?.range(of: word, options: .caseInsensitive) != nil
+                        reel.caption?.range(of: word, options: .caseInsensitive) != nil
                     }
             }
 
