@@ -48,6 +48,13 @@ struct GroupChatView: View {
     @State private var pendingGroupVideoData: Data?
     @State private var pendingGroupVideoCaption = ""
     @State private var fullScreenVideoURL: URL?
+    // Escuchar la nota de voz real antes de mandarla también en el chat
+    // de grupo, cierra el alcance deliberado de la ronda anterior (solo
+    // 1:1) -- comparado con WhatsApp/Telegram, mismo patrón exacto que
+    // ChatView.swift.
+    @State private var pendingGroupVoiceURL: URL?
+    @State private var groupPreviewPlayer: AVAudioPlayer?
+    @State private var isGroupPreviewPlaying = false
     // Editar/borrar un mensaje ya enviado en un grupo real
     // (0065_group_messages_edit_delete.sql), comparado con WhatsApp/
     // Telegram/Messenger -- mismo menú real que ChatView.swift (chat 1:1).
@@ -268,7 +275,7 @@ struct GroupChatView: View {
                     if isRecording {
                         isRecording = false
                         if let url = voiceRecorder.stop() {
-                            Task { await viewModel.sendVoiceNote(fileURL: url) }
+                            pendingGroupVoiceURL = url
                         }
                     } else {
                         if (try? voiceRecorder.start()) != nil {
@@ -278,6 +285,46 @@ struct GroupChatView: View {
                 } label: {
                     Image(systemName: isRecording ? "stop.circle.fill" : "mic")
                         .foregroundStyle(isRecording ? .red : .primary)
+                }
+                // `.sheet` en vez de `.alert`: hace falta poder tocar
+                // "Escuchar" varias veces sin que se cierre el diálogo
+                // entero -- mismo hallazgo real ya documentado en
+                // ChatView.swift/0099_story_questions.sql.
+                .sheet(isPresented: Binding(
+                    get: { pendingGroupVoiceURL != nil },
+                    set: { if !$0 { groupPreviewPlayer?.stop(); isGroupPreviewPlaying = false; pendingGroupVoiceURL = nil } }
+                )) {
+                    NavigationStack {
+                        VStack(spacing: 16) {
+                            Button(isGroupPreviewPlaying ? "⏸ Reproduciendo…" : "▶ Escuchar antes de mandarla") {
+                                guard let url = pendingGroupVoiceURL else { return }
+                                if isGroupPreviewPlaying {
+                                    groupPreviewPlayer?.pause()
+                                    isGroupPreviewPlaying = false
+                                } else {
+                                    let player = groupPreviewPlayer ?? (try? AVAudioPlayer(contentsOf: url))
+                                    groupPreviewPlayer = player
+                                    player?.play()
+                                    isGroupPreviewPlaying = true
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            Button("Enviar") {
+                                guard let url = pendingGroupVoiceURL else { return }
+                                groupPreviewPlayer?.stop()
+                                pendingGroupVoiceURL = nil
+                                Task { await viewModel.sendVoiceNote(fileURL: url) }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            Button("Descartar", role: .destructive) {
+                                groupPreviewPlayer?.stop()
+                                pendingGroupVoiceURL = nil
+                            }
+                        }
+                        .padding()
+                        .navigationTitle("Nota de voz")
+                        .presentationDetents([.height(220)])
+                    }
                 }
                 TextField(isRecording ? "Grabando…" : "Mensaje…", text: $draft)
                     .textFieldStyle(.roundedBorder)

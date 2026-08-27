@@ -156,6 +156,11 @@ fun GroupChatScreen(
     // iMessage -- mismo patrón exacto que ChatScreen.kt (1:1).
     var pendingGroupVideoUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var fullScreenVideoUrl by remember { mutableStateOf<String?>(null) }
+    // Escuchar la nota de voz real antes de mandarla también en el chat de
+    // grupo, cierra el alcance deliberado de la ronda anterior (solo
+    // 1:1) -- comparado con WhatsApp/Telegram, mismo patrón exacto que
+    // ChatScreen.kt.
+    var pendingGroupVoiceFile by remember { mutableStateOf<java.io.File?>(null) }
     val pickVideo = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.GetContent()
     ) { uri -> uri?.let { pendingGroupVideoUri = it } }
@@ -531,7 +536,7 @@ fun GroupChatScreen(
                     onClick = {
                         if (isRecording) {
                             isRecording = false
-                            voiceRecorder.stop()?.let { viewModel.sendVoiceNote(it) }
+                            voiceRecorder.stop()?.let { pendingGroupVoiceFile = it }
                         } else {
                             recordPermission.launch(android.Manifest.permission.RECORD_AUDIO)
                         }
@@ -608,6 +613,50 @@ fun GroupChatScreen(
             },
             dismissButton = {
                 TextButton(onClick = { pendingGroupPhotoUri = null }) { Text("Cancelar") }
+            }
+        )
+    }
+    pendingGroupVoiceFile?.let { file ->
+        var isPreviewPlaying by remember(file) { mutableStateOf(false) }
+        var previewPlayer by remember(file) { mutableStateOf<android.media.MediaPlayer?>(null) }
+        androidx.compose.runtime.DisposableEffect(file) {
+            onDispose { previewPlayer?.release(); previewPlayer = null }
+        }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { previewPlayer?.release(); pendingGroupVoiceFile = null },
+            title = { Text("Nota de voz") },
+            text = {
+                Text(
+                    if (isPreviewPlaying) "⏸ Reproduciendo…" else "▶ Escuchar antes de mandarla",
+                    modifier = Modifier.clickable {
+                        if (isPreviewPlaying) {
+                            previewPlayer?.pause()
+                            isPreviewPlaying = false
+                        } else {
+                            val p = previewPlayer ?: android.media.MediaPlayer().apply {
+                                setDataSource(file.absolutePath)
+                                setOnCompletionListener { isPreviewPlaying = false }
+                                prepare()
+                            }
+                            previewPlayer = p
+                            p.start()
+                            isPreviewPlaying = true
+                        }
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    previewPlayer?.release()
+                    viewModel.sendVoiceNote(file)
+                    pendingGroupVoiceFile = null
+                }) { Text("Enviar") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    previewPlayer?.release()
+                    pendingGroupVoiceFile = null
+                }) { Text("Descartar") }
             }
         )
     }
