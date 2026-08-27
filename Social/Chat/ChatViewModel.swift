@@ -17,6 +17,10 @@ final class ChatViewModel: ObservableObject {
 
     @Published var messages: [ChatMessage] = []
     @Published var compatibilityScore: Int = 50
+    // Mensajes que desaparecen real, comparado con WhatsApp/Instagram DM
+    // -- nil = desactivado, en segundos si está activo. Ver
+    // 0115_disappearing_messages.sql.
+    @Published var disappearingSeconds: Int? = nil
     @Published var draft: String = ""
     @Published var suggestedActivity: String?
     @Published var errorMessage: String?
@@ -477,6 +481,7 @@ final class ChatViewModel: ObservableObject {
                 .execute()
                 .value
             compatibilityScore = chat.compatibilityScore
+            disappearingSeconds = chat.disappearingSeconds
             opponentID = chat.userAID == currentUserID ? chat.userBID : (chat.userBID == currentUserID ? chat.userAID : nil)
             await loadReadReceiptsVisibility()
 
@@ -584,6 +589,7 @@ final class ChatViewModel: ObservableObject {
             for await change in chatUpdates {
                 if let chat = try? change.decodeRecord(as: Chat.self, decoder: JSONDecoder()) {
                     compatibilityScore = chat.compatibilityScore
+                    disappearingSeconds = chat.disappearingSeconds
                     await checkActivitySuggestion()
                 }
             }
@@ -935,6 +941,27 @@ final class ChatViewModel: ObservableObject {
         } catch {
             // Sin IA disponible (límite de uso, red...) no se rompe el
             // resto del chat — simplemente no se muestra sugerencia.
+        }
+    }
+
+    /// Activar/desactivar mensajes que desaparecen real para TODO el
+    /// chat, comparado con WhatsApp/Instagram DM -- ajuste COMPARTIDO
+    /// (no una preferencia personal como silenciar/fijar): cualquiera de
+    /// los dos puede tocarlo, y afecta a los dos por igual. Solo afecta
+    /// a mensajes NUEVOS -- nunca retroactivo
+    /// (0115_disappearing_messages.sql). `seconds` en nil desactiva el
+    /// modo real. Equivalente de
+    /// ChatViewModel.kt.setDisappearingSeconds().
+    func setDisappearingSeconds(_ seconds: Int?) async {
+        disappearingSeconds = seconds
+        do {
+            try await SupabaseManager.shared.client
+                .from("chats")
+                .update(["disappearing_seconds": seconds])
+                .eq("id", value: chatID)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo cambiar el modo de mensajes que desaparecen."
         }
     }
 }

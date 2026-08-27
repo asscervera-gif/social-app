@@ -119,6 +119,12 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
     private val _compatibility = MutableStateFlow(50)
     val compatibility: StateFlow<Int> = _compatibility.asStateFlow()
 
+    // Mensajes que desaparecen real, comparado con WhatsApp/Instagram DM
+    // -- null = desactivado, en segundos si está activo. Ver
+    // 0115_disappearing_messages.sql.
+    private val _disappearingSeconds = MutableStateFlow<Int?>(null)
+    val disappearingSeconds: StateFlow<Int?> = _disappearingSeconds.asStateFlow()
+
     private val _opponentId = MutableStateFlow<String?>(null)
     val opponentId: StateFlow<String?> = _opponentId.asStateFlow()
 
@@ -498,6 +504,7 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
                 .select { filter { eq("id", chatId) } }
                 .decodeSingle<Chat>()
             _compatibility.value = chat.compatibilityScore
+            _disappearingSeconds.value = chat.disappearingSeconds
 
             val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
             _opponentId.value = when (myId) {
@@ -650,6 +657,7 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
         }.onEach { update ->
             val chat = Json.decodeFromJsonElement(Chat.serializer(), update.record)
             _compatibility.value = chat.compatibilityScore
+            _disappearingSeconds.value = chat.disappearingSeconds
         }.launchIn(viewModelScope)
 
         // Para que el remitente vea "Leído" en vivo cuando la otra persona
@@ -938,6 +946,24 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
                     .decodeList<CompatibilityVoteEntry>()
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo cargar el historial de compatibilidad."
+            }
+        }
+    }
+
+    /** Activar/desactivar mensajes que desaparecen real para TODO el
+     * chat, comparado con WhatsApp/Instagram DM -- ajuste COMPARTIDO
+     * (no una preferencia personal como silenciar/fijar): cualquiera de
+     * los dos puede tocarlo, y afecta a los dos por igual. Solo afecta a
+     * mensajes NUEVOS -- nunca retroactivo (0115_disappearing_messages.sql).
+     * `seconds` en null desactiva el modo real. */
+    fun setDisappearingSeconds(seconds: Int?) {
+        _disappearingSeconds.value = seconds
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("chats")
+                    .update({ set("disappearing_seconds", seconds) }) { filter { eq("id", chatId) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo cambiar el modo de mensajes que desaparecen."
             }
         }
     }

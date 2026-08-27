@@ -25,6 +25,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -91,6 +93,10 @@ fun ChatScreen(
     // 0091_read_receipts_toggle.sql.
     val showReadReceipts by viewModel.showReadReceipts.collectAsState()
     val compatibility by viewModel.compatibility.collectAsState()
+    // Mensajes que desaparecen real para todo el chat, comparado con
+    // WhatsApp/Instagram DM -- ver ChatViewModel.setDisappearingSeconds(),
+    // 0115_disappearing_messages.sql.
+    val disappearingSeconds by viewModel.disappearingSeconds.collectAsState()
     val opponentId by viewModel.opponentId.collectAsState()
     val suggestedActivity by viewModel.suggestedActivity.collectAsState()
     val icebreaker by viewModel.icebreaker.collectAsState()
@@ -173,7 +179,49 @@ fun ChatScreen(
                 IconButton(onClick = { showReportSheet = true }) {
                     Icon(Icons.Filled.Warning, contentDescription = "Denunciar", tint = MaterialTheme.colorScheme.error)
                 }
+                // Mensajes que desaparecen real para todo el chat,
+                // comparado con WhatsApp/Instagram DM -- ver
+                // ChatViewModel.setDisappearingSeconds(),
+                // 0115_disappearing_messages.sql.
+                var showDisappearingMenu by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(onClick = { showDisappearingMenu = true }) {
+                        Text(if (disappearingSeconds != null) "🔥" else "🕐")
+                    }
+                    DropdownMenu(expanded = showDisappearingMenu, onDismissRequest = { showDisappearingMenu = false }) {
+                        DropdownMenuItem(text = { Text("Desactivado") }, onClick = {
+                            showDisappearingMenu = false
+                            viewModel.setDisappearingSeconds(null)
+                        })
+                        DropdownMenuItem(text = { Text("24 horas") }, onClick = {
+                            showDisappearingMenu = false
+                            viewModel.setDisappearingSeconds(86400)
+                        })
+                        DropdownMenuItem(text = { Text("7 días") }, onClick = {
+                            showDisappearingMenu = false
+                            viewModel.setDisappearingSeconds(604800)
+                        })
+                        DropdownMenuItem(text = { Text("90 días") }, onClick = {
+                            showDisappearingMenu = false
+                            viewModel.setDisappearingSeconds(7776000)
+                        })
+                    }
+                }
             }
+        }
+        if (disappearingSeconds != null) {
+            val label = when (disappearingSeconds) {
+                86400 -> "24 horas"
+                604800 -> "7 días"
+                else -> "90 días"
+            }
+            Text(
+                "🔥 Los mensajes nuevos desaparecen a las $label",
+                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
         val isOpponentOnline by viewModel.isOpponentOnline.collectAsState()
         if (isOpponentOnline) {

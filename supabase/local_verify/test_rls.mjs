@@ -3069,6 +3069,61 @@ async function main() {
     await db.query(`insert into reels (author_id, video_url, location_name) values ($1, 'https://example.com/v2.mp4', $2)`, [u1, 'x'.repeat(101)]);
   });
 
+  // --- Mensajes que desaparecen real para todo el chat
+  // (0115_disappearing_messages.sql), comparado con WhatsApp/Instagram
+  // DM. Usuarios NUEVOS a propósito. ---
+  await asSuperuser();
+  const dmU1 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const dmU2 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name) values ($1, 'Dm1'), ($2, 'Dm2')
+     on conflict (id) do update set display_name = excluded.display_name`,
+    [dmU1, dmU2]
+  );
+  const dmChat = (await db.query(`insert into chats (user_a_id, user_b_id) values ($1, $2) returning id, disappearing_seconds`, [dmU1, dmU2])).rows[0];
+  check('chats.disappearing_seconds: arranca en null (desactivado) por defecto', dmChat.disappearing_seconds === null);
+
+  await asUser(dmU1);
+  await expectFail('chats_disappearing_seconds_valid: un valor real fuera de las 3 opciones (3600) NO se puede guardar', async () => {
+    await db.query(`update chats set disappearing_seconds = 3600 where id = $1`, [dmChat.id]);
+  });
+  await expectOk('chats_update: dmU1 SÍ puede activar 24h reales de verdad', async () => {
+    await db.query(`update chats set disappearing_seconds = 86400 where id = $1`, [dmChat.id]);
+  });
+
+  const dmMsg1 = (await db.query(`insert into messages (chat_id, sender_id, body) values ($1, $2, 'este desaparece') returning id, disappear_at`, [dmChat.id, dmU1])).rows[0];
+  check('set_message_disappear_at: un mensaje real enviado con el modo activo SÍ recibe un disappear_at real futuro', dmMsg1.disappear_at !== null && new Date(dmMsg1.disappear_at) > new Date());
+
+  await expectOk('chats_update: dmU1 SÍ puede desactivar el modo real de nuevo', async () => {
+    await db.query(`update chats set disappearing_seconds = null where id = $1`, [dmChat.id]);
+  });
+  const dmMsg2 = (await db.query(`insert into messages (chat_id, sender_id, body) values ($1, $2, 'este NO desaparece') returning id, disappear_at`, [dmChat.id, dmU1])).rows[0];
+  check('set_message_disappear_at: desactivar NO es retroactivo -- un mensaje real nuevo tras desactivar no recibe disappear_at', dmMsg2.disappear_at === null);
+
+  await expectOk('protect_message_columns: dmU1 (el propio remitente) NO consigue tocar disappear_at directamente (revertido de verdad)', async () => {
+    await db.query(`update messages set disappear_at = now() + interval '1 year' where id = $1`, [dmMsg1.id]);
+  });
+  const dmMsg1AfterAttempt = (await db.query(`select disappear_at from messages where id = $1`, [dmMsg1.id])).rows[0];
+  check('protect_message_columns: disappear_at real queda igual tras el intento (inmutable de verdad)', new Date(dmMsg1AfterAttempt.disappear_at).getTime() === new Date(dmMsg1.disappear_at).getTime());
+
+  await asUser(dmU2);
+  const dmVisibleBeforeExpiry = (await db.query(`select id from messages where id = $1`, [dmMsg1.id])).rows;
+  check('messages_select: dmU2 real SÍ ve el mensaje real antes de que caduque', dmVisibleBeforeExpiry.length === 1);
+
+  // Simula el paso real del tiempo (sin cron real en este proyecto,
+  // aviso de honestidad documentado en la propia migración): un
+  // superusuario adelanta disappear_at al pasado, como haría un
+  // temporizador real ya cumplido.
+  await asSuperuser();
+  await db.query(`update messages set disappear_at = now() - interval '1 minute' where id = $1`, [dmMsg1.id]);
+
+  await asUser(dmU1);
+  const dmHiddenFromSender = (await db.query(`select id from messages where id = $1`, [dmMsg1.id])).rows;
+  check('messages_select: el propio remitente real (dmU1) YA NO ve su mensaje una vez caducado', dmHiddenFromSender.length === 0);
+  await asUser(dmU2);
+  const dmHiddenFromRecipient = (await db.query(`select id from messages where id = $1`, [dmMsg1.id])).rows;
+  check('messages_select: dmU2 real tampoco lo ve una vez caducado', dmHiddenFromRecipient.length === 0);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

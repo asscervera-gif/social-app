@@ -184,6 +184,10 @@ struct Chat: Codable, Identifiable {
     // Telegram/Messenger -- ver 0088_mark_chat_unread.sql.
     var markedUnreadByA: Bool = false
     var markedUnreadByB: Bool = false
+    // Mensajes que desaparecen real, comparado con WhatsApp/Instagram DM
+    // -- nil = desactivado, en segundos si está activo (86400/604800/
+    // 7776000). Ver 0115_disappearing_messages.sql.
+    var disappearingSeconds: Int? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -199,6 +203,7 @@ struct Chat: Codable, Identifiable {
         case pinnedByB = "pinned_by_b"
         case markedUnreadByA = "marked_unread_by_a"
         case markedUnreadByB = "marked_unread_by_b"
+        case disappearingSeconds = "disappearing_seconds"
     }
 }
 

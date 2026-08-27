@@ -389,6 +389,25 @@ struct ChatView: View {
                     Image(systemName: "exclamationmark.shield")
                 }
                 .tint(.red)
+                // Mensajes que desaparecen real para todo el chat,
+                // comparado con WhatsApp/Instagram DM -- ver
+                // ChatViewModel.setDisappearingSeconds(),
+                // 0115_disappearing_messages.sql.
+                Menu {
+                    Button("Desactivado") { Task { await viewModel.setDisappearingSeconds(nil) } }
+                    Button("24 horas") { Task { await viewModel.setDisappearingSeconds(86400) } }
+                    Button("7 días") { Task { await viewModel.setDisappearingSeconds(604800) } }
+                    Button("90 días") { Task { await viewModel.setDisappearingSeconds(7776000) } }
+                } label: {
+                    Text(viewModel.disappearingSeconds != nil ? "🔥" : "🕐")
+                }
+            }
+
+            if let seconds = viewModel.disappearingSeconds {
+                let label = seconds == 86400 ? "24 horas" : (seconds == 604800 ? "7 días" : "90 días")
+                Text("🔥 Los mensajes nuevos desaparecen a las \(label)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
 
             if viewModel.isOpponentOnline {

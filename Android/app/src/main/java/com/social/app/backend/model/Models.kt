@@ -144,7 +144,11 @@ data class Chat(
     val id: String,
     @SerialName("user_a_id") val userAId: String,
     @SerialName("user_b_id") val userBId: String,
-    @SerialName("compatibility_score") val compatibilityScore: Int = 50
+    @SerialName("compatibility_score") val compatibilityScore: Int = 50,
+    // Mensajes que desaparecen real, comparado con WhatsApp/Instagram DM
+    // -- null = desactivado, en segundos si está activo (86400/604800/
+    // 7776000). Ver 0115_disappearing_messages.sql.
+    @SerialName("disappearing_seconds") val disappearingSeconds: Int? = null
 )
 
 @Serializable
