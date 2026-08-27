@@ -33,6 +33,10 @@ struct ChatView: View {
     // cualquier app de mensajería grande. ReportSheet ya existe y ya
     // incluye ambas acciones, solo faltaba este punto de entrada.
     @State private var showReportSheet = false
+    // Historial visual real del % de compatibilidad -- el dato ya
+    // existía (compatibility_votes, 0032) pero nunca se leía, solo se
+    // insertaba. Hueco #1 de la auditoría de sistemas propios de SOCIAL.
+    @State private var showCompatibilityHistory = false
     // Hallazgo real, comparado con Instagram/WhatsApp/Messenger: no había
     // forma de denunciar un MENSAJE concreto, solo a la otra persona en
     // general -- ver 0048_reports_message_reference.sql.
@@ -97,6 +101,9 @@ struct ChatView: View {
                     }
                     .sheet(isPresented: $showReportSheet) {
                         ReportSheet(userID: currentUserID, reportedID: opponentID)
+                    }
+                    .sheet(isPresented: $showCompatibilityHistory) {
+                        CompatibilityHistorySheet(entries: viewModel.compatibilityHistory, currentUserID: currentUserID)
                     }
                     // Hallazgo real, comparado con Instagram/WhatsApp/
                     // Messenger: no había forma de denunciar un MENSAJE
@@ -369,8 +376,12 @@ struct ChatView: View {
 
             HStack {
                 Spacer()
-                Text("\(viewModel.compatibilityScore)% de compatibilidad")
+                Text("\(viewModel.compatibilityScore)% de compatibilidad · ver historial")
                     .font(.caption.bold())
+                    .onTapGesture {
+                        Task { await viewModel.loadCompatibilityHistory() }
+                        showCompatibilityHistory = true
+                    }
                 Spacer()
                 Button {
                     showReportSheet = true
@@ -830,6 +841,52 @@ private struct AudioMessageBubble: View {
                 }
             }
         }
+    }
+}
+
+/// Historial visual real del % de compatibilidad -- el dato
+/// (`compatibility_votes`) y su RLS de lectura ya existían desde 0002,
+/// pero ningún cliente lo leyó nunca hasta ahora (solo se insertaba,
+/// nunca se consultaba). Hueco #1 de la auditoría de sistemas propios de
+/// SOCIAL: la feature de menor coste posible, sin migración nueva. Mismo
+/// fix ya construido en la versión Kotlin equivalente.
+private struct CompatibilityHistorySheet: View {
+    let entries: [ChatViewModel.CompatibilityVoteEntry]
+    let currentUserID: UUID
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if entries.isEmpty {
+                    Text("Todavía no hay ningún voto real de compatibilidad en este chat.")
+                        .foregroundStyle(.secondary)
+                        .padding()
+                } else {
+                    List(entries) { entry in
+                        let quien = entry.voter_id == currentUserID ? "Tú" : "La otra persona"
+                        let signo = entry.delta > 0 ? "+" : ""
+                        Text("\(quien) votó \(signo)\(entry.delta) · \(relativeTime(entry.created_at))")
+                    }
+                }
+            }
+            .navigationTitle("Historial de compatibilidad")
+        }
+    }
+}
+
+private func relativeTime(_ isoTimestamp: String) -> String {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    guard let then = formatter.date(from: isoTimestamp) ?? ISO8601DateFormatter().date(from: isoTimestamp) else {
+        return ""
+    }
+    let seconds = Date().timeIntervalSince(then)
+    switch seconds {
+    case ..<60: return "ahora"
+    case ..<3600: return "hace \(Int(seconds / 60))min"
+    case ..<86400: return "hace \(Int(seconds / 3600))h"
+    case ..<604800: return "hace \(Int(seconds / 86400))d"
+    default: return "hace \(Int(seconds / 604800))sem"
     }
 }
 

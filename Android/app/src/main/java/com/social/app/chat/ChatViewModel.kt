@@ -903,4 +903,35 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
             }
         }
     }
+
+    @Serializable
+    data class CompatibilityVoteEntry(
+        val id: String,
+        @SerialName("voter_id") val voterId: String,
+        val delta: Int,
+        @SerialName("created_at") val createdAt: String
+    )
+
+    private val _compatibilityHistory = MutableStateFlow<List<CompatibilityVoteEntry>>(emptyList())
+    val compatibilityHistory: StateFlow<List<CompatibilityVoteEntry>> = _compatibilityHistory
+
+    /** Historial visual real del % de compatibilidad -- el dato
+     * (`compatibility_votes`) y su RLS de lectura ya existían desde 0002,
+     * pero ningún cliente lo leyó nunca hasta ahora (solo se insertaba,
+     * nunca se consultaba). Hueco #1 de la auditoría de sistemas propios
+     * de SOCIAL: la feature de menor coste posible, sin migración nueva. */
+    fun loadCompatibilityHistory() {
+        viewModelScope.launch {
+            try {
+                _compatibilityHistory.value = SupabaseManager.client.from("compatibility_votes")
+                    .select(columns = Columns.raw("id,voter_id,delta,created_at")) {
+                        filter { eq("chat_id", chatId) }
+                        order("created_at", Order.ASCENDING)
+                    }
+                    .decodeList<CompatibilityVoteEntry>()
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo cargar el historial de compatibilidad."
+            }
+        }
+    }
 }

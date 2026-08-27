@@ -860,6 +860,35 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
+    struct CompatibilityVoteEntry: Decodable, Identifiable {
+        let id: UUID
+        let voter_id: UUID
+        let delta: Int
+        let created_at: String
+    }
+
+    @Published var compatibilityHistory: [CompatibilityVoteEntry] = []
+
+    /// Historial visual real del % de compatibilidad -- el dato
+    /// (`compatibility_votes`) y su RLS de lectura ya existían desde 0002,
+    /// pero ningún cliente lo leyó nunca hasta ahora (solo se insertaba,
+    /// nunca se consultaba). Hueco #1 de la auditoría de sistemas propios
+    /// de SOCIAL: la feature de menor coste posible, sin migración nueva.
+    /// Mismo fix ya construido en la versión Kotlin equivalente.
+    func loadCompatibilityHistory() async {
+        do {
+            compatibilityHistory = try await SupabaseManager.shared.client
+                .from("compatibility_votes")
+                .select("id,voter_id,delta,created_at")
+                .eq("chat_id", value: chatID)
+                .order("created_at", ascending: true)
+                .execute()
+                .value
+        } catch {
+            errorMessage = "No se pudo cargar el historial de compatibilidad."
+        }
+    }
+
     /// Al superar el 50%, se muestra una actividad sugerida (generada en Fase 6
     /// vía IA; aquí se consulta si ya existe una guardada para este chat).
     /// Hallazgo real (cerrado esta pasada): esta función siempre consultó

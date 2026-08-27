@@ -133,6 +133,11 @@ fun ChatScreen(
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) pendingPhotoUri = uri
     }
+    // Historial visual real del % de compatibilidad -- el dato ya
+    // existía (compatibility_votes, 0032) pero nunca se leía, solo se
+    // insertaba. Hueco #1 de la auditoría de sistemas propios de SOCIAL.
+    var showCompatibilityHistory by remember { mutableStateOf(false) }
+    val compatibilityHistory by viewModel.compatibilityHistory.collectAsState()
 
     LaunchedEffect(chatId) { viewModel.start() }
     DisposableEffect(chatId) { onDispose { viewModel.stop() } }
@@ -144,8 +149,11 @@ fun ChatScreen(
         )
         Box(modifier = Modifier.fillMaxWidth()) {
             Text(
-                "$compatibility% de compatibilidad",
-                modifier = Modifier.fillMaxWidth().padding(4.dp),
+                "$compatibility% de compatibilidad · ver historial",
+                modifier = Modifier.fillMaxWidth().padding(4.dp).clickable {
+                    viewModel.loadCompatibilityHistory()
+                    showCompatibilityHistory = true
+                },
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 style = MaterialTheme.typography.labelMedium
             )
@@ -663,6 +671,31 @@ fun ChatScreen(
                     viewModel.sendPhoto(context, uri, viewOnce = false)
                     pendingPhotoUri = null
                 }) { Text("Normal") }
+            }
+        )
+    }
+    if (showCompatibilityHistory) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showCompatibilityHistory = false },
+            title = { Text("Historial de compatibilidad") },
+            text = {
+                if (compatibilityHistory.isEmpty()) {
+                    Text("Todavía no hay ningún voto real de compatibilidad en este chat.")
+                } else {
+                    LazyColumn {
+                        items(compatibilityHistory) { entry ->
+                            val quien = if (entry.voterId == currentUserId) "Tú" else "La otra persona"
+                            val signo = if (entry.delta > 0) "+" else ""
+                            Text(
+                                "$quien votó $signo${entry.delta} · ${com.social.app.util.relativeTime(entry.createdAt)}",
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { showCompatibilityHistory = false }) { Text("Cerrar") }
             }
         )
     }
