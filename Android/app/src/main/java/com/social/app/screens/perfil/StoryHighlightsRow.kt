@@ -3,11 +3,15 @@ package com.social.app.screens.perfil
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -26,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -132,17 +137,20 @@ fun StoryHighlightsRow(profileId: String) {
 }
 
 /**
- * Visor minimalista de un destacado real -- alcance deliberado, distinto
- * del visor de una historia activa (StoriesBar.kt.StoryViewer): solo
- * pasa las fotos reales una a una al tocar, sin las barras de progreso ni
- * los adhesivos interactivos (encuesta/pregunta/responder) de una
- * historia activa. Añadir esa paridad completa es un hueco real aparte,
- * documentado en LOOP_STATE.md.
+ * Visor de un destacado real, comparado con Instagram -- ahora con las
+ * mismas barras de progreso segmentadas y avance automático que el visor
+ * de una historia activa (StoriesBar.kt.StoryViewer, mismo patrón real
+ * reutilizado: 5s por foto, Animatable + pasos de 50ms). Cierra el hueco
+ * deliberado documentado hasta ahora en este mismo archivo. Los
+ * adhesivos interactivos (encuesta/pregunta/responder) de una historia
+ * activa siguen fuera de alcance a propósito -- un destacado ya no tiene
+ * sentido real para responder/votar, esas piezas eran efímeras.
  */
 @Composable
 private fun HighlightViewer(highlight: HighlightRow, onDismiss: () -> Unit) {
     var mediaUrls by remember(highlight.id) { mutableStateOf<List<String>>(emptyList()) }
     var index by remember(highlight.id) { mutableStateOf(0) }
+    val progress = remember(index) { androidx.compose.animation.core.Animatable(0f) }
 
     LaunchedEffect(highlight.id) {
         try {
@@ -159,24 +167,91 @@ private fun HighlightViewer(highlight: HighlightRow, onDismiss: () -> Unit) {
         }
     }
 
+    fun goNext() {
+        if (index < mediaUrls.lastIndex) index += 1 else onDismiss()
+    }
+    fun goPrevious() {
+        if (index > 0) index -= 1
+    }
+
+    // Mismo criterio real que StoriesBar.kt.StoryViewer: 5s por foto,
+    // cancelado sin avance doble por el cambio de `index` cuando se
+    // avanza a mano.
+    // Con clave (index, mediaUrls) en vez de solo `index`: sin esto, el
+    // avance automático nunca arrancaría -- las fotos reales llegan de
+    // forma asíncrona DESPUÉS de que este efecto ya se disparó una vez
+    // con la lista todavía vacía, y `LaunchedEffect(index)` no se vuelve
+    // a lanzar solo porque cambie el contenido de `mediaUrls` con el
+    // mismo `index` (0). Hallazgo real, encontrado escribiendo esta misma
+    // ronda.
+    LaunchedEffect(index, mediaUrls) {
+        if (mediaUrls.isEmpty()) return@LaunchedEffect
+        progress.snapTo(0f)
+        val totalMs = 5000
+        val stepMs = 50L
+        var elapsedMs = 0
+        while (elapsedMs < totalMs) {
+            kotlinx.coroutines.delay(stepMs)
+            elapsedMs += stepMs.toInt()
+            progress.snapTo((elapsedMs / totalMs.toFloat()).coerceAtMost(1f))
+        }
+        goNext()
+    }
+
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+                .pointerInput(index) {
+                    detectTapGestures { offset ->
+                        if (offset.x < size.width / 2) goPrevious() else goNext()
+                    }
+                }
+        ) {
             val url = mediaUrls.getOrNull(index)
             if (url != null) {
                 Image(
                     painter = rememberAsyncImagePainter(url),
                     contentDescription = null,
                     contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize().clickable {
-                        if (index < mediaUrls.lastIndex) index += 1 else onDismiss()
-                    }
+                    modifier = Modifier.fillMaxSize()
                 )
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .padding(top = 10.dp, start = 8.dp, end = 8.dp)
+            ) {
+                mediaUrls.indices.forEach { i ->
+                    val fill = when {
+                        i < index -> 1f
+                        i == index -> progress.value
+                        else -> 0f
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(3.dp)
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
+                            .background(Color.White.copy(alpha = 0.35f))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(fill)
+                                .background(Color.White)
+                        )
+                    }
+                }
             }
             Text(
                 highlight.title,
                 color = Color.White,
                 style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.align(Alignment.TopStart).padding(16.dp)
+                modifier = Modifier.align(Alignment.TopStart).padding(top = 22.dp, start = 16.dp)
             )
         }
     }
