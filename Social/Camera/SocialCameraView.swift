@@ -62,6 +62,7 @@ struct SocialCameraView: View {
                     HStack {
                         densityBanner
                         Spacer()
+                        flipCameraToggle
                         invisibleToggle
                     }
                     if eventMode.activeEvent != nil {
@@ -194,6 +195,26 @@ struct SocialCameraView: View {
         } else {
             return "Apuntando…"
         }
+    }
+
+    // MARK: - Cambiar de cámara
+
+    /// Cambiar entre cámara trasera/frontal real, comparado con
+    /// Snapchat/Instagram Stories/TikTok -- las tres dejan alternar de
+    /// cámara con un toque en su propia vista de cámara en vivo. Ver
+    /// CameraController.switchCamera().
+    private var flipCameraToggle: some View {
+        Button {
+            camera.switchCamera()
+            AnalyticsManager.track("camera_flipped")
+        } label: {
+            Image(systemName: "camera.rotate")
+                .padding(10)
+                .background(.black.opacity(0.55))
+                .foregroundStyle(.white)
+                .clipShape(Circle())
+        }
+        .padding(.trailing, 8)
     }
 
     // MARK: - Modo invisible

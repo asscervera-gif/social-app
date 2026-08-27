@@ -60,6 +60,12 @@ fun SocialCameraScreen(proximity: SocialProximity, onOpenProfile: (String) -> Un
     val discoveredCount by proximity.discoveredCount.collectAsState()
     val statusMessage by proximity.statusMessage.collectAsState()
     var isInvisible by remember { mutableStateOf(false) }
+    // Cambiar entre cámara trasera/frontal real, comparado con
+    // Snapchat/Instagram Stories/TikTok -- las tres dejan alternar de
+    // cámara con un toque en su propia vista de cámara en vivo, hueco
+    // real hasta ahora (siempre la trasera, sin ninguna forma de
+    // cambiarla). Ver CameraPreview.kt.
+    var useFrontCamera by remember { mutableStateOf(false) }
     var showReportSheet by remember { mutableStateOf(false) }
     var selectedPeer by remember { mutableStateOf<com.social.app.proximity.PeerProximity?>(null) }
     val socialLinks = remember { com.social.app.chat.SocialLinkManager() }
@@ -146,7 +152,7 @@ fun SocialCameraScreen(proximity: SocialProximity, onOpenProfile: (String) -> Un
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        CameraPreview(modifier = Modifier.fillMaxSize())
+        CameraPreview(modifier = Modifier.fillMaxSize(), useFrontCamera = useFrontCamera)
 
         // Radar de fondo -- comparado con el boceto real
         // (social_boceto.html, .radar/.sweep): refuerza visualmente que
@@ -207,6 +213,19 @@ fun SocialCameraScreen(proximity: SocialProximity, onOpenProfile: (String) -> Un
                             contentDescription = "Modo invisible",
                             tint = Color.White
                         )
+                    }
+                    // Cambiar entre cámara trasera/frontal real, comparado
+                    // con Snapchat/Instagram Stories/TikTok. Emoji en vez
+                    // de un icono nuevo (`Icons.Filled.Cameraswitch` vive
+                    // en el artefacto de iconos extendidos, no incluido en
+                    // este proyecto -- mismo criterio ya aplicado antes en
+                    // PerfilScreen.kt cuando `Icons.Filled.Share` no
+                    // resolvía).
+                    IconButton(onClick = {
+                        useFrontCamera = !useFrontCamera
+                        AnalyticsManager.track("camera_flipped")
+                    }) {
+                        Text("🔄", color = Color.White, style = MaterialTheme.typography.titleLarge)
                     }
                     IconButton(onClick = { showReportSheet = true }) {
                         Icon(Icons.Filled.Warning, contentDescription = "Denunciar", tint = Color.White)
