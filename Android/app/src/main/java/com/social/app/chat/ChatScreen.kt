@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
@@ -42,6 +43,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -135,6 +138,10 @@ fun ChatScreen(
     // Snapchat -- se pregunta al elegir la foto, mismo momento real que
     // 0075_close_friends_stories.sql pregunta la audiencia de una
     // historia. Ver ChatViewModel.sendPhoto(), 0105_view_once_messages.sql.
+    var showSearch by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val searchScope = rememberCoroutineScope()
     var pendingPhotoUri by remember { mutableStateOf<android.net.Uri?>(null) }
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) pendingPhotoUri = uri
@@ -178,6 +185,17 @@ fun ChatScreen(
                 }
                 IconButton(onClick = { showReportSheet = true }) {
                     Icon(Icons.Filled.Warning, contentDescription = "Denunciar", tint = MaterialTheme.colorScheme.error)
+                }
+                // Buscar en el chat, comparado con WhatsApp/Telegram/
+                // Messenger -- hueco real, ningún chat construido desde
+                // cero esta sesión tenía forma de encontrar un mensaje
+                // antiguo salvo desplazarse a mano. Alcance deliberado:
+                // busca solo entre los mensajes ya cargados en memoria
+                // (sin re-consultar el servidor), honesto si el mensaje
+                // real está más atrás -- "Cargar anteriores" ya existe
+                // arriba para eso.
+                IconButton(onClick = { showSearch = true }) {
+                    Icon(Icons.Filled.Search, contentDescription = "Buscar en el chat")
                 }
                 // Mensajes que desaparecen real para todo el chat,
                 // comparado con WhatsApp/Instagram DM -- ver
@@ -307,7 +325,7 @@ fun ChatScreen(
         }
 
         val reactionEmojis = listOf("❤", "😂", "😮", "😢", "👍")
-        LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp)) {
+        LazyColumn(state = listState, modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp)) {
             // Hueco real: sin esto, un chat con más de 100 mensajes perdía
             // silenciosamente todo lo anterior a los últimos 100, sin forma
             // de volver a verlo (ver ChatViewModel.loadOlderMessages()).
@@ -752,6 +770,51 @@ fun ChatScreen(
             },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = { showCompatibilityHistory = false }) { Text("Cerrar") }
+            }
+        )
+    }
+    if (showSearch) {
+        val matches = if (searchQuery.isBlank()) emptyList() else messages.filter {
+            it.body?.contains(searchQuery, ignoreCase = true) == true
+        }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showSearch = false },
+            title = { Text("Buscar en el chat") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = { Text("Texto a buscar") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (searchQuery.isNotBlank() && matches.isEmpty()) {
+                        Text(
+                            "Sin resultados entre los mensajes ya cargados. Prueba \"Cargar anteriores\" si es un mensaje viejo.",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                    androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.padding(top = 8.dp)) {
+                        items(matches) { match ->
+                            Text(
+                                match.body.orEmpty(),
+                                maxLines = 1,
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).clickable {
+                                    val index = messages.indexOfFirst { it.id == match.id }
+                                    // +1 si "Cargar anteriores" está visible arriba (ocupa el
+                                    // primer item real de la LazyColumn).
+                                    if (index >= 0) searchScope.launch { listState.animateScrollToItem(index + if (hasMoreHistory) 1 else 0) }
+                                    showSearch = false
+                                }
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { showSearch = false }) { Text("Cerrar") }
             }
         )
     }

@@ -37,6 +37,13 @@ struct ChatView: View {
     // existía (compatibility_votes, 0032) pero nunca se leía, solo se
     // insertaba. Hueco #1 de la auditoría de sistemas propios de SOCIAL.
     @State private var showCompatibilityHistory = false
+    // Buscar en el chat, comparado con WhatsApp/Telegram/Messenger --
+    // hueco real, ningún chat construido esta sesión tenía forma de
+    // encontrar un mensaje antiguo salvo desplazarse a mano. Alcance
+    // deliberado: busca solo entre los mensajes ya cargados en memoria.
+    @State private var showSearch = false
+    @State private var searchQuery = ""
+    @State private var scrollToMessageID: UUID?
     // Hallazgo real, comparado con Instagram/WhatsApp/Messenger: no había
     // forma de denunciar un MENSAJE concreto, solo a la otra persona en
     // general -- ver 0048_reports_message_reference.sql.
@@ -104,6 +111,12 @@ struct ChatView: View {
                     }
                     .sheet(isPresented: $showCompatibilityHistory) {
                         CompatibilityHistorySheet(entries: viewModel.compatibilityHistory, currentUserID: currentUserID)
+                    }
+                    .sheet(isPresented: $showSearch) {
+                        ChatSearchSheet(messages: viewModel.messages, query: $searchQuery) { messageID in
+                            scrollToMessageID = messageID
+                            showSearch = false
+                        }
                     }
                     // Hallazgo real, comparado con Instagram/WhatsApp/
                     // Messenger: no había forma de denunciar un MENSAJE
@@ -180,6 +193,13 @@ struct ChatView: View {
 
             ScrollViewReader { proxy in
                 ScrollView {
+                    Color.clear.frame(height: 0)
+                        .onChange(of: scrollToMessageID) { newValue in
+                            if let id = newValue {
+                                withAnimation { proxy.scrollTo(id, anchor: .center) }
+                                scrollToMessageID = nil
+                            }
+                        }
                     LazyVStack(spacing: 8) {
                         // Hueco real: sin esto, un chat con más de 100
                         // mensajes perdía silenciosamente todo lo anterior a
@@ -389,6 +409,11 @@ struct ChatView: View {
                     Image(systemName: "exclamationmark.shield")
                 }
                 .tint(.red)
+                Button {
+                    showSearch = true
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                }
                 // Mensajes que desaparecen real para todo el chat,
                 // comparado con WhatsApp/Instagram DM -- ver
                 // ChatViewModel.setDisappearingSeconds(),
@@ -910,6 +935,43 @@ private func relativeTime(_ isoTimestamp: String) -> String {
     case ..<86400: return "hace \(Int(seconds / 3600))h"
     case ..<604800: return "hace \(Int(seconds / 86400))d"
     default: return "hace \(Int(seconds / 604800))sem"
+    }
+}
+
+/// Buscar en el chat, comparado con WhatsApp/Telegram/Messenger --
+/// busca solo entre los mensajes ya cargados en memoria (honesto si el
+/// mensaje real está más atrás -- "Cargar anteriores" ya existe para
+/// eso). Equivalente del diálogo de búsqueda de ChatScreen.kt.
+private struct ChatSearchSheet: View {
+    let messages: [ChatMessage]
+    @Binding var query: String
+    let onSelect: (UUID) -> Void
+
+    private var matches: [ChatMessage] {
+        guard !query.isEmpty else { return [] }
+        return messages.filter { $0.body?.localizedCaseInsensitiveContains(query) == true }
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack {
+                TextField("Texto a buscar", text: $query)
+                    .textFieldStyle(.roundedBorder)
+                    .padding()
+                if !query.isEmpty && matches.isEmpty {
+                    Text("Sin resultados entre los mensajes ya cargados. Prueba \"Cargar anteriores\" si es un mensaje viejo.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal)
+                }
+                List(matches) { message in
+                    Text(message.body ?? "")
+                        .lineLimit(1)
+                        .onTapGesture { onSelect(message.id) }
+                }
+            }
+            .navigationTitle("Buscar en el chat")
+        }
     }
 }
 
