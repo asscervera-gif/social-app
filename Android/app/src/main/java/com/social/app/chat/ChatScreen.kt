@@ -50,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -856,6 +857,7 @@ fun ChatScreen(
     // Hallazgo real, comparado con WhatsApp/Telegram/Messenger: mantener
     // pulsado un mensaje propio lo borraba al instante sin confirmación --
     // ahora un menú real, ver 0049_messages_edit.sql.
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
     managingMessage?.let { message ->
         val isMineMessage = message.senderId == currentUserId
         // Mensajes destacados reales, comparado con WhatsApp -- sobre
@@ -892,6 +894,15 @@ fun ChatScreen(
                         viewModel.setReplyingTo(message)
                         managingMessage = null
                     }) { Text("Responder") }
+                    // Copiar texto, comparado con WhatsApp/Telegram/
+                    // Messenger -- hueco real, básico y universal,
+                    // ningún chat de esta sesión lo tenía.
+                    if (message.body != null) {
+                        androidx.compose.material3.TextButton(onClick = {
+                            clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(message.body))
+                            managingMessage = null
+                        }) { Text("Copiar") }
+                    }
                     // Fijar un mensaje real (propio o ajeno), VISIBLE PARA
                     // TODOS los participantes -- a diferencia de "Destacar"
                     // (arriba), totalmente privado. Ver

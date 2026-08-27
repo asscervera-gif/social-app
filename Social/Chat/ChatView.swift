@@ -9,6 +9,7 @@
 import SwiftUI
 import PhotosUI
 import AVFoundation
+import UIKit
 
 struct ChatView: View {
 
@@ -338,6 +339,13 @@ struct ChatView: View {
                 // ChatViewModel.replyingTo, 0102_message_reply.sql.
                 Button("Responder") {
                     viewModel.replyingTo = managingMessage
+                }
+                // Copiar texto, comparado con WhatsApp/Telegram/
+                // Messenger -- hueco real, básico y universal.
+                if let body = managingMessage.body {
+                    Button("Copiar") {
+                        UIPasteboard.general.string = body
+                    }
                 }
                 // Fijar un mensaje real (propio o ajeno), VISIBLE PARA
                 // TODOS los participantes -- a diferencia de "Destacar"
