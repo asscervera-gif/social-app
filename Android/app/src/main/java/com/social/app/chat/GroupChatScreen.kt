@@ -145,9 +145,13 @@ fun GroupChatScreen(
     // Fotos reales en un chat de grupo, comparado con WhatsApp/Instagram/
     // Messenger/Facebook -- mismo patrón exacto que ChatScreen.kt (1:1).
     var fullScreenImageUrl by remember { mutableStateOf<String?>(null) }
+    // Añadir un pie de foto real, comparado con WhatsApp/Telegram/
+    // Instagram DM -- mismo hueco real ya cerrado en el chat 1:1
+    // (ChatScreen.kt).
+    var pendingGroupPhotoUri by remember { mutableStateOf<android.net.Uri?>(null) }
     val pickImage = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.GetContent()
-    ) { uri -> uri?.let { viewModel.sendPhoto(context, it) } }
+    ) { uri -> uri?.let { pendingGroupPhotoUri = it } }
 
     LaunchedEffect(groupChatId) { viewModel.load() }
     LaunchedEffect(messages.size) {
@@ -554,6 +558,31 @@ fun GroupChatScreen(
     // Editar/borrar un mensaje ya enviado en un grupo real
     // (0065_group_messages_edit_delete.sql), comparado con WhatsApp/
     // Telegram/Messenger -- mismo menú real que ChatScreen.kt (chat 1:1).
+    pendingGroupPhotoUri?.let { uri ->
+        var groupPhotoCaption by remember(uri) { mutableStateOf("") }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { pendingGroupPhotoUri = null },
+            title = { Text("Enviar foto") },
+            text = {
+                OutlinedTextField(
+                    value = groupPhotoCaption,
+                    onValueChange = { groupPhotoCaption = it },
+                    placeholder = { Text("Añadir un comentario (opcional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.sendPhoto(context, uri, caption = groupPhotoCaption)
+                    pendingGroupPhotoUri = null
+                }) { Text("Enviar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingGroupPhotoUri = null }) { Text("Cancelar") }
+            }
+        )
+    }
     groupCustomReactionMessageId?.let { messageId ->
         var customEmoji by remember { mutableStateOf("") }
         androidx.compose.material3.AlertDialog(

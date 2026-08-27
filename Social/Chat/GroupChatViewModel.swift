@@ -767,18 +767,25 @@ final class GroupChatViewModel: ObservableObject {
     /// tal cual `StorageUploader.uploadImage` ya construido para el chat
     /// 1:1, sin infraestructura nueva. Equivalente de
     /// ChatViewModel.swift.sendPhoto().
-    func sendPhoto(imageData: Data) async {
+    func sendPhoto(imageData: Data, caption: String = "") async {
         guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
         struct NewGroupPhotoMessage: Encodable {
             let group_chat_id: UUID
             let sender_id: UUID
             let media_url: String
+            let body: String?
         }
         do {
             let url = try await StorageUploader.uploadImage(data: imageData, fileExtension: "jpg", userID: userID)
+            // Añadir un pie de foto real, comparado con WhatsApp/
+            // Telegram/Instagram DM -- mismo hueco real ya cerrado en el
+            // chat 1:1 (ChatViewModel.swift). Equivalente de
+            // GroupChatViewModel.kt.sendPhoto().
+            let trimmed = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+            let finalCaption = trimmed.isEmpty ? nil : String(trimmed.prefix(2000))
             let inserted: GroupMessage = try await SupabaseManager.shared.client
                 .from("group_messages")
-                .insert(NewGroupPhotoMessage(group_chat_id: groupChatID, sender_id: userID, media_url: url))
+                .insert(NewGroupPhotoMessage(group_chat_id: groupChatID, sender_id: userID, media_url: url, body: finalCaption))
                 .select()
                 .single()
                 .execute()

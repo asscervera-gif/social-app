@@ -745,13 +745,17 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
      * tal cual `StorageUploader.uploadImage` ya construido para el chat
      * 1:1, sin infraestructura nueva. Equivalente de
      * ChatViewModel.kt.sendPhoto(). */
-    fun sendPhoto(context: android.content.Context, uri: android.net.Uri) {
+    fun sendPhoto(context: android.content.Context, uri: android.net.Uri, caption: String = "") {
         viewModelScope.launch {
             try {
                 val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
                 val url = com.social.app.backend.StorageUploader.uploadImage(context, uri, userId)
+                // Añadir un pie de foto real, comparado con WhatsApp/
+                // Telegram/Instagram DM -- mismo hueco real ya cerrado
+                // en el chat 1:1 (ChatViewModel.kt).
+                val trimmedCaption = caption.trim().ifEmpty { null }?.take(2000)
                 val inserted = SupabaseManager.client.from("group_messages")
-                    .insert(NewGroupMessage(groupChatId, userId, mediaUrl = url)) { select() }
+                    .insert(NewGroupMessage(groupChatId, userId, mediaUrl = url, body = trimmedCaption)) { select() }
                     .decodeSingle<GroupMessage>()
                 if (_messages.value.none { it.id == inserted.id }) {
                     _messages.update { it + inserted }

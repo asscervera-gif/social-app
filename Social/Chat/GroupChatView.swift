@@ -36,6 +36,11 @@ struct GroupChatView: View {
     // Fotos reales en un chat de grupo, comparado con WhatsApp/Instagram/
     // Messenger/Facebook -- mismo patrón exacto que ChatView.swift (1:1).
     @State private var selectedPhoto: PhotosPickerItem?
+    // Añadir un pie de foto real, comparado con WhatsApp/Telegram/
+    // Instagram DM -- mismo hueco real ya cerrado en el chat 1:1
+    // (ChatView.swift).
+    @State private var pendingGroupPhotoData: Data?
+    @State private var pendingGroupPhotoCaption = ""
     @State private var fullScreenURL: URL?
     // Editar/borrar un mensaje ya enviado en un grupo real
     // (0065_group_messages_edit_delete.sql), comparado con WhatsApp/
@@ -197,8 +202,26 @@ struct GroupChatView: View {
                 .onChange(of: selectedPhoto) { newValue in
                     Task {
                         if let data = try? await newValue?.loadTransferable(type: Data.self) {
-                            await viewModel.sendPhoto(imageData: data)
+                            pendingGroupPhotoData = data
                         }
+                    }
+                }
+                .alert("Enviar foto", isPresented: Binding(
+                    get: { pendingGroupPhotoData != nil },
+                    set: { if !$0 { pendingGroupPhotoData = nil } }
+                )) {
+                    TextField("Añadir un comentario (opcional)", text: $pendingGroupPhotoCaption)
+                    Button("Enviar") {
+                        if let data = pendingGroupPhotoData {
+                            let caption = pendingGroupPhotoCaption
+                            pendingGroupPhotoData = nil
+                            pendingGroupPhotoCaption = ""
+                            Task { await viewModel.sendPhoto(imageData: data, caption: caption) }
+                        }
+                    }
+                    Button("Cancelar", role: .cancel) {
+                        pendingGroupPhotoData = nil
+                        pendingGroupPhotoCaption = ""
                     }
                 }
                 // Nota de voz real (0062_group_message_audio.sql), mismo
