@@ -78,6 +78,11 @@ final class PrivacySettingsViewModel: ObservableObject {
     // deja de pintar "Leído" para cualquiera cuyo propio interruptor esté
     // apagado, sea quien sea). Ver 0091_read_receipts_toggle.sql.
     @Published var readReceiptsEnabled = true
+    // Interruptor recíproco de privacidad para "Últ. vez", comparado con
+    // WhatsApp/Telegram -- si lo apagas, tampoco ves la de los demás
+    // (ChatViewModel.swift.loadOpponentLastActive() ya deja de pintarla).
+    // Ver 0122_last_active_privacy_toggle.sql.
+    @Published var shareLastActive = true
     @Published var errorMessage: String?
 
     private struct PrivacyRow: Decodable {
@@ -87,6 +92,7 @@ final class PrivacySettingsViewModel: ObservableObject {
         let muted_keywords: [String]
         let read_receipts_enabled: Bool
         let muted_feed_keywords: [String]
+        var share_last_active: Bool = true
     }
 
     func load() async {
@@ -94,7 +100,7 @@ final class PrivacySettingsViewModel: ObservableObject {
         do {
             let row: PrivacyRow = try await SupabaseManager.shared.client
                 .from("profiles")
-                .select("compat_public,location_public,muted_push_kinds,muted_keywords,read_receipts_enabled,muted_feed_keywords")
+                .select("compat_public,location_public,muted_push_kinds,muted_keywords,read_receipts_enabled,muted_feed_keywords,share_last_active")
                 .eq("id", value: userID)
                 .single()
                 .execute()
@@ -105,6 +111,7 @@ final class PrivacySettingsViewModel: ObservableObject {
             mutedKeywords = row.muted_keywords
             readReceiptsEnabled = row.read_receipts_enabled
             mutedFeedKeywords = row.muted_feed_keywords
+            shareLastActive = row.share_last_active
         } catch {
             errorMessage = "No se pudo cargar la privacidad."
         }
@@ -226,6 +233,14 @@ final class PrivacySettingsViewModel: ObservableObject {
         readReceiptsEnabled = value
         Task {
             if !(await updateColumn(["read_receipts_enabled": value])) { readReceiptsEnabled = previous }
+        }
+    }
+
+    func setShareLastActive(_ value: Bool) {
+        let previous = shareLastActive
+        shareLastActive = value
+        Task {
+            if !(await updateColumn(["share_last_active": value])) { shareLastActive = previous }
         }
     }
 

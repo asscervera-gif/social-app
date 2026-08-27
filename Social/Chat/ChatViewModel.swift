@@ -168,8 +168,19 @@ final class ChatViewModel: ObservableObject {
 
     @Published var opponentLastActiveAt: String?
 
+    private struct LastActiveRow: Decodable {
+        let id: UUID?
+        let last_active_at: String?
+        var share_last_active: Bool = true
+    }
+
+    /// Interruptor recíproco de privacidad para "Últ. vez", comparado con
+    /// WhatsApp/Telegram -- cierra el hueco deliberado documentado en
+    /// 0119_last_active_at.sql. Mismo criterio real que
+    /// loadReadReceiptsVisibility(): si CUALQUIERA de los dos apagó su
+    /// propia share_last_active, no se pinta "Últ. vez" en ningún
+    /// sentido. Ver 0122_last_active_privacy_toggle.sql.
     private func loadOpponentLastActive() async {
-        struct LastActiveRow: Decodable { let last_active_at: String? }
         guard let chat: Chat = try? await SupabaseManager.shared.client
             .from("chats")
             .select()
@@ -178,15 +189,17 @@ final class ChatViewModel: ObservableObject {
             .execute()
             .value else { return }
         let opponent = chat.userAID == currentUserID ? chat.userBID : chat.userAID
-        if let row: LastActiveRow = try? await SupabaseManager.shared.client
+        guard let rows: [LastActiveRow] = try? await SupabaseManager.shared.client
             .from("profiles")
-            .select("last_active_at")
-            .eq("id", value: opponent)
-            .single()
+            .select("id,last_active_at,share_last_active")
+            .in("id", values: [currentUserID, opponent])
             .execute()
-            .value {
-            opponentLastActiveAt = row.last_active_at
+            .value else { return }
+        guard rows.allSatisfy({ $0.share_last_active }) else {
+            opponentLastActiveAt = nil
+            return
         }
+        opponentLastActiveAt = rows.first { $0.id == opponent }?.last_active_at
     }
 
     // Mensajes destacados reales, comparado con WhatsApp

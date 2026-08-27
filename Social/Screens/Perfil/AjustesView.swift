@@ -247,6 +247,20 @@ struct AjustesView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            // Interruptor recíproco de privacidad para "Últ. vez",
+            // comparado con WhatsApp/Telegram -- cierra el hueco
+            // deliberado documentado en 0119_last_active_at.sql.
+            Toggle(isOn: Binding(
+                get: { privacy.shareLastActive },
+                set: { privacy.setShareLastActive($0) }
+            )) {
+                VStack(alignment: .leading) {
+                    Text("Últ. vez")
+                    Text("Muestra cuándo usaste la app por última vez. Si lo apagas, tampoco verás la de los demás.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
 
             // Hallazgo real: mismo patrón que socials — una vez aceptada
             // una compat_request, no había NINGUNA forma de revocar el

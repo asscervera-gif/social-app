@@ -104,6 +104,7 @@ fun AjustesScreen(
     val compatPublic by privacy.compatPublic.collectAsState()
     val locationPublic by privacy.locationPublic.collectAsState()
     val readReceiptsEnabled by privacy.readReceiptsEnabled.collectAsState()
+    val shareLastActive by privacy.shareLastActive.collectAsState()
     LaunchedEffect(Unit) { privacy.load() }
 
     // Hallazgo real: `reports` existía y ya recibía denuncias reales
@@ -391,6 +392,25 @@ fun AjustesScreen(
                 )
             }
             Switch(checked = readReceiptsEnabled, onCheckedChange = { privacy.setReadReceiptsEnabled(it) })
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.padding(end = 12.dp)) {
+                // Interruptor recíproco de privacidad para "Últ. vez",
+                // comparado con WhatsApp/Telegram -- cierra el hueco
+                // deliberado documentado en 0119_last_active_at.sql.
+                Text("Últ. vez")
+                Text(
+                    "Muestra cuándo usaste la app por última vez. Si lo apagas, tampoco verás la de los demás.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(checked = shareLastActive, onCheckedChange = { privacy.setShareLastActive(it) })
         }
 
         // Hallazgo real: mismo patrón que socials — una vez aceptada una

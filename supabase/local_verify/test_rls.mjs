@@ -3256,6 +3256,22 @@ async function main() {
   const vidAfterAttempt = (await db.query(`select is_video from messages where id = $1`, [vidMsg.id])).rows[0];
   check('protect_message_columns: is_video real sigue en true tras el intento ajeno', vidAfterAttempt.is_video === true);
 
+  // --- profiles.share_last_active (0122_last_active_privacy_toggle.sql):
+  // interruptor recíproco de privacidad para "Últ. vez", comparado con
+  // WhatsApp/Telegram -- columna normal sin trigger ni política nueva
+  // (mismo criterio que read_receipts_enabled arriba). ---
+  const defaultShareLastActive = (await db.query(`select share_last_active from profiles where id = $1`, [vidU2])).rows[0];
+  check('profiles.share_last_active: arranca en true por defecto', defaultShareLastActive.share_last_active === true);
+
+  await asUser(vidU2);
+  await expectOk('profiles_update_own: vidU2 SÍ puede desactivar su propia "Últ. vez"', async () => {
+    await db.query(`update profiles set share_last_active = false where id = $1`, [vidU2]);
+  });
+
+  await asUser(vidU1);
+  const shareLastActiveSeenByOther = (await db.query(`select share_last_active from profiles where id = $1`, [vidU2])).rows[0];
+  check('profiles_select_public: vidU1 real SÍ ve la "Últ. vez" desactivada de vidU2 (necesario para no pintarla en el chat)', shareLastActiveSeenByOther.share_last_active === false);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

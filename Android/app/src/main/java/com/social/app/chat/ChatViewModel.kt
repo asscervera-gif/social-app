@@ -230,18 +230,33 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
     val opponentLastActiveAt: StateFlow<String?> = _opponentLastActiveAt.asStateFlow()
 
     @Serializable
-    private data class LastActiveRow(@SerialName("last_active_at") val lastActiveAt: String? = null)
+    private data class LastActiveRow(
+        val id: String? = null,
+        @SerialName("last_active_at") val lastActiveAt: String? = null,
+        @SerialName("share_last_active") val shareLastActive: Boolean = true
+    )
 
+    /** Interruptor recíproco de privacidad para "Últ. vez", comparado con
+     * WhatsApp/Telegram -- cierra el hueco deliberado documentado en
+     * 0119_last_active_at.sql. Mismo criterio real que
+     * loadReadReceiptsVisibility(): si CUALQUIERA de los dos apagó su
+     * propia share_last_active, no se pinta "Últ. vez" en ningún sentido.
+     * Ver 0122_last_active_privacy_toggle.sql. */
     private suspend fun loadOpponentLastActive() {
         try {
             val chat = SupabaseManager.client.from("chats")
                 .select { filter { eq("id", chatId) } }
                 .decodeSingle<Chat>()
-            val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
+            val myId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return
             val opponent = if (chat.userAId == myId) chat.userBId else chat.userAId
-            _opponentLastActiveAt.value = SupabaseManager.client.from("profiles")
-                .select(columns = Columns.raw("last_active_at")) { filter { eq("id", opponent) } }
-                .decodeSingleOrNull<LastActiveRow>()?.lastActiveAt
+            val rows = SupabaseManager.client.from("profiles")
+                .select(columns = Columns.raw("id,last_active_at,share_last_active")) { filter { isIn("id", listOf(myId, opponent)) } }
+                .decodeList<LastActiveRow>()
+            _opponentLastActiveAt.value = if (rows.all { it.shareLastActive }) {
+                SupabaseManager.client.from("profiles")
+                    .select(columns = Columns.raw("last_active_at")) { filter { eq("id", opponent) } }
+                    .decodeSingleOrNull<LastActiveRow>()?.lastActiveAt
+            } else null
         } catch (e: Exception) { /* no crítico */ }
     }
 

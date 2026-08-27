@@ -33,6 +33,10 @@ class PrivacySettingsViewModel : ViewModel() {
         @SerialName("muted_push_kinds") val mutedPushKinds: List<String> = emptyList(),
         @SerialName("muted_keywords") val mutedKeywords: List<String> = emptyList(),
         @SerialName("read_receipts_enabled") val readReceiptsEnabled: Boolean = true,
+        // Interruptor recíproco de privacidad para "Últ. vez", comparado
+        // con WhatsApp/Telegram -- mismo criterio recíproco real que
+        // read_receipts_enabled. Ver 0122_last_active_privacy_toggle.sql.
+        @SerialName("share_last_active") val shareLastActive: Boolean = true,
         // Palabras silenciadas reales en TU PROPIO feed, comparado con
         // Twitter/X ("Muted words") -- distinto de muted_keywords (eso
         // filtra comentarios ajenos en TUS publicaciones). Ver
@@ -53,6 +57,14 @@ class PrivacySettingsViewModel : ViewModel() {
     // apagado, sea quien sea). Ver 0091_read_receipts_toggle.sql.
     private val _readReceiptsEnabled = MutableStateFlow(true)
     val readReceiptsEnabled: StateFlow<Boolean> = _readReceiptsEnabled.asStateFlow()
+
+    // Interruptor recíproco de privacidad para "Últ. vez", comparado con
+    // WhatsApp/Telegram -- si lo apagas, tampoco ves la de los demás
+    // (ChatViewModel.kt.loadOpponentLastActive() ya deja de pintarla para
+    // cualquiera cuyo propio interruptor esté apagado). Ver
+    // 0122_last_active_privacy_toggle.sql.
+    private val _shareLastActive = MutableStateFlow(true)
+    val shareLastActive: StateFlow<Boolean> = _shareLastActive.asStateFlow()
 
     // Hallazgo real, comparado con Instagram/Twitter/Facebook/WhatsApp:
     // todas dejan silenciar "me gusta" sin silenciar "mensajes" -- esta
@@ -88,7 +100,7 @@ class PrivacySettingsViewModel : ViewModel() {
             try {
                 val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
                 val row = SupabaseManager.client.from("profiles")
-                    .select(columns = Columns.raw("compat_public,location_public,muted_push_kinds,muted_keywords,read_receipts_enabled,muted_feed_keywords")) { filter { eq("id", userId) } }
+                    .select(columns = Columns.raw("compat_public,location_public,muted_push_kinds,muted_keywords,read_receipts_enabled,muted_feed_keywords,share_last_active")) { filter { eq("id", userId) } }
                     .decodeSingle<PrivacyRow>()
                 _compatPublic.value = row.compatPublic
                 _locationPublic.value = row.locationPublic
@@ -96,6 +108,7 @@ class PrivacySettingsViewModel : ViewModel() {
                 _mutedKeywords.value = row.mutedKeywords
                 _readReceiptsEnabled.value = row.readReceiptsEnabled
                 _mutedFeedKeywords.value = row.mutedFeedKeywords
+                _shareLastActive.value = row.shareLastActive
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo cargar la privacidad."
             }
@@ -192,6 +205,12 @@ class PrivacySettingsViewModel : ViewModel() {
         val previous = _readReceiptsEnabled.value
         _readReceiptsEnabled.value = value
         updateColumn("read_receipts_enabled", value) { _readReceiptsEnabled.value = previous }
+    }
+
+    fun setShareLastActive(value: Boolean) {
+        val previous = _shareLastActive.value
+        _shareLastActive.value = value
+        updateColumn("share_last_active", value) { _shareLastActive.value = previous }
     }
 
     fun setCompatPublic(value: Boolean) {
