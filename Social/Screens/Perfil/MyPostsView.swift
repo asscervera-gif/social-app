@@ -418,7 +418,12 @@ private struct MyPostRow: View {
             // Instagram -- el propio icono ya comunica el estado, mismo
             // criterio que "Fijado" en mensajes/comentarios.
             if post.pinnedAt != nil {
-                Text("📌 Fijada").font(.caption.bold()).foregroundStyle(.accentColor)
+                // Hallazgo real (CI real, ya documentado en
+                // AuthView.swift): `.foregroundStyle(.accentColor)`
+                // busca `accentColor` como miembro estático del propio
+                // protocolo ShapeStyle (no existe) -- `Color.accentColor`
+                // sí existe y sí conforma a ShapeStyle.
+                Text("📌 Fijada").font(.caption.bold()).foregroundStyle(Color.accentColor)
             }
             Text(post.caption ?? "")
             if let taggedProfileID = post.taggedProfileID {
