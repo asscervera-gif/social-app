@@ -168,6 +168,11 @@ data class ChatMessage(
     // Estado real de "Entregado" (✓✓ gris), comparado con WhatsApp --
     // distinto de leído (✓✓ azul). Ver 0117_message_delivered_status.sql.
     @SerialName("delivered_at") val deliveredAt: String? = null,
+    // "Eliminar para mí" real, comparado con WhatsApp -- resuelto en el
+    // cliente (mismo criterio que muted_feed_keywords, 0116): la fila
+    // sigue existiendo de verdad para la otra persona, solo se oculta
+    // en MI propia lista. Ver 0118_delete_message_for_me.sql.
+    @SerialName("deleted_for") val deletedFor: List<String> = emptyList(),
     // Mensajes de voz — separado de mediaUrl a propósito, ver
     // 0019_message_audio.sql: el cliente necesita distinguir explícitamente
     // reproductor de imagen, no adivinar por la extensión del archivo.

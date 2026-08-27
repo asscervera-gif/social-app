@@ -798,6 +798,30 @@ final class ChatViewModel: ObservableObject {
     /// Hallazgo real, mismo patrón que socials/compat_requests: no había
     /// NINGUNA forma de borrar un mensaje propio — `messages` no tenía
     /// política de delete hasta esta pasada (ver 0022_messages_delete.sql).
+    /// "Eliminar para mí" real, comparado con WhatsApp -- sobre
+    /// CUALQUIER mensaje (propio o ajeno): la otra persona lo sigue
+    /// viendo con normalidad, la fila real nunca se borra -- solo se
+    /// añade mi propio id a `deleted_for`, y ChatView.swift ya filtra
+    /// en cliente cualquier mensaje donde aparezca mi id
+    /// (0118_delete_message_for_me.sql). Equivalente de
+    /// ChatViewModel.kt.deleteForMe().
+    func deleteForMe(_ messageID: UUID) async {
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        guard let index = messages.firstIndex(where: { $0.id == messageID }) else { return }
+        if messages[index].deletedFor.contains(userID) { return }
+        let updated = messages[index].deletedFor + [userID]
+        do {
+            try await SupabaseManager.shared.client
+                .from("messages")
+                .update(["deleted_for": updated])
+                .eq("id", value: messageID)
+                .execute()
+            messages[index].deletedFor = updated
+        } catch {
+            errorMessage = "No se pudo eliminar el mensaje para ti."
+        }
+    }
+
     /// "Borrar para todos", no solo-para-mí. Equivalente de
     /// ChatViewModel.kt.deleteMessage().
     func deleteMessage(_ messageID: UUID) async {

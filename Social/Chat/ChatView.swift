@@ -217,7 +217,12 @@ struct ChatView: View {
                                 .padding(.vertical, 4)
                             }
                         }
-                        ForEach(viewModel.messages) { message in
+                        // "Eliminar para mí" real, comparado con
+                        // WhatsApp -- resuelto en cliente (mismo
+                        // criterio que muted_feed_keywords, 0116). Ver
+                        // ChatViewModel.deleteForMe(),
+                        // 0118_delete_message_for_me.sql.
+                        ForEach(viewModel.messages.filter { !$0.deletedFor.contains(currentUserID) }) { message in
                             MessageBubble(
                                 message: message,
                                 isMine: message.senderID == currentUserID,
@@ -344,8 +349,17 @@ struct ChatView: View {
                 Button(viewModel.starredMessageIDs.contains(managingMessage.id) ? "Quitar destacado" : "Destacar") {
                     Task { await viewModel.toggleStar(managingMessage.id) }
                 }
+                // "Eliminar para mí" real, comparado con WhatsApp --
+                // sobre CUALQUIER mensaje (propio o ajeno): la otra
+                // persona lo sigue viendo con normalidad. Distinto de
+                // "Borrar" (abajo, solo el propio remitente), que sí lo
+                // borra de verdad para las dos personas. Ver
+                // ChatViewModel.deleteForMe(), 0118_delete_message_for_me.sql.
+                Button("Eliminar para mí") {
+                    Task { await viewModel.deleteForMe(managingMessage.id) }
+                }
                 if managingMessage.senderID == currentUserID {
-                    Button("Borrar", role: .destructive) {
+                    Button("Borrar para todos", role: .destructive) {
                         Task { await viewModel.deleteMessage(managingMessage.id) }
                     }
                 }

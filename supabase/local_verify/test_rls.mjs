@@ -3167,6 +3167,33 @@ async function main() {
   const dvAfterRecipient = (await db.query(`select delivered_at from messages where id = $1`, [dvMsg.id])).rows[0];
   check('messages_update_read: delivered_at real queda fijado por el destinatario', dvAfterRecipient.delivered_at !== null);
 
+  // --- messages.deleted_for (0118_delete_message_for_me.sql): "Eliminar
+  // para mí" real, comparado con WhatsApp. ---
+  await asSuperuser();
+  const dfU1 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const dfU2 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(`insert into profiles (id, display_name) values ($1,'Df1'),($2,'Df2') on conflict (id) do update set display_name=excluded.display_name`, [dfU1, dfU2]);
+  const dfChat = (await db.query(`insert into chats (user_a_id, user_b_id) values ($1,$2) returning id`, [dfU1, dfU2])).rows[0];
+  await asUser(dfU1);
+  const dfMsg = (await db.query(`insert into messages (chat_id, sender_id, body) values ($1,$2,'hola real') returning id`, [dfChat.id, dfU1])).rows[0];
+
+  await expectOk('protect_message_columns: dfU1 SÍ puede eliminar el mensaje real solo para sí mismo', async () => {
+    await db.query(`update messages set deleted_for = array[$2]::uuid[] where id = $1`, [dfMsg.id, dfU1]);
+  });
+  const dfAfterOwnDelete = (await db.query(`select deleted_for from messages where id = $1`, [dfMsg.id])).rows[0];
+  check('protect_message_columns: el array real queda con dfU1 tras "eliminar para mí"', dfAfterOwnDelete.deleted_for.length === 1 && dfAfterOwnDelete.deleted_for[0] === dfU1);
+
+  await asUser(dfU2);
+  const dfSeenByU2 = (await db.query(`select id from messages where id = $1`, [dfMsg.id])).rows;
+  check('messages_select: dfU2 SIGUE viendo el mensaje real con normalidad (solo se borró para dfU1, resuelto en cliente)', dfSeenByU2.length === 1);
+
+  await expectOk('protect_message_columns: dfU2 NO consigue quitar a dfU1 del array real (revertido)', async () => {
+    await db.query(`update messages set deleted_for = array[]::uuid[] where id = $1`, [dfMsg.id]);
+  });
+  await asSuperuser();
+  const dfAfterTamper = (await db.query(`select deleted_for from messages where id = $1`, [dfMsg.id])).rows[0];
+  check('protect_message_columns: el array real sigue teniendo a dfU1 (nadie puede quitar a otro)', dfAfterTamper.deleted_for.length === 1);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

@@ -79,7 +79,13 @@ fun ChatScreen(
     callManager: com.social.app.calls.CallManager? = null
 ) {
     val viewModel = remember(chatId) { ChatViewModel(chatId) }
-    val messages by viewModel.messages.collectAsState()
+    val allMessages by viewModel.messages.collectAsState()
+    // "Eliminar para mí" real, comparado con WhatsApp -- resuelto en el
+    // cliente (mismo criterio que muted_feed_keywords, 0116): la fila
+    // sigue existiendo de verdad para la otra persona, solo se oculta
+    // en MI propia lista. Ver ChatViewModel.deleteForMe(),
+    // 0118_delete_message_for_me.sql.
+    val messages = allMessages.filter { currentUserId !in it.deletedFor }
     // Enviar una publicación a un chat real (0069_message_shared_post.sql),
     // comparado con Instagram/TikTok/Twitter/Snapchat.
     val sharedPosts by viewModel.sharedPosts.collectAsState()
@@ -898,11 +904,23 @@ fun ChatScreen(
                         viewModel.toggleStar(message.id)
                         managingMessage = null
                     }) { Text(if (isStarred) "Quitar destacado" else "Destacar") }
+                    // "Eliminar para mí" real, comparado con WhatsApp --
+                    // sobre CUALQUIER mensaje (propio o ajeno): la otra
+                    // persona lo sigue viendo con normalidad, solo
+                    // desaparece de MI copia. Distinto real de "Borrar
+                    // para todos" (abajo, solo el propio remitente),
+                    // que sí lo borra de verdad para las dos personas.
+                    // Ver ChatViewModel.deleteForMe(),
+                    // 0118_delete_message_for_me.sql.
+                    androidx.compose.material3.TextButton(onClick = {
+                        viewModel.deleteForMe(message.id)
+                        managingMessage = null
+                    }) { Text("Eliminar para mí") }
                     if (isMineMessage) {
                         androidx.compose.material3.TextButton(onClick = {
                             viewModel.deleteMessage(message.id)
                             managingMessage = null
-                        }) { Text("Borrar") }
+                        }) { Text("Borrar para todos") }
                     }
                     androidx.compose.material3.TextButton(onClick = { managingMessage = null }) { Text("Cancelar") }
                 }

@@ -223,6 +223,11 @@ struct ChatMessage: Codable, Identifiable {
     // Estado real de "Entregado" (✓✓ gris), comparado con WhatsApp --
     // distinto de leído (✓✓ azul). Ver 0117_message_delivered_status.sql.
     var deliveredAt: Date?
+    // "Eliminar para mí" real, comparado con WhatsApp -- resuelto en el
+    // cliente (mismo criterio que muted_feed_keywords, 0116): la fila
+    // sigue existiendo de verdad para la otra persona, solo se oculta
+    // en MI propia lista. Ver 0118_delete_message_for_me.sql.
+    var deletedFor: [UUID] = []
     // Última pieza real de "chat funcional con fotos, voz, reacciones,
     // read receipts" — separado de mediaURL a propósito (0019_message_audio.sql):
     // el cliente necesita distinguir reproductor de imagen explícitamente.
@@ -265,6 +270,7 @@ struct ChatMessage: Codable, Identifiable {
         case createdAt = "created_at"
         case readAt = "read_at"
         case deliveredAt = "delivered_at"
+        case deletedFor = "deleted_for"
         case audioURL = "audio_url"
         case editedAt = "edited_at"
         case sharedPostID = "shared_post_id"

@@ -850,6 +850,28 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
      * NINGUNA forma de borrar un mensaje propio, ni siquiera el remitente
      * — `messages` no tenía política de delete hasta esta pasada (ver
      * 0022_messages_delete.sql). "Borrar para todos", no solo-para-mí. */
+    /** "Eliminar para mí" real, comparado con WhatsApp -- sobre CUALQUIER
+     * mensaje (propio o ajeno): la otra persona lo sigue viendo con
+     * normalidad, la fila real nunca se borra -- solo se añade mi
+     * propio id a `deleted_for`, y ChatScreen.kt ya filtra en cliente
+     * cualquier mensaje donde aparezca mi id (0118_delete_message_for_me.sql). */
+    fun deleteForMe(messageId: String) {
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                val current = _messages.value.firstOrNull { it.id == messageId }?.deletedFor ?: emptyList()
+                if (userId in current) return@launch
+                SupabaseManager.client.from("messages")
+                    .update({ set("deleted_for", current + userId) }) { filter { eq("id", messageId) } }
+                _messages.update { list ->
+                    list.map { if (it.id == messageId) it.copy(deletedFor = it.deletedFor + userId) else it }
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo eliminar el mensaje para ti."
+            }
+        }
+    }
+
     fun deleteMessage(messageId: String) {
         _messages.update { list -> list.filter { it.id != messageId } }
         viewModelScope.launch {
