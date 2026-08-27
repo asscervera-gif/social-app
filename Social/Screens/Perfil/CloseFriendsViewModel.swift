@@ -60,9 +60,14 @@ final class CloseFriendsViewModel: ObservableObject {
                     .single()
                     .execute()
                     .value {
+                    // compatibilityScore: relleno sin usar aquí -- esta
+                    // pantalla nunca lo muestra, solo reutiliza el mismo
+                    // SocialEntry ya extendido en SocialsListViewModel.swift
+                    // (ronda "Tus socials ordenados por compatibilidad").
                     entries.append(SocialEntry(
                         id: otherID, socialID: row.id,
-                        displayName: profile.display_name, avatarConfig: profile.avatar_config
+                        displayName: profile.display_name, avatarConfig: profile.avatar_config,
+                        compatibilityScore: 50
                     ))
                 }
             }
