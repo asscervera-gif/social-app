@@ -4,6 +4,7 @@ import android.content.Intent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -263,6 +264,7 @@ private fun CompatBadge(compatibility: Int?, requestSent: Boolean, onRequest: ()
     )
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun PostCard(
     post: Post,
@@ -389,6 +391,15 @@ private fun PostCard(
                 // una sola foto (el caso normal hasta ahora) se muestra
                 // igual que antes, sin pager ni indicador de más.
                 val allUrls = remember(firstUrl, extraMedia) { listOf(firstUrl) + extraMedia }
+                // Doble toque para dar "me gusta", comparado con
+                // Instagram/TikTok/Facebook -- el gesto más icónico de
+                // esa acción en cualquier app grande, ausente hasta
+                // ahora (solo existía el botón ❤). Doble toque SIEMPRE
+                // da like (nunca lo quita), mismo criterio real que
+                // Instagram -- un corazón grande aparece y se desvanece
+                // como confirmación visual.
+                var showDoubleTapHeart by remember { mutableStateOf(false) }
+                Box(modifier = Modifier.fillMaxWidth()) {
                 if (allUrls.size == 1) {
                     androidx.compose.foundation.Image(
                         painter = coil.compose.rememberAsyncImagePainter(firstUrl),
@@ -397,7 +408,13 @@ private fun PostCard(
                         modifier = Modifier.fillMaxWidth().height(220.dp)
                             .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
                             .padding(bottom = 8.dp)
-                            .clickable { fullScreenUrl = firstUrl }
+                            .combinedClickable(
+                                onClick = { fullScreenUrl = firstUrl },
+                                onDoubleClick = {
+                                    if (!isLiked) onLike()
+                                    showDoubleTapHeart = true
+                                }
+                            )
                     )
                 } else {
                     val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { allUrls.size })
@@ -412,7 +429,13 @@ private fun PostCard(
                                 painter = coil.compose.rememberAsyncImagePainter(url),
                                 contentDescription = null,
                                 contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize().clickable { fullScreenUrl = url }
+                                modifier = Modifier.fillMaxSize().combinedClickable(
+                                    onClick = { fullScreenUrl = url },
+                                    onDoubleClick = {
+                                        if (!isLiked) onLike()
+                                        showDoubleTapHeart = true
+                                    }
+                                )
                             )
                         }
                         Text(
@@ -427,6 +450,21 @@ private fun PostCard(
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
+                }
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = showDoubleTapHeart,
+                    modifier = Modifier.align(androidx.compose.ui.Alignment.Center),
+                    enter = androidx.compose.animation.scaleIn(),
+                    exit = androidx.compose.animation.fadeOut()
+                ) {
+                    Text("❤", style = MaterialTheme.typography.displayLarge, color = androidx.compose.ui.graphics.Color.White)
+                }
+                if (showDoubleTapHeart) {
+                    LaunchedEffect(showDoubleTapHeart) {
+                        kotlinx.coroutines.delay(600)
+                        showDoubleTapHeart = false
+                    }
+                }
                 }
             }
             post.caption?.let { caption ->

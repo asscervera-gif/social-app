@@ -299,6 +299,20 @@ private struct PostCard: View {
     @State private var showReport = false
     @State private var myID: UUID?
     @State private var fullScreenURL: URL?
+    // Doble toque para dar "me gusta", comparado con Instagram/TikTok/
+    // Facebook -- el gesto más icónico de esa acción en cualquier app
+    // grande, ausente hasta ahora (solo existía el botón ❤). Doble
+    // toque SIEMPRE da like (nunca lo quita), mismo criterio real que
+    // Instagram. Equivalente de HomeScreen.kt.showDoubleTapHeart.
+    @State private var showDoubleTapHeart = false
+
+    private func likeViaDoubleTap() {
+        if !isLiked { onLike() }
+        withAnimation(.spring()) { showDoubleTapHeart = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            withAnimation { showDoubleTapHeart = false }
+        }
+    }
     // Marcar contenido como sensible, comparado con Instagram/Twitter/
     // TikTok -- estado local de la propia pantalla, ver
     // 0096_sensitive_content.sql.
@@ -384,6 +398,7 @@ private struct PostCard: View {
                         .onTapGesture { sensitiveRevealed = true }
                 } else {
                 let allURLs = ([firstURL] + extraMedia).compactMap { URL(string: $0) }
+                ZStack {
                 if allURLs.count > 1 {
                     ZStack(alignment: .topTrailing) {
                         TabView {
@@ -395,6 +410,7 @@ private struct PostCard: View {
                                 }
                                 .frame(height: 220)
                                 .clipped()
+                                .onTapGesture(count: 2) { likeViaDoubleTap() }
                                 .onTapGesture { fullScreenURL = url }
                             }
                         }
@@ -414,7 +430,15 @@ private struct PostCard: View {
                     // Hallazgo real, comparado con Instagram/Twitter/WhatsApp:
                     // no había forma de tocar la imagen para verla a tamaño
                     // completo, solo el recorte fijo de 220pt.
+                    .onTapGesture(count: 2) { likeViaDoubleTap() }
                     .onTapGesture { fullScreenURL = url }
+                }
+                if showDoubleTapHeart {
+                    Text("❤")
+                        .font(.system(size: 80))
+                        .foregroundStyle(.white)
+                        .transition(.scale.combined(with: .opacity))
+                }
                 }
                 }
             } else {
