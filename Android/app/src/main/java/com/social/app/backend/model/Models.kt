@@ -93,7 +93,11 @@ data class Comment(
     @SerialName("like_count") val likeCount: Int = 0,
     // Fijar un comentario, comparado con Instagram/Twitter -- solo el
     // autor real de la publicación puede cambiarlo (0084_pin_comments.sql).
-    @SerialName("is_pinned") val isPinned: Boolean = false
+    @SerialName("is_pinned") val isPinned: Boolean = false,
+    // Responder a un comentario concreto (hilo de un nivel), comparado
+    // con Instagram/Facebook/Twitter/TikTok -- referencia al comentario
+    // real de primer nivel que se responde. Ver 0104_comment_replies.sql.
+    @SerialName("parent_comment_id") val parentCommentId: String? = null
 )
 
 // Comparado con Instagram/Facebook: publicaciones con varias fotos

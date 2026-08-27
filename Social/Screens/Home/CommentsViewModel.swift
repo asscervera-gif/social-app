@@ -24,6 +24,10 @@ struct Comment: Identifiable, Decodable {
     // Fijar un comentario, comparado con Instagram/Twitter -- solo el
     // autor real de la publicación puede cambiarlo (0084_pin_comments.sql).
     var is_pinned: Bool = false
+    // Responder a un comentario concreto (hilo de un nivel), comparado
+    // con Instagram/Facebook/Twitter/TikTok -- referencia al comentario
+    // real de primer nivel que se responde. Ver 0104_comment_replies.sql.
+    var parent_comment_id: UUID? = nil
 }
 
 @MainActor
@@ -61,10 +65,20 @@ final class CommentsViewModel: ObservableObject {
         self.postID = postID
     }
 
-    private func sortPinnedFirst(_ list: [Comment]) -> [Comment] {
-        list.sorted { lhs, rhs in
+    /// Responder a un comentario concreto (hilo de un nivel), comparado
+    /// con Instagram/Facebook/Twitter/TikTok -- cada comentario de primer
+    /// nivel (fijados primero, mismo orden real de siempre) va seguido de
+    /// verdad por sus propias respuestas, en orden cronológico. Ver
+    /// 0104_comment_replies.sql. Equivalente de
+    /// CommentsViewModel.kt.threadOrder().
+    private func threadOrder(_ list: [Comment]) -> [Comment] {
+        let topLevel = list.filter { $0.parent_comment_id == nil }.sorted { lhs, rhs in
             if lhs.is_pinned != rhs.is_pinned { return lhs.is_pinned }
             return lhs.created_at < rhs.created_at
+        }
+        let repliesByParent = Dictionary(grouping: list.filter { $0.parent_comment_id != nil }) { $0.parent_comment_id }
+        return topLevel.flatMap { parent in
+            [parent] + (repliesByParent[parent.id] ?? []).sorted { $0.created_at < $1.created_at }
         }
     }
 
@@ -79,7 +93,7 @@ final class CommentsViewModel: ObservableObject {
                 .order("created_at", ascending: true)
                 .execute()
                 .value
-            comments = sortPinnedFirst(loaded)
+            comments = threadOrder(loaded)
 
             struct PostAuthorRow: Decodable { let author_id: UUID; let comments_disabled: Bool }
             if let row: PostAuthorRow = try? await SupabaseManager.shared.client
@@ -175,7 +189,7 @@ final class CommentsViewModel: ObservableObject {
         if let index = comments.firstIndex(where: { $0.id == comment.id }) {
             comments[index].is_pinned = newValue
         }
-        comments = sortPinnedFirst(comments)
+        comments = threadOrder(comments)
         do {
             struct PinUpdate: Encodable { let is_pinned: Bool }
             try await SupabaseManager.shared.client
@@ -193,6 +207,7 @@ final class CommentsViewModel: ObservableObject {
         let post_id: UUID
         let author_id: UUID
         let body: String
+        var parent_comment_id: UUID? = nil
     }
 
     /// Aviso de honestidad: la cadena `.insert(...).select().single()` para
@@ -203,7 +218,14 @@ final class CommentsViewModel: ObservableObject {
     /// forma encadenada — es la API razonable según el resto de este
     /// archivo (`select()`/`.eq()`/`.single()` ya se usan en `load()`), no
     /// una firma inventada de cero.
-    func addComment(_ text: String, onCommentAdded: @escaping () -> Void) async {
+    /// [parentCommentID] es opcional -- responder a un comentario
+    /// concreto (hilo de un nivel), comparado con Instagram/Facebook/
+    /// Twitter/TikTok -- tiene que ser un comentario real de primer
+    /// nivel de esta misma publicación (el propio trigger de
+    /// 0104_comment_replies.sql lo exige; si no se cumple, el comentario
+    /// simplemente no se publica). Equivalente de
+    /// CommentsViewModel.kt.addComment().
+    func addComment(_ text: String, parentCommentID: UUID? = nil, onCommentAdded: @escaping () -> Void) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         // Mismo límite real que comments_body_length (0008_comments.sql,
@@ -219,12 +241,12 @@ final class CommentsViewModel: ObservableObject {
         do {
             let inserted: Comment = try await SupabaseManager.shared.client
                 .from("comments")
-                .insert(NewComment(post_id: postID, author_id: userID, body: trimmed))
+                .insert(NewComment(post_id: postID, author_id: userID, body: trimmed, parent_comment_id: parentCommentID))
                 .select()
                 .single()
                 .execute()
                 .value
-            comments = sortPinnedFirst(comments + [inserted])
+            comments = threadOrder(comments + [inserted])
             // Si es el primer comentario propio en este post, mi perfil
             // todavía no está en authorProfiles (solo se cargó el de
             // quienes ya habían comentado) -- sin esto, mi propio
@@ -255,7 +277,10 @@ final class CommentsViewModel: ObservableObject {
     /// (0008_comments.sql) ya lo permitía a nivel de RLS, solo faltaba el
     /// botón. Equivalente de CommentsViewModel.kt.deleteComment().
     func deleteComment(_ comment: Comment, onCommentRemoved: @escaping () -> Void) async {
-        comments.removeAll { $0.id == comment.id }
+        // Responder a un comentario concreto (0104_comment_replies.sql):
+        // `on delete cascade` real se lleva sus respuestas con él -- el
+        // estado local tiene que reflejar lo mismo.
+        comments.removeAll { $0.id == comment.id || $0.parent_comment_id == comment.id }
         do {
             try await SupabaseManager.shared.client
                 .from("comments")

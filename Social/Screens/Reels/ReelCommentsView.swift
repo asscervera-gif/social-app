@@ -25,6 +25,10 @@ struct ReelCommentsView: View {
     // notificación real de mención (0074_mentions.sql), comparado con
     // Instagram/TikTok -- mismo criterio que CommentsView.swift (posts).
     @State private var mentionProfileID: UUID?
+    // Responder a un comentario concreto (hilo de un nivel), comparado
+    // con Instagram/Facebook/Twitter/TikTok -- mismo criterio real que
+    // CommentsView.swift (posts).
+    @State private var replyingToComment: ReelComment?
     let onCommentAdded: () -> Void
     var onCommentRemoved: () -> Void = {}
 
@@ -44,6 +48,11 @@ struct ReelCommentsView: View {
                     Text(error).font(.footnote).foregroundStyle(.red)
                 }
                 List(viewModel.comments) { comment in
+                    // Responder a un comentario concreto (hilo de un
+                    // nivel), comparado con Instagram/Facebook/Twitter/
+                    // TikTok -- mismo criterio real que CommentsView.swift
+                    // (posts).
+                    let isReply = comment.parent_comment_id != nil
                     VStack(alignment: .leading, spacing: 4) {
                         NavigationLink {
                             ProfileViewerView(profileID: comment.author_id)
@@ -89,6 +98,15 @@ struct ReelCommentsView: View {
                             }
                             .buttonStyle(.plain)
                             .font(.caption)
+                            // Responder a un comentario concreto (hilo de
+                            // un nivel), comparado con Instagram/Facebook/
+                            // Twitter/TikTok -- solo sobre un comentario
+                            // de primer nivel (límite real de un solo
+                            // nivel, 0104_comment_replies.sql).
+                            if !isReply {
+                                Button("Responder") { replyingToComment = comment }
+                                    .font(.caption)
+                            }
                             // Fijar un comentario (propio o ajeno),
                             // comparado con Instagram/Twitter -- solo
                             // visible para el autor real del reel, mismo
@@ -111,6 +129,7 @@ struct ReelCommentsView: View {
                             }
                         }
                     }
+                    .padding(.leading, isReply ? 24 : 0)
                 }
                 .listStyle(.plain)
 
@@ -124,13 +143,29 @@ struct ReelCommentsView: View {
                         .foregroundStyle(.secondary)
                         .padding()
                 } else {
+                    // Responder a un comentario concreto (hilo de un
+                    // nivel), comparado con Instagram/Facebook/Twitter/
+                    // TikTok -- mismo criterio real que CommentsView.swift
+                    // (posts).
+                    if let replyTarget = replyingToComment {
+                        HStack {
+                            Text("Respondiendo a \(viewModel.authorProfiles[replyTarget.author_id]?.displayName ?? "…")")
+                                .font(.caption)
+                                .foregroundStyle(Color.accentColor)
+                            Spacer()
+                            Button("✕") { replyingToComment = nil }
+                        }
+                        .padding(.horizontal)
+                    }
                     HStack {
-                        TextField("Escribe un comentario…", text: $draft)
+                        TextField(replyingToComment != nil ? "Escribe una respuesta…" : "Escribe un comentario…", text: $draft)
                             .textFieldStyle(.roundedBorder)
                         Button("➤") {
+                            let parentID = replyingToComment?.id
                             Task {
-                                await viewModel.addComment(draft, onCommentAdded: onCommentAdded)
+                                await viewModel.addComment(draft, parentCommentID: parentID, onCommentAdded: onCommentAdded)
                                 draft = ""
+                                replyingToComment = nil
                             }
                         }
                     }

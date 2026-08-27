@@ -19,6 +19,10 @@ struct CommentsView: View {
     // notificación real de mención (0074_mentions.sql), comparado con
     // Instagram/Twitter/TikTok.
     @State private var mentionProfileID: UUID?
+    // Responder a un comentario concreto (hilo de un nivel), comparado
+    // con Instagram/Facebook/Twitter/TikTok -- ver
+    // CommentsViewModel.addComment(), 0104_comment_replies.sql.
+    @State private var replyingToComment: Comment?
     let onCommentAdded: () -> Void
     var onCommentRemoved: () -> Void = {}
 
@@ -40,6 +44,13 @@ struct CommentsView: View {
                 // Hallazgo real: no había forma de borrar el propio
                 // comentario, comparado con cualquier app grande.
                 List(viewModel.comments) { comment in
+                    // Responder a un comentario concreto (hilo de un
+                    // nivel), comparado con Instagram/Facebook/Twitter/
+                    // TikTok -- una respuesta real va sangrada bajo el
+                    // comentario de primer nivel que responde (ya en el
+                    // orden correcto real, ver
+                    // CommentsViewModel.threadOrder()).
+                    let isReply = comment.parent_comment_id != nil
                     VStack(alignment: .leading, spacing: 4) {
                         // Hallazgo real, mismo hueco raíz que el feed
                         // (HomeViewModel.authorProfiles) -- nunca se
@@ -93,6 +104,15 @@ struct CommentsView: View {
                             }
                             .buttonStyle(.plain)
                             .font(.caption)
+                            // Responder a un comentario concreto (hilo de
+                            // un nivel), comparado con Instagram/Facebook/
+                            // Twitter/TikTok -- solo sobre un comentario
+                            // de primer nivel (límite real de un solo
+                            // nivel, 0104_comment_replies.sql).
+                            if !isReply {
+                                Button("Responder") { replyingToComment = comment }
+                                    .font(.caption)
+                            }
                             // Fijar un comentario (propio o ajeno),
                             // comparado con Instagram/Twitter -- solo
                             // visible para el autor real de la
@@ -115,6 +135,7 @@ struct CommentsView: View {
                             }
                         }
                     }
+                    .padding(.leading, isReply ? 24 : 0)
                 }
                 .listStyle(.plain)
 
@@ -128,13 +149,29 @@ struct CommentsView: View {
                         .foregroundStyle(.secondary)
                         .padding()
                 } else {
+                    // Responder a un comentario concreto (hilo de un
+                    // nivel), comparado con Instagram/Facebook/Twitter/
+                    // TikTok -- vista previa real de a qué comentario se
+                    // está respondiendo, cancelable antes de publicar.
+                    if let replyTarget = replyingToComment {
+                        HStack {
+                            Text("Respondiendo a \(viewModel.authorProfiles[replyTarget.author_id]?.displayName ?? "…")")
+                                .font(.caption)
+                                .foregroundStyle(Color.accentColor)
+                            Spacer()
+                            Button("✕") { replyingToComment = nil }
+                        }
+                        .padding(.horizontal)
+                    }
                     HStack {
-                        TextField("Escribe un comentario…", text: $draft)
+                        TextField(replyingToComment != nil ? "Escribe una respuesta…" : "Escribe un comentario…", text: $draft)
                             .textFieldStyle(.roundedBorder)
                         Button("➤") {
+                            let parentID = replyingToComment?.id
                             Task {
-                                await viewModel.addComment(draft, onCommentAdded: onCommentAdded)
+                                await viewModel.addComment(draft, parentCommentID: parentID, onCommentAdded: onCommentAdded)
                                 draft = ""
+                                replyingToComment = nil
                             }
                         }
                     }

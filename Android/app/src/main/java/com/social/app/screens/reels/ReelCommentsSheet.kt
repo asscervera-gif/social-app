@@ -68,6 +68,10 @@ fun ReelCommentsSheet(
     val sheetState = rememberModalBottomSheetState()
     val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
     var reportingAuthorId by remember { mutableStateOf<String?>(null) }
+    // Responder a un comentario concreto (hilo de un nivel), comparado
+    // con Instagram/Facebook/Twitter/TikTok -- ver
+    // ReelCommentsViewModel.addComment(), 0104_comment_replies.sql.
+    var replyingToComment by remember { mutableStateOf<ReelComment?>(null) }
     val scope = rememberCoroutineScope()
     val mentionResolver = remember { MentionResolver() }
 
@@ -88,7 +92,12 @@ fun ReelCommentsSheet(
             ) {
                 items(comments, key = { it.id }) { comment ->
                     val author = authorProfiles[comment.authorId]
-                    Column(modifier = Modifier.fillMaxWidth()) {
+                    // Responder a un comentario concreto (hilo de un
+                    // nivel), comparado con Instagram/Facebook/Twitter/
+                    // TikTok -- mismo criterio real que CommentsSheet.kt
+                    // (posts).
+                    val isReply = comment.parentCommentId != null
+                    Column(modifier = Modifier.fillMaxWidth().padding(start = if (isReply) 24.dp else 0.dp)) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.clickable { onOpenProfile(comment.authorId) }
@@ -138,6 +147,16 @@ fun ReelCommentsSheet(
                                     )
                                 }
                             }
+                            // Responder a un comentario concreto (hilo de
+                            // un nivel), comparado con Instagram/Facebook/
+                            // Twitter/TikTok -- solo sobre un comentario
+                            // de primer nivel (límite real de un solo
+                            // nivel, 0104_comment_replies.sql).
+                            if (!isReply) {
+                                TextButton(onClick = { replyingToComment = comment }) {
+                                    Text("Responder")
+                                }
+                            }
                             // Fijar un comentario (propio o ajeno), comparado
                             // con Instagram/Twitter -- solo visible para el
                             // autor real del reel, mismo criterio que
@@ -173,17 +192,35 @@ fun ReelCommentsSheet(
                     modifier = Modifier.padding(top = 8.dp)
                 )
             } else {
-                Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                // Responder a un comentario concreto (hilo de un nivel),
+                // comparado con Instagram/Facebook/Twitter/TikTok --
+                // mismo criterio real que CommentsSheet.kt (posts).
+                replyingToComment?.let { replyTarget ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Respondiendo a ${authorProfiles[replyTarget.authorId]?.displayName ?: "…"}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        TextButton(onClick = { replyingToComment = null }) { Text("✕") }
+                    }
+                }
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(
                         value = draft,
                         onValueChange = { draft = it },
                         modifier = Modifier.weight(1f),
-                        placeholder = { Text("Escribe un comentario…") }
+                        placeholder = { Text(if (replyingToComment != null) "Escribe una respuesta…" else "Escribe un comentario…") }
                     )
                     Button(
                         onClick = {
-                            viewModel.addComment(draft) { onCommentAdded() }
+                            viewModel.addComment(draft, replyingToComment?.id) { onCommentAdded() }
                             draft = ""
+                            replyingToComment = null
                         },
                         modifier = Modifier.padding(start = 8.dp)
                     ) {

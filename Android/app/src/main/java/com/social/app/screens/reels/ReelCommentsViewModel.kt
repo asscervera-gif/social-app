@@ -28,7 +28,11 @@ data class ReelComment(
     @SerialName("like_count") val likeCount: Int = 0,
     // Fijar un comentario, comparado con Instagram/Twitter -- solo el
     // autor real del reel puede cambiarlo (0084_pin_comments.sql).
-    @SerialName("is_pinned") val isPinned: Boolean = false
+    @SerialName("is_pinned") val isPinned: Boolean = false,
+    // Responder a un comentario concreto (hilo de un nivel), comparado
+    // con Instagram/Facebook/Twitter/TikTok -- referencia al comentario
+    // real de primer nivel que se responde. Ver 0104_comment_replies.sql.
+    @SerialName("parent_comment_id") val parentCommentId: String? = null
 )
 
 /**
@@ -79,12 +83,12 @@ class ReelCommentsViewModel(private val reelId: String) : ViewModel() {
             _isLoading.value = true
             try {
                 val loaded = SupabaseManager.client.from("reel_comments")
-                    .select(columns = Columns.raw("id,reel_id,author_id,body,created_at,like_count,is_pinned")) {
+                    .select(columns = Columns.raw("id,reel_id,author_id,body,created_at,like_count,is_pinned,parent_comment_id")) {
                         filter { eq("reel_id", reelId) }
                         order("created_at", Order.ASCENDING)
                     }
                     .decodeList<ReelComment>()
-                _comments.value = sortPinnedFirst(loaded)
+                _comments.value = threadOrder(loaded)
 
                 try {
                     val reelRow = SupabaseManager.client.from("reels")
@@ -140,8 +144,16 @@ class ReelCommentsViewModel(private val reelId: String) : ViewModel() {
         @SerialName("comments_disabled") val commentsDisabled: Boolean = false
     )
 
-    private fun sortPinnedFirst(list: List<ReelComment>) =
-        list.sortedWith(compareByDescending<ReelComment> { it.isPinned }.thenBy { it.createdAt })
+    /** Responder a un comentario concreto (hilo de un nivel), comparado
+     * con Instagram/Facebook/Twitter/TikTok -- mismo criterio real que
+     * CommentsViewModel.kt.threadOrder() (posts). Ver
+     * 0104_comment_replies.sql. */
+    private fun threadOrder(list: List<ReelComment>): List<ReelComment> {
+        val topLevel = list.filter { it.parentCommentId == null }
+            .sortedWith(compareByDescending<ReelComment> { it.isPinned }.thenBy { it.createdAt })
+        val repliesByParent = list.filter { it.parentCommentId != null }.groupBy { it.parentCommentId }
+        return topLevel.flatMap { parent -> listOf(parent) + repliesByParent[parent.id].orEmpty().sortedBy { it.createdAt } }
+    }
 
     /** Fijar/desfijar un comentario real, comparado con Instagram/Twitter
      * -- solo el autor real del reel puede hacerlo (`reel_comments_update_pin`,
@@ -150,7 +162,7 @@ class ReelCommentsViewModel(private val reelId: String) : ViewModel() {
      * UI al no ofrecerle el botón). */
     fun togglePin(comment: ReelComment) {
         val newValue = !comment.isPinned
-        _comments.update { list -> sortPinnedFirst(list.map { if (it.id == comment.id) it.copy(isPinned = newValue) else it }) }
+        _comments.update { list -> threadOrder(list.map { if (it.id == comment.id) it.copy(isPinned = newValue) else it }) }
         viewModelScope.launch {
             try {
                 SupabaseManager.client.from("reel_comments")
@@ -205,10 +217,15 @@ class ReelCommentsViewModel(private val reelId: String) : ViewModel() {
     private data class NewReelComment(
         @SerialName("reel_id") val reelId: String,
         @SerialName("author_id") val authorId: String,
-        val body: String
+        val body: String,
+        @SerialName("parent_comment_id") val parentCommentId: String? = null
     )
 
-    fun addComment(text: String, onCommentAdded: () -> Unit) {
+    /** [parentCommentId] es opcional -- responder a un comentario
+     * concreto (hilo de un nivel), comparado con Instagram/Facebook/
+     * Twitter/TikTok, mismo criterio real que CommentsViewModel.kt (posts).
+     * Ver 0104_comment_replies.sql. */
+    fun addComment(text: String, parentCommentId: String? = null, onCommentAdded: () -> Unit) {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
         // Mismo límite real que comments_body_length, reutilizado tal
@@ -222,9 +239,9 @@ class ReelCommentsViewModel(private val reelId: String) : ViewModel() {
             try {
                 val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
                 val inserted = SupabaseManager.client.from("reel_comments")
-                    .insert(NewReelComment(reelId, userId, trimmed)) { select() }
+                    .insert(NewReelComment(reelId, userId, trimmed, parentCommentId)) { select() }
                     .decodeSingle<ReelComment>()
-                _comments.update { sortPinnedFirst(it + inserted) }
+                _comments.update { threadOrder(it + inserted) }
                 if (!_authorProfiles.value.containsKey(userId)) {
                     try {
                         val me = SupabaseManager.client.from("profiles")
@@ -246,7 +263,10 @@ class ReelCommentsViewModel(private val reelId: String) : ViewModel() {
     }
 
     fun deleteComment(comment: ReelComment, onCommentRemoved: () -> Unit) {
-        _comments.update { list -> list.filter { it.id != comment.id } }
+        // Responder a un comentario concreto (0104_comment_replies.sql):
+        // `on delete cascade` real se lleva sus respuestas con él -- el
+        // estado local tiene que reflejar lo mismo.
+        _comments.update { list -> list.filter { it.id != comment.id && it.parentCommentId != comment.id } }
         viewModelScope.launch {
             try {
                 SupabaseManager.client.from("reel_comments").delete { filter { eq("id", comment.id) } }

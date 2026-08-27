@@ -24,6 +24,10 @@ struct ReelComment: Identifiable, Decodable {
     // Fijar un comentario, comparado con Instagram/Twitter -- solo el
     // autor real del reel puede cambiarlo (0084_pin_comments.sql).
     var is_pinned: Bool = false
+    // Responder a un comentario concreto (hilo de un nivel), comparado
+    // con Instagram/Facebook/Twitter/TikTok -- referencia al comentario
+    // real de primer nivel que se responde. Ver 0104_comment_replies.sql.
+    var parent_comment_id: UUID? = nil
 }
 
 @MainActor
@@ -56,10 +60,18 @@ final class ReelCommentsViewModel: ObservableObject {
         self.reelID = reelID
     }
 
-    private func sortPinnedFirst(_ list: [ReelComment]) -> [ReelComment] {
-        list.sorted { lhs, rhs in
+    /// Responder a un comentario concreto (hilo de un nivel), comparado
+    /// con Instagram/Facebook/Twitter/TikTok -- mismo criterio real que
+    /// CommentsViewModel.swift.threadOrder() (posts). Ver
+    /// 0104_comment_replies.sql.
+    private func threadOrder(_ list: [ReelComment]) -> [ReelComment] {
+        let topLevel = list.filter { $0.parent_comment_id == nil }.sorted { lhs, rhs in
             if lhs.is_pinned != rhs.is_pinned { return lhs.is_pinned }
             return lhs.created_at < rhs.created_at
+        }
+        let repliesByParent = Dictionary(grouping: list.filter { $0.parent_comment_id != nil }) { $0.parent_comment_id }
+        return topLevel.flatMap { parent in
+            [parent] + (repliesByParent[parent.id] ?? []).sorted { $0.created_at < $1.created_at }
         }
     }
 
@@ -74,7 +86,7 @@ final class ReelCommentsViewModel: ObservableObject {
                 .order("created_at", ascending: true)
                 .execute()
                 .value
-            comments = sortPinnedFirst(loaded)
+            comments = threadOrder(loaded)
 
             struct ReelAuthorRow: Decodable { let author_id: UUID; let comments_disabled: Bool }
             if let row: ReelAuthorRow = try? await SupabaseManager.shared.client
@@ -168,7 +180,7 @@ final class ReelCommentsViewModel: ObservableObject {
         if let index = comments.firstIndex(where: { $0.id == comment.id }) {
             comments[index].is_pinned = newValue
         }
-        comments = sortPinnedFirst(comments)
+        comments = threadOrder(comments)
         do {
             struct PinUpdate: Encodable { let is_pinned: Bool }
             try await SupabaseManager.shared.client
@@ -186,9 +198,14 @@ final class ReelCommentsViewModel: ObservableObject {
         let reel_id: UUID
         let author_id: UUID
         let body: String
+        var parent_comment_id: UUID? = nil
     }
 
-    func addComment(_ text: String, onCommentAdded: @escaping () -> Void) async {
+    /// [parentCommentID] es opcional -- responder a un comentario
+    /// concreto (hilo de un nivel), comparado con Instagram/Facebook/
+    /// Twitter/TikTok, mismo criterio real que CommentsViewModel.swift
+    /// (posts). Ver 0104_comment_replies.sql.
+    func addComment(_ text: String, parentCommentID: UUID? = nil, onCommentAdded: @escaping () -> Void) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         // Mismo límite real que comments_body_length, reutilizado tal cual
@@ -202,12 +219,12 @@ final class ReelCommentsViewModel: ObservableObject {
         do {
             let inserted: ReelComment = try await SupabaseManager.shared.client
                 .from("reel_comments")
-                .insert(NewReelComment(reel_id: reelID, author_id: userID, body: trimmed))
+                .insert(NewReelComment(reel_id: reelID, author_id: userID, body: trimmed, parent_comment_id: parentCommentID))
                 .select()
                 .single()
                 .execute()
                 .value
-            comments = sortPinnedFirst(comments + [inserted])
+            comments = threadOrder(comments + [inserted])
             if authorProfiles[userID] == nil {
                 if let me: Profile = try? await SupabaseManager.shared.client
                     .from("profiles")
@@ -227,7 +244,9 @@ final class ReelCommentsViewModel: ObservableObject {
     }
 
     func deleteComment(_ comment: ReelComment, onCommentRemoved: @escaping () -> Void) async {
-        comments.removeAll { $0.id == comment.id }
+        // Responder a un comentario concreto (0104_comment_replies.sql):
+        // `on delete cascade` real se lleva sus respuestas con él.
+        comments.removeAll { $0.id == comment.id || $0.parent_comment_id == comment.id }
         do {
             try await SupabaseManager.shared.client
                 .from("reel_comments")

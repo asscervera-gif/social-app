@@ -71,12 +71,12 @@ class CommentsViewModel(private val postId: String) : ViewModel() {
             _isLoading.value = true
             try {
                 val loaded = SupabaseManager.client.from("comments")
-                    .select(columns = Columns.raw("id,post_id,author_id,body,created_at,like_count,is_pinned")) {
+                    .select(columns = Columns.raw("id,post_id,author_id,body,created_at,like_count,is_pinned,parent_comment_id")) {
                         filter { eq("post_id", postId) }
                         order("created_at", Order.ASCENDING)
                     }
                     .decodeList<Comment>()
-                _comments.value = sortPinnedFirst(loaded)
+                _comments.value = threadOrder(loaded)
 
                 try {
                     val postRow = SupabaseManager.client.from("posts")
@@ -134,8 +134,17 @@ class CommentsViewModel(private val postId: String) : ViewModel() {
         @SerialName("comments_disabled") val commentsDisabled: Boolean = false
     )
 
-    private fun sortPinnedFirst(list: List<Comment>) =
-        list.sortedWith(compareByDescending<Comment> { it.isPinned }.thenBy { it.createdAt })
+    /** Responder a un comentario concreto (hilo de un nivel), comparado
+     * con Instagram/Facebook/Twitter/TikTok -- cada comentario de primer
+     * nivel (fijados primero, mismo orden real de siempre) va seguido de
+     * verdad por sus propias respuestas, en orden cronológico. Ver
+     * 0104_comment_replies.sql. */
+    private fun threadOrder(list: List<Comment>): List<Comment> {
+        val topLevel = list.filter { it.parentCommentId == null }
+            .sortedWith(compareByDescending<Comment> { it.isPinned }.thenBy { it.createdAt })
+        val repliesByParent = list.filter { it.parentCommentId != null }.groupBy { it.parentCommentId }
+        return topLevel.flatMap { parent -> listOf(parent) + repliesByParent[parent.id].orEmpty().sortedBy { it.createdAt } }
+    }
 
     /** Fijar/desfijar un comentario real, comparado con Instagram/Twitter
      * -- solo el autor real de la publicación puede hacerlo
@@ -144,7 +153,7 @@ class CommentsViewModel(private val postId: String) : ViewModel() {
      * silencio por la propia UI al no ofrecerle el botón). */
     fun togglePin(comment: Comment) {
         val newValue = !comment.isPinned
-        _comments.update { list -> sortPinnedFirst(list.map { if (it.id == comment.id) it.copy(isPinned = newValue) else it }) }
+        _comments.update { list -> threadOrder(list.map { if (it.id == comment.id) it.copy(isPinned = newValue) else it }) }
         viewModelScope.launch {
             try {
                 SupabaseManager.client.from("comments")
@@ -201,14 +210,20 @@ class CommentsViewModel(private val postId: String) : ViewModel() {
     private data class NewComment(
         @SerialName("post_id") val postId: String,
         @SerialName("author_id") val authorId: String,
-        val body: String
+        val body: String,
+        @SerialName("parent_comment_id") val parentCommentId: String? = null
     )
 
     /** Añade un comentario real, con `onCommentAdded` para que la pantalla
      * que muestra el contador (HomeScreen) lo refleje sin recargar todo el
      * feed. Actualización optimista con id temporal — se reemplaza por la
-     * lista real en el siguiente `load()` si hiciera falta reconciliar. */
-    fun addComment(text: String, onCommentAdded: () -> Unit) {
+     * lista real en el siguiente `load()` si hiciera falta reconciliar.
+     * [parentCommentId] es opcional -- responder a un comentario concreto
+     * (hilo de un nivel), comparado con Instagram/Facebook/Twitter/TikTok
+     * -- tiene que ser un comentario real de primer nivel de esta misma
+     * publicación (el propio trigger de 0104_comment_replies.sql lo
+     * exige; si no se cumple, el comentario simplemente no se publica). */
+    fun addComment(text: String, parentCommentId: String? = null, onCommentAdded: () -> Unit) {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
         // Mismo límite real que comments_body_length (0008_comments.sql,
@@ -223,9 +238,9 @@ class CommentsViewModel(private val postId: String) : ViewModel() {
             try {
                 val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
                 val inserted = SupabaseManager.client.from("comments")
-                    .insert(NewComment(postId, userId, trimmed)) { select() }
+                    .insert(NewComment(postId, userId, trimmed, parentCommentId)) { select() }
                     .decodeSingle<Comment>()
-                _comments.update { sortPinnedFirst(it + inserted) }
+                _comments.update { threadOrder(it + inserted) }
                 // Si es el primer comentario propio en este post, mi
                 // perfil todavía no está en authorProfiles (solo se cargó
                 // el de quienes ya habían comentado) -- sin esto, mi
@@ -259,7 +274,11 @@ class CommentsViewModel(private val postId: String) : ViewModel() {
      * botón. `posts.comment_count` lo mantiene sincronizado el mismo
      * trigger que ya cubre la inserción. */
     fun deleteComment(comment: Comment, onCommentRemoved: () -> Unit) {
-        _comments.update { list -> list.filter { it.id != comment.id } }
+        // Responder a un comentario concreto (0104_comment_replies.sql):
+        // `on delete cascade` real se lleva sus respuestas por debajo con
+        // él -- el estado local tiene que reflejar lo mismo, o quedarían
+        // respuestas huérfanas visibles hasta el siguiente load().
+        _comments.update { list -> list.filter { it.id != comment.id && it.parentCommentId != comment.id } }
         viewModelScope.launch {
             try {
                 SupabaseManager.client.from("comments").delete { filter { eq("id", comment.id) } }

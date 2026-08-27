@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.social.app.backend.SupabaseManager
+import com.social.app.backend.model.Comment
 import com.social.app.util.MentionHashtagText
 import com.social.app.util.MentionResolver
 import io.github.jan.supabase.gotrue.auth
@@ -65,6 +66,10 @@ fun CommentsSheet(
     // concreto (mismo criterio: sin columna nueva, se denuncia al autor
     // con el id del comentario en los detalles).
     var reportingCommentId by remember { mutableStateOf<String?>(null) }
+    // Responder a un comentario concreto (hilo de un nivel), comparado
+    // con Instagram/Facebook/Twitter/TikTok -- ver
+    // CommentsViewModel.addComment(), 0104_comment_replies.sql.
+    var replyingToComment by remember { mutableStateOf<Comment?>(null) }
     val scope = rememberCoroutineScope()
     val mentionResolver = remember { MentionResolver() }
 
@@ -85,7 +90,14 @@ fun CommentsSheet(
             ) {
                 items(comments, key = { it.id }) { comment ->
                     val author = authorProfiles[comment.authorId]
-                    Column(modifier = Modifier.fillMaxWidth()) {
+                    // Responder a un comentario concreto (hilo de un
+                    // nivel), comparado con Instagram/Facebook/Twitter/
+                    // TikTok -- una respuesta real va sangrada bajo el
+                    // comentario de primer nivel que responde (ya en el
+                    // orden correcto real, ver
+                    // CommentsViewModel.threadOrder()).
+                    val isReply = comment.parentCommentId != null
+                    Column(modifier = Modifier.fillMaxWidth().padding(start = if (isReply) 24.dp else 0.dp)) {
                         // Hallazgo real, mismo hueco raíz que el feed
                         // (HomeViewModel.authorProfiles, pasada anterior):
                         // nunca se mostraba QUIÉN escribió cada comentario,
@@ -143,6 +155,19 @@ fun CommentsSheet(
                                     )
                                 }
                             }
+                            // Responder a un comentario concreto (hilo de
+                            // un nivel), comparado con Instagram/Facebook/
+                            // Twitter/TikTok -- solo sobre un comentario de
+                            // primer nivel (límite real de un solo nivel,
+                            // ver 0104_comment_replies.sql: el propio
+                            // trigger lo exige, aquí se refleja no
+                            // ofreciendo el botón sobre una respuesta ya
+                            // existente).
+                            if (!isReply) {
+                                TextButton(onClick = { replyingToComment = comment }) {
+                                    Text("Responder")
+                                }
+                            }
                             // Fijar un comentario (propio o ajeno), comparado
                             // con Instagram/Twitter -- solo visible para el
                             // autor real de la publicación, mismo criterio
@@ -181,17 +206,36 @@ fun CommentsSheet(
                     modifier = Modifier.padding(top = 8.dp)
                 )
             } else {
-                Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                // Responder a un comentario concreto (hilo de un nivel),
+                // comparado con Instagram/Facebook/Twitter/TikTok -- vista
+                // previa real de a qué comentario se está respondiendo,
+                // con una forma real de cancelarlo antes de publicar.
+                replyingToComment?.let { replyTarget ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Respondiendo a ${authorProfiles[replyTarget.authorId]?.displayName ?: "…"}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        TextButton(onClick = { replyingToComment = null }) { Text("✕") }
+                    }
+                }
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(
                         value = draft,
                         onValueChange = { draft = it },
                         modifier = Modifier.weight(1f),
-                        placeholder = { Text("Escribe un comentario…") }
+                        placeholder = { Text(if (replyingToComment != null) "Escribe una respuesta…" else "Escribe un comentario…") }
                     )
                     Button(
                         onClick = {
-                            viewModel.addComment(draft) { onCommentAdded() }
+                            viewModel.addComment(draft, replyingToComment?.id) { onCommentAdded() }
                             draft = ""
+                            replyingToComment = null
                         },
                         modifier = Modifier.padding(start = 8.dp)
                     ) {

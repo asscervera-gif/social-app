@@ -2551,6 +2551,88 @@ async function main() {
   const membersAfterRemoval = (await db.query(`select member_id from broadcast_list_members where broadcast_list_id = $1`, [broadcastList.id])).rows;
   check('broadcast_list_members_write_own: tras quitarlo de verdad, la lista se queda con un solo miembro real', membersAfterRemoval.length === 1);
 
+  // --- comments.parent_comment_id/reel_comments.parent_comment_id
+  // (0104_comment_replies.sql): responder a un comentario concreto (hilo
+  // de un nivel), comparado con Instagram/Facebook/Twitter/TikTok.
+  // Usuarios NUEVOS a propósito (mismo motivo ya documentado varias
+  // veces esta sesión): sin ninguna relación previa que pueda
+  // contaminar esta prueba. ---
+  await asSuperuser();
+  const crAuthor = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const crCommenterA = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const crCommenterB = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name) values ($1, 'Autor'), ($2, 'Comenta A'), ($3, 'Comenta B')
+     on conflict (id) do update set display_name = excluded.display_name`,
+    [crAuthor, crCommenterA, crCommenterB]
+  );
+
+  await asUser(crAuthor);
+  const crPost = (await db.query(`insert into posts (author_id, caption) values ($1, 'publicación real para hilos') returning id`, [crAuthor])).rows[0];
+  const crReel = (await db.query(`insert into reels (author_id, video_url) values ($1, 'reel.mp4') returning id`, [crAuthor])).rows[0];
+
+  await asUser(crCommenterA);
+  const topLevelComment = (await db.query(
+    `insert into comments (post_id, author_id, body) values ($1, $2, 'comentario real de primer nivel') returning id`, [crPost.id, crCommenterA]
+  )).rows[0];
+
+  await asUser(crCommenterB);
+  const replyComment = (await db.query(
+    `insert into comments (post_id, author_id, body, parent_comment_id) values ($1, $2, 'respondiendo de verdad', $3) returning id`,
+    [crPost.id, crCommenterB, topLevelComment.id]
+  )).rows[0];
+  check('trg_check_comment_reply_same_post: SÍ deja responder a un comentario real de primer nivel', replyComment.id !== undefined);
+
+  await expectFail('trg_check_comment_reply_same_post: NO deja responder a una respuesta real (límite real de un solo nivel)', async () => {
+    await db.query(
+      `insert into comments (post_id, author_id, body, parent_comment_id) values ($1, $2, 'intento de segundo nivel', $3)`,
+      [crPost.id, crCommenterA, replyComment.id]
+    );
+  });
+
+  await asUser(crAuthor);
+  const crOtherPost = (await db.query(`insert into posts (author_id, caption) values ($1, 'otra publicación real, sin relación') returning id`, [crAuthor])).rows[0];
+  await asUser(crCommenterA);
+  const foreignComment = (await db.query(
+    `insert into comments (post_id, author_id, body) values ($1, $2, 'comentario real de otra publicación') returning id`, [crOtherPost.id, crCommenterA]
+  )).rows[0];
+  await expectFail('trg_check_comment_reply_same_post: NO deja citar un comentario real de OTRA publicación distinta', async () => {
+    await db.query(
+      `insert into comments (post_id, author_id, body, parent_comment_id) values ($1, $2, 'cita cruzada real', $3)`,
+      [crPost.id, crCommenterA, foreignComment.id]
+    );
+  });
+
+  await asSuperuser();
+  await db.query(`delete from comments where id = $1`, [topLevelComment.id]);
+  const replyAfterParentDeleted = (await db.query(`select id from comments where id = $1`, [replyComment.id])).rows;
+  check('parent_comment_id: on delete cascade real -- borrar el comentario de primer nivel se lleva su respuesta con él', replyAfterParentDeleted.length === 0);
+
+  // Mismo espejo real en reel_comments.
+  await asUser(crCommenterA);
+  const topLevelReelComment = (await db.query(
+    `insert into reel_comments (reel_id, author_id, body) values ($1, $2, 'comentario real de primer nivel en un reel') returning id`, [crReel.id, crCommenterA]
+  )).rows[0];
+  await asUser(crCommenterB);
+  await expectOk('trg_check_reel_comment_reply_same_reel: SÍ deja responder a un comentario real de primer nivel en un reel', async () => {
+    await db.query(
+      `insert into reel_comments (reel_id, author_id, body, parent_comment_id) values ($1, $2, 'respondiendo en un reel de verdad', $3)`,
+      [crReel.id, crCommenterB, topLevelReelComment.id]
+    );
+  });
+  await asUser(crAuthor);
+  const otherReel = (await db.query(`insert into reels (author_id, video_url) values ($1, 'otro_reel.mp4') returning id`, [crAuthor])).rows[0];
+  await asUser(crCommenterB);
+  const foreignReelComment = (await db.query(
+    `insert into reel_comments (reel_id, author_id, body) values ($1, $2, 'comentario real de otro reel') returning id`, [otherReel.id, crCommenterB]
+  )).rows[0];
+  await expectFail('trg_check_reel_comment_reply_same_reel: NO deja citar un comentario real de OTRO reel distinto', async () => {
+    await db.query(
+      `insert into reel_comments (reel_id, author_id, body, parent_comment_id) values ($1, $2, 'cita cruzada real de reel', $3)`,
+      [crReel.id, crCommenterB, foreignReelComment.id]
+    );
+  });
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado
