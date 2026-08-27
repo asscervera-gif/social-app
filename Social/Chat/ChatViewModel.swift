@@ -423,7 +423,7 @@ final class ChatViewModel: ObservableObject {
         do {
             try await SupabaseManager.shared.client
                 .from("messages")
-                .update(["read_at": ISO8601DateFormatter().string(from: Date())])
+                .update(["read_at": ISO8601DateFormatter().string(from: Date()), "delivered_at": ISO8601DateFormatter().string(from: Date())])
                 .eq("chat_id", value: chatID)
                 .neq("sender_id", value: currentUserID)
                 .execute()
@@ -581,6 +581,16 @@ final class ChatViewModel: ObservableObject {
                     messages.append(message)
                     await loadSharedPosts([message])
                     await loadStoryPreviews([message])
+                    // Entregado real (0117): en cuanto llega en vivo a MI
+                    // dispositivo, comparado con WhatsApp (✓✓ gris antes
+                    // de leer). Equivalente de ChatViewModel.kt.
+                    if message.senderID != currentUserID {
+                        try? await SupabaseManager.shared.client
+                            .from("messages")
+                            .update(["delivered_at": ISO8601DateFormatter().string(from: Date())])
+                            .eq("id", value: message.id)
+                            .execute()
+                    }
                 }
             }
         }

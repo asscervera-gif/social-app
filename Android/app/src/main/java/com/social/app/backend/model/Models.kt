@@ -165,6 +165,9 @@ data class ChatMessage(
     // reacciones, read receipts" alcanzable sin infraestructura nueva —
     // mismo patrón que notifications.read_at (0017_message_read_receipts.sql).
     @SerialName("read_at") val readAt: String? = null,
+    // Estado real de "Entregado" (✓✓ gris), comparado con WhatsApp --
+    // distinto de leído (✓✓ azul). Ver 0117_message_delivered_status.sql.
+    @SerialName("delivered_at") val deliveredAt: String? = null,
     // Mensajes de voz — separado de mediaUrl a propósito, ver
     // 0019_message_audio.sql: el cliente necesita distinguir explícitamente
     // reproductor de imagen, no adivinar por la extensión del archivo.

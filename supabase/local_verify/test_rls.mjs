@@ -3141,6 +3141,32 @@ async function main() {
   const mutedFeedAfterSave = (await db.query(`select muted_feed_keywords from profiles where id = $1`, [u1])).rows[0];
   check('profiles.muted_feed_keywords: la lista real queda guardada de verdad', JSON.stringify(mutedFeedAfterSave.muted_feed_keywords) === JSON.stringify(['spoiler', 'política']));
 
+  // --- messages.delivered_at (0117_message_delivered_status.sql):
+  // estado real de "Entregado", comparado con WhatsApp. ---
+  await asSuperuser();
+  const dvU1 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const dvU2 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name) values ($1, 'Dv1'), ($2, 'Dv2') on conflict (id) do update set display_name = excluded.display_name`,
+    [dvU1, dvU2]
+  );
+  const dvChat = (await db.query(`insert into chats (user_a_id, user_b_id) values ($1, $2) returning id`, [dvU1, dvU2])).rows[0];
+  await asUser(dvU1);
+  const dvMsg = (await db.query(`insert into messages (chat_id, sender_id, body) values ($1, $2, 'hola') returning id`, [dvChat.id, dvU1])).rows[0];
+
+  await expectOk('protect_message_columns: dvU1 (remitente) NO consigue marcar su propio mensaje como entregado (revertido)', async () => {
+    await db.query(`update messages set delivered_at = now() where id = $1`, [dvMsg.id]);
+  });
+  const dvAfterSenderAttempt = (await db.query(`select delivered_at from messages where id = $1`, [dvMsg.id])).rows[0];
+  check('protect_message_columns: delivered_at sigue null tras el intento del propio remitente', dvAfterSenderAttempt.delivered_at === null);
+
+  await asUser(dvU2);
+  await expectOk('messages_update_read: dvU2 (destinatario) SÍ puede marcar el mensaje real como entregado', async () => {
+    await db.query(`update messages set delivered_at = now() where id = $1`, [dvMsg.id]);
+  });
+  const dvAfterRecipient = (await db.query(`select delivered_at from messages where id = $1`, [dvMsg.id])).rows[0];
+  check('messages_update_read: delivered_at real queda fijado por el destinatario', dvAfterRecipient.delivered_at !== null);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

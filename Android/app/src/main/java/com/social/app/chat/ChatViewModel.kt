@@ -446,14 +446,14 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
             // final en la práctica), así que no hace falta filtrar por
             // null, mismo criterio que otros filtros no probados aquí.
             SupabaseManager.client.from("messages")
-                .update({ set("read_at", nowIso) }) {
+                .update({ set("read_at", nowIso); set("delivered_at", nowIso) }) {
                     filter {
                         eq("chat_id", chatId)
                         neq("sender_id", userId)
                     }
                 }
             _messages.update { list ->
-                list.map { if (it.senderId != userId && it.readAt == null) it.copy(readAt = nowIso) else it }
+                list.map { if (it.senderId != userId && it.readAt == null) it.copy(readAt = nowIso, deliveredAt = it.deliveredAt ?: nowIso) else it }
             }
             // Marcar como no leído manualmente (0088_mark_chat_unread.sql)
             // se limpia solo al volver a abrir el chat de verdad, mismo
@@ -649,6 +649,18 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
             _messages.update { it + message }
             loadSharedPosts(listOf(message))
             loadStoryPreviews(listOf(message))
+            // Entregado real (0117): en cuanto llega en vivo a MI
+            // dispositivo (aunque no haya abierto el chat), comparado
+            // con WhatsApp (✓✓ gris antes de leer).
+            val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
+            if (myId != null && message.senderId != myId) {
+                viewModelScope.launch {
+                    try {
+                        SupabaseManager.client.from("messages")
+                            .update({ set("delivered_at", java.time.Instant.now().toString()) }) { filter { eq("id", message.id) } }
+                    } catch (e: Exception) { /* no crítico */ }
+                }
+            }
         }.launchIn(viewModelScope)
 
         ch.postgresChangeFlow<PostgresAction.Update>(schema = "public") {

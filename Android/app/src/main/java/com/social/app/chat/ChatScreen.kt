@@ -579,8 +579,16 @@ fun ChatScreen(
                         // suyo, ver ChatViewModel.loadReadReceiptsVisibility(),
                         // 0091_read_receipts_toggle.sql.
                         val showRead = message.readAt != null && showReadReceipts
+                        // Entregado real (✓✓ gris), comparado con
+                        // WhatsApp -- estado intermedio entre "Enviado"
+                        // (✓) y "Leído" (✓✓ azul), ver 0117_message_delivered_status.sql.
+                        val showDelivered = message.deliveredAt != null && showReadReceipts
                         Text(
-                            if (showRead) "Leído ✓✓" else "Enviado ✓",
+                            when {
+                                showRead -> "Leído ✓✓"
+                                showDelivered -> "Entregado ✓✓"
+                                else -> "Enviado ✓"
+                            },
                             style = MaterialTheme.typography.labelSmall,
                             color = if (showRead) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                         )

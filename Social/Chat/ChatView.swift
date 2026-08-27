@@ -799,7 +799,11 @@ private struct MessageBubble: View {
             }
             if isMine {
                 let showRead = message.readAt != nil && showReadReceipts
-                Text(showRead ? "Leído ✓✓" : "Enviado ✓")
+                // Entregado real (✓✓ gris), comparado con WhatsApp --
+                // estado intermedio, ver 0117_message_delivered_status.sql.
+                let showDelivered = message.deliveredAt != nil && showReadReceipts
+                let statusText = showRead ? "Leído ✓✓" : (showDelivered ? "Entregado ✓✓" : "Enviado ✓")
+                Text(statusText)
                     .font(.caption2)
                     .foregroundStyle(showRead ? Color.accentColor : .secondary)
             }
