@@ -3057,6 +3057,18 @@ async function main() {
     await db.query(`insert into post_poll_votes (poll_id, voter_id, option_index) values ($1, $2, 0)`, [ppPoll.id, ppBlocked]);
   });
 
+  // --- reels.location_name (0114_reel_location_tag.sql): etiqueta de
+  // ubicación real también en un reel, comparado con Instagram/TikTok --
+  // mismo diseño exacto que posts.location_name (0095), sin RLS ni
+  // trigger nuevos (reels_write_own ya cubre tocar la propia fila). ---
+  await asUser(u1);
+  await expectOk('reels_write_own: u1 SÍ puede etiquetar su propio reel con un nombre de sitio real', async () => {
+    await db.query(`insert into reels (author_id, video_url, location_name) values ($1, 'https://example.com/v.mp4', 'Parque del Retiro, Madrid')`, [u1]);
+  });
+  await expectFail('reels_location_name_length: más de 100 caracteres reales NO se puede guardar', async () => {
+    await db.query(`insert into reels (author_id, video_url, location_name) values ($1, 'https://example.com/v2.mp4', $2)`, [u1, 'x'.repeat(101)]);
+  });
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

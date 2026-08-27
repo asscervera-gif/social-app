@@ -45,7 +45,11 @@ data class Reel(
     @SerialName("is_sensitive") val isSensitive: Boolean = false,
     // "¿Quién puede comentar?" real, comparado con Twitter/X/TikTok --
     // 'everyone'/'followers'/'mentioned' (0097_reply_audience.sql).
-    @SerialName("reply_audience") val replyAudience: String = "everyone"
+    @SerialName("reply_audience") val replyAudience: String = "everyone",
+    // Etiqueta de ubicación real (texto libre, no geocodificado),
+    // comparado con Instagram/TikTok -- mismo diseño exacto que
+    // posts.locationName, ver 0114_reel_location_tag.sql.
+    @SerialName("location_name") val locationName: String? = null
 )
 
 /**
@@ -293,7 +297,8 @@ class ReelsViewModel : ViewModel() {
         @SerialName("author_id") val authorId: String,
         @SerialName("video_url") val videoUrl: String,
         val caption: String?,
-        @SerialName("is_social_only") val isSocialOnly: Boolean
+        @SerialName("is_social_only") val isSocialOnly: Boolean,
+        @SerialName("location_name") val locationName: String? = null
     )
 
     /** Sube el vídeo real al bucket `media` (StorageUploader.uploadVideo,
@@ -302,7 +307,7 @@ class ReelsViewModel : ViewModel() {
      * fijar -- generar un fotograma real necesitaría decodificar el vídeo
      * (MediaMetadataRetriever), hueco real documentado, no fingido con un
      * color aleatorio. */
-    fun upload(context: Context, videoUri: Uri, caption: String, isSocialOnly: Boolean, onDone: (Boolean) -> Unit) {
+    fun upload(context: Context, videoUri: Uri, caption: String, isSocialOnly: Boolean, locationName: String = "", onDone: (Boolean) -> Unit) {
         viewModelScope.launch {
             _isUploading.value = true
             try {
@@ -310,8 +315,11 @@ class ReelsViewModel : ViewModel() {
                     onDone(false)
                     return@launch
                 }
+                // Mismo límite real que reels_location_name_length
+                // (0114_reel_location_tag.sql).
+                val trimmedLocation = locationName.trim().ifEmpty { null }?.take(100)
                 val videoUrl = StorageUploader.uploadVideo(context, videoUri, userId)
-                SupabaseManager.client.from("reels").insert(NewReel(userId, videoUrl, caption.ifBlank { null }, isSocialOnly))
+                SupabaseManager.client.from("reels").insert(NewReel(userId, videoUrl, caption.ifBlank { null }, isSocialOnly, trimmedLocation))
                 com.social.app.backend.AnalyticsManager.track("reel_created")
                 load()
                 onDone(true)

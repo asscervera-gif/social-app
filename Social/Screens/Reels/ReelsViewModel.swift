@@ -38,6 +38,10 @@ struct Reel: Codable, Identifiable {
     // "¿Quién puede comentar?" real, comparado con Twitter/X/TikTok --
     // "everyone"/"followers"/"mentioned" (0097_reply_audience.sql).
     var replyAudience: String = "everyone"
+    // Etiqueta de ubicación real (texto libre, no geocodificado),
+    // comparado con Instagram/TikTok -- mismo diseño exacto que
+    // Post.locationName, ver 0114_reel_location_tag.sql.
+    var locationName: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -54,6 +58,7 @@ struct Reel: Codable, Identifiable {
         case hideLikeCount = "hide_like_count"
         case isSensitive = "is_sensitive"
         case replyAudience = "reply_audience"
+        case locationName = "location_name"
     }
 }
 
@@ -294,7 +299,7 @@ final class ReelsViewModel: ObservableObject {
     /// fijar -- generar un fotograma real necesitaría decodificar el
     /// vídeo (AVAssetImageGenerator), hueco real documentado, no fingido
     /// con un color aleatorio. Equivalente de ReelsViewModel.kt.upload().
-    func upload(videoData: Data, fileExtension: String, caption: String, isSocialOnly: Bool) async -> Bool {
+    func upload(videoData: Data, fileExtension: String, caption: String, isSocialOnly: Bool, locationName: String = "") async -> Bool {
         isUploading = true
         defer { isUploading = false }
         struct NewReel: Encodable {
@@ -302,13 +307,18 @@ final class ReelsViewModel: ObservableObject {
             let video_url: String
             let caption: String?
             let is_social_only: Bool
+            let location_name: String?
         }
         do {
             guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return false }
+            // Mismo límite real que reels_location_name_length
+            // (0114_reel_location_tag.sql).
+            let trimmedLocation = locationName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let finalLocation = trimmedLocation.isEmpty ? nil : String(trimmedLocation.prefix(100))
             let videoURL = try await StorageUploader.uploadVideo(data: videoData, fileExtension: fileExtension, userID: userID)
             try await SupabaseManager.shared.client
                 .from("reels")
-                .insert(NewReel(author_id: userID, video_url: videoURL, caption: caption.isEmpty ? nil : caption, is_social_only: isSocialOnly))
+                .insert(NewReel(author_id: userID, video_url: videoURL, caption: caption.isEmpty ? nil : caption, is_social_only: isSocialOnly, location_name: finalLocation))
                 .execute()
             AnalyticsManager.track("reel_created")
             await load()

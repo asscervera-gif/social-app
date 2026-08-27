@@ -93,8 +93,8 @@ struct ReelsView: View {
         .task { myID = try? await SupabaseManager.shared.client.auth.session.user.id }
         .refreshable { await viewModel.load() }
         .sheet(isPresented: $showUpload) {
-            UploadReelView(isUploading: viewModel.isUploading) { data, ext, caption, isSocialOnly in
-                let success = await viewModel.upload(videoData: data, fileExtension: ext, caption: caption, isSocialOnly: isSocialOnly)
+            UploadReelView(isUploading: viewModel.isUploading) { data, ext, caption, isSocialOnly, locationName in
+                let success = await viewModel.upload(videoData: data, fileExtension: ext, caption: caption, isSocialOnly: isSocialOnly, locationName: locationName)
                 if success { showUpload = false }
             }
         }
@@ -209,6 +209,14 @@ private struct ReelRow: View {
                     }
                 )
             }
+            // Etiqueta de ubicación real, comparado con Instagram/TikTok
+            // -- mismo diseño exacto que Post.locationName, ver
+            // 0114_reel_location_tag.sql.
+            if let location = reel.locationName {
+                Text("📍 \(location)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             HStack {
                 Button(action: onLike) {
                     Text(isLiked ? "❤" : "🤍")
@@ -280,12 +288,15 @@ private struct ReelRow: View {
 
 private struct UploadReelView: View {
     let isUploading: Bool
-    let onUpload: (Data, String, String, Bool) async -> Void
+    let onUpload: (Data, String, String, Bool, String) async -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var selectedVideo: PhotosPickerItem?
     @State private var videoData: Data?
     @State private var caption = ""
     @State private var isSocialOnly = false
+    // Etiqueta de ubicación real, comparado con Instagram/TikTok -- ver
+    // ReelsViewModel.upload(), 0114_reel_location_tag.sql.
+    @State private var locationName = ""
 
     var body: some View {
         NavigationStack {
@@ -303,12 +314,15 @@ private struct UploadReelView: View {
                 TextField("Descripción (opcional)", text: $caption, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
 
+                TextField("📍 Añadir ubicación (opcional)", text: $locationName)
+                    .textFieldStyle(.roundedBorder)
+
                 Toggle("Solo visible para tus socials aceptados", isOn: $isSocialOnly)
 
                 Button {
                     guard let videoData else { return }
                     Task {
-                        await onUpload(videoData, "mp4", caption, isSocialOnly)
+                        await onUpload(videoData, "mp4", caption, isSocialOnly, locationName)
                     }
                 } label: {
                     if isUploading {

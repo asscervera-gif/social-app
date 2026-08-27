@@ -164,8 +164,8 @@ fun ReelsScreen(
         UploadReelSheet(
             isUploading = viewModel.isUploading.collectAsState().value,
             onDismiss = { showUpload = false },
-            onUpload = { uri, caption, isSocialOnly ->
-                viewModel.upload(context, uri, caption, isSocialOnly) { success ->
+            onUpload = { uri, caption, isSocialOnly, locationName ->
+                viewModel.upload(context, uri, caption, isSocialOnly, locationName) { success ->
                     if (success) showUpload = false
                 }
             }
@@ -270,6 +270,17 @@ private fun ReelPage(
                     }
                 )
             }
+            // Etiqueta de ubicación real, comparado con Instagram/TikTok
+            // -- mismo diseño exacto que posts.locationName
+            // (HomeScreen.kt), ver 0114_reel_location_tag.sql.
+            reel.locationName?.let { location ->
+                Text(
+                    "📍 $location",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = androidx.compose.ui.graphics.Color.White,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
             Text(
                 relativeTime(reel.createdAt),
                 color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.7f),
@@ -352,10 +363,13 @@ private fun ReelPage(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun UploadReelSheet(isUploading: Boolean, onDismiss: () -> Unit, onUpload: (Uri, String, Boolean) -> Unit) {
+private fun UploadReelSheet(isUploading: Boolean, onDismiss: () -> Unit, onUpload: (Uri, String, Boolean, String) -> Unit) {
     var videoUri by remember { mutableStateOf<Uri?>(null) }
     var caption by remember { mutableStateOf("") }
     var isSocialOnly by remember { mutableStateOf(false) }
+    // Etiqueta de ubicación real, comparado con Instagram/TikTok -- ver
+    // ReelsViewModel.upload(), 0114_reel_location_tag.sql.
+    var locationName by remember { mutableStateOf("") }
     val sheetState = rememberModalBottomSheetState()
 
     val pickVideo = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -377,6 +391,13 @@ private fun UploadReelSheet(isUploading: Boolean, onDismiss: () -> Unit, onUploa
                 label = { Text("Descripción (opcional)") },
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
             )
+            OutlinedTextField(
+                value = locationName,
+                onValueChange = { locationName = it },
+                label = { Text("📍 Añadir ubicación (opcional)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+            )
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -385,7 +406,7 @@ private fun UploadReelSheet(isUploading: Boolean, onDismiss: () -> Unit, onUploa
                 Text("Solo visible para tus socials aceptados")
             }
             Button(
-                onClick = { videoUri?.let { onUpload(it, caption, isSocialOnly) } },
+                onClick = { videoUri?.let { onUpload(it, caption, isSocialOnly, locationName) } },
                 enabled = videoUri != null && !isUploading,
                 // Mismo criterio de modo oscuro que PerfilScreen.kt: colores
                 // de rol de tema, no un literal fijo que se volvería
