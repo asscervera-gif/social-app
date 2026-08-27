@@ -13,6 +13,9 @@ import SwiftUI
 
 struct SearchView: View {
     @StateObject private var viewModel = SearchViewModel()
+    // Búsquedas recientes reales, comparado con Instagram/Twitter/TikTok
+    // -- ver RecentSearchesPreference.swift.
+    @ObservedObject private var recentSearches = RecentSearchesPreference.shared
     // Llega desde HashtagText/PostCard (HomeView.swift) al tocar una
     // etiqueta en una publicación real — sin esto, tocar la etiqueta
     // abriría el buscador vacío en vez de con los resultados de esa
@@ -28,6 +31,24 @@ struct SearchView: View {
         List {
             if let error = viewModel.errorMessage {
                 Text(error).font(.footnote).foregroundStyle(.red)
+            }
+            // Búsquedas recientes reales, comparado con Instagram/
+            // Twitter/TikTok -- solo con el buscador vacío, mismo momento
+            // real que esas tres apps.
+            if viewModel.query.trimmingCharacters(in: .whitespaces).isEmpty && !recentSearches.recent.isEmpty {
+                Section {
+                    ForEach(recentSearches.recent, id: \.self) { recentQuery in
+                        Button(recentQuery) { viewModel.query = recentQuery }
+                            .foregroundStyle(.primary)
+                    }
+                } header: {
+                    HStack {
+                        Text("Recientes")
+                        Spacer()
+                        Button("Borrar") { recentSearches.clear() }
+                            .font(.caption)
+                    }
+                }
             }
             let noResults = isHashtagMode ? viewModel.postResults.isEmpty : viewModel.results.isEmpty
             if !viewModel.query.trimmingCharacters(in: .whitespaces).isEmpty && noResults {
@@ -80,6 +101,7 @@ struct SearchView: View {
             }
         }
         .searchable(text: $viewModel.query, prompt: "Nombre o #etiqueta")
+        .onSubmit(of: .search) { recentSearches.add(viewModel.query) }
         .navigationTitle("Buscar")
         .task {
             if let initialHashtag, !initialHashtag.isEmpty {

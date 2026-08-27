@@ -29,6 +29,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
  */
 @Composable
 fun SearchScreen(viewModel: SearchViewModel = viewModel(), onOpenProfile: (String) -> Unit, initialHashtag: String? = null) {
+    // Búsquedas recientes reales, comparado con Instagram/Twitter/TikTok --
+    // ver RecentSearchesPreference.kt.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(Unit) { RecentSearchesPreference.init(context) }
+    val recentSearches by RecentSearchesPreference.recent.collectAsState()
     LaunchedEffect(initialHashtag) {
         // Llega desde CaptionText (HomeScreen.kt) al tocar una etiqueta en
         // una publicación real — sin esto, tocar la etiqueta abriría el
@@ -50,9 +55,42 @@ fun SearchScreen(viewModel: SearchViewModel = viewModel(), onOpenProfile: (Strin
             onValueChange = { viewModel.onQueryChange(it) },
             label = { Text("Nombre o #etiqueta") },
             singleLine = true,
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+            keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                onSearch = { RecentSearchesPreference.add(context, query) }
+            ),
             modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
         )
         errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 12.dp)) }
+        // Búsquedas recientes reales, comparado con Instagram/Twitter/
+        // TikTok -- solo con el buscador vacío, mismo momento real que
+        // esas tres apps.
+        if (query.isBlank() && recentSearches.isNotEmpty()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Recientes", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    "Borrar",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.clickable { RecentSearchesPreference.clear(context) }
+                )
+            }
+            LazyColumn(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                items(recentSearches, key = { it }) { recentQuery ->
+                    Text(
+                        recentQuery,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.onQueryChange(recentQuery) }
+                            .padding(vertical = 10.dp)
+                    )
+                }
+            }
+        }
         val noResults = if (isHashtagMode) postResults.isEmpty() else results.isEmpty()
         if (query.isNotBlank() && noResults && errorMessage == null) {
             Text(
