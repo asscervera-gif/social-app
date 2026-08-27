@@ -234,6 +234,10 @@ struct ChatMessage: Codable, Identifiable {
     // WhatsApp/Telegram, ver 0089_pin_message.sql.
     var pinnedAt: Date? = nil
     var pinnedBy: UUID? = nil
+    // Responder a un mensaje concreto (cita), comparado con
+    // WhatsApp/Telegram/iMessage/Instagram DM -- referencia al mensaje
+    // real citado, nunca una copia. Ver 0102_message_reply.sql.
+    var replyToMessageID: UUID? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -250,6 +254,7 @@ struct ChatMessage: Codable, Identifiable {
         case isForwarded = "is_forwarded"
         case pinnedAt = "pinned_at"
         case pinnedBy = "pinned_by"
+        case replyToMessageID = "reply_to_message_id"
     }
 }
 

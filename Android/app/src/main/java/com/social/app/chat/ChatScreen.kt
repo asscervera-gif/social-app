@@ -4,6 +4,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -290,6 +291,33 @@ fun ChatScreen(
                         // publicación completa real (PostDetailScreen.kt),
                         // mismo criterio que Instagram/Messenger: antes
                         // solo abría la foto a tamaño completo.
+                        // Responder a un mensaje concreto (cita), comparado
+                        // con WhatsApp/Telegram/iMessage/Instagram DM --
+                        // busca el mensaje real citado en los ya cargados
+                        // (mismo chat); si no está (p. ej. quedó fuera de
+                        // la página cargada, o se borró y quedó en null
+                        // por `on delete set null`), se omite sin más, sin
+                        // texto de relleno inventado. Ver
+                        // 0102_message_reply.sql.
+                        message.replyToMessageId?.let { repliedId ->
+                            val repliedMessage = messages.firstOrNull { it.id == repliedId }
+                            if (repliedMessage != null) {
+                                Column(
+                                    modifier = Modifier
+                                        .padding(top = 6.dp, start = 8.dp, end = 8.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        repliedMessage.body?.take(80)
+                                            ?: if (repliedMessage.mediaUrl != null) "📷 Foto" else if (repliedMessage.audioUrl != null) "🎤 Nota de voz" else "Mensaje",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
                         if (message.storyId != null) {
                             // Responder a una historia real
                             // (0071_message_story_reply.sql), comparado
@@ -423,12 +451,20 @@ fun ChatScreen(
                         )
                     }
                     if (message.body != null || message.mediaUrl != null || message.audioUrl != null) {
-                        Text(
-                            "↪ Reenviar",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.clickable { forwardingMessage = message }
-                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                "↩ Responder",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.clickable { viewModel.setReplyingTo(message) }
+                            )
+                            Text(
+                                "↪ Reenviar",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.clickable { forwardingMessage = message }
+                            )
+                        }
                     }
                     if (isMine) {
                         // Recibo de lectura real, comparado con WhatsApp/
@@ -490,6 +526,40 @@ fun ChatScreen(
             if (granted) {
                 voiceRecorder.start()
                 isRecording = true
+            }
+        }
+
+        // Responder a un mensaje concreto (cita), comparado con
+        // WhatsApp/Telegram/iMessage/Instagram DM -- vista previa real de
+        // a qué se está respondiendo, encima del compositor, con una
+        // forma real de cancelarlo antes de enviar. Ver
+        // ChatViewModel.replyingTo(), 0102_message_reply.sql.
+        val replyingTo by viewModel.replyingTo.collectAsState()
+        replyingTo?.let { quoted ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Respondiendo",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        quoted.body?.take(80) ?: if (quoted.mediaUrl != null) "📷 Foto" else if (quoted.audioUrl != null) "🎤 Nota de voz" else "Mensaje",
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1
+                    )
+                }
+                androidx.compose.material3.TextButton(onClick = { viewModel.setReplyingTo(null) }) {
+                    Text("✕")
+                }
             }
         }
 
@@ -585,6 +655,14 @@ fun ChatScreen(
             },
             dismissButton = {
                 Row {
+                    // Responder a un mensaje concreto (cita), comparado con
+                    // WhatsApp/Telegram/iMessage/Instagram DM -- sobre
+                    // CUALQUIER mensaje (propio o ajeno), ver
+                    // ChatViewModel.setReplyingTo(), 0102_message_reply.sql.
+                    androidx.compose.material3.TextButton(onClick = {
+                        viewModel.setReplyingTo(message)
+                        managingMessage = null
+                    }) { Text("Responder") }
                     // Fijar un mensaje real (propio o ajeno), VISIBLE PARA
                     // TODOS los participantes -- a diferencia de "Destacar"
                     // (arriba), totalmente privado. Ver

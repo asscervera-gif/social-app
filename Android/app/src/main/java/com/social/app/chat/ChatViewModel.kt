@@ -41,6 +41,16 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
 
+    // Responder a un mensaje concreto (cita), comparado con
+    // WhatsApp/Telegram/iMessage/Instagram DM -- mensaje real que se está
+    // citando ahora mismo en el compositor, ver 0102_message_reply.sql.
+    private val _replyingTo = MutableStateFlow<ChatMessage?>(null)
+    val replyingTo: StateFlow<ChatMessage?> = _replyingTo.asStateFlow()
+
+    fun setReplyingTo(message: ChatMessage?) {
+        _replyingTo.value = message
+    }
+
     // Enviar una publicación a un chat real (0069_message_shared_post.sql),
     // comparado con Instagram/TikTok/Twitter/Snapchat -- vista previa real
     // (miniatura + caption + autor) de la publicación compartida en un
@@ -720,7 +730,8 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
         @SerialName("sender_id") val senderId: String,
         val body: String? = null,
         @SerialName("media_url") val mediaUrl: String? = null,
-        @SerialName("audio_url") val audioUrl: String? = null
+        @SerialName("audio_url") val audioUrl: String? = null,
+        @SerialName("reply_to_message_id") val replyToMessageId: String? = null
     )
 
     fun sendMessage(text: String) {
@@ -738,10 +749,17 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
         // después de que el chat ya tuviera mensajes de verdad — nada la
         // limpiaba salvo tocarla o su propia "✕".
         _icebreaker.value = null
+        // Responder a un mensaje concreto (cita), comparado con
+        // WhatsApp/Telegram/iMessage/Instagram DM -- se consume aquí y se
+        // limpia, tanto si el envío sale bien como si falla (mismo
+        // criterio real que esas apps: la cita no sobrevive a un envío
+        // fallido, se vuelve a elegir).
+        val replyToId = _replyingTo.value?.id
+        _replyingTo.value = null
         viewModelScope.launch {
             try {
                 val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
-                SupabaseManager.client.from("messages").insert(NewMessage(chatId = chatId, senderId = userId, body = text))
+                SupabaseManager.client.from("messages").insert(NewMessage(chatId = chatId, senderId = userId, body = text, replyToMessageId = replyToId))
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo enviar el mensaje."
             }

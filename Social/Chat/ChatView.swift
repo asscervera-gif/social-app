@@ -49,6 +49,16 @@ struct ChatView: View {
     // WhatsApp/Telegram/Messenger.
     @State private var forwardingMessage: ChatMessage?
 
+    // Responder a un mensaje concreto (cita) -- precalculado aparte,
+    // mismo motivo que MessageBubble.repliedPreviewText más abajo.
+    private var replyingToPreviewText: String? {
+        guard let replyingTo = viewModel.replyingTo else { return nil }
+        if let body = replyingTo.body { return String(body.prefix(80)) }
+        if replyingTo.mediaURL != nil { return "📷 Foto" }
+        if replyingTo.audioURL != nil { return "🎤 Nota de voz" }
+        return "Mensaje"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             compatibilityBar
@@ -165,6 +175,9 @@ struct ChatView: View {
                                     .flatMap { viewModel.sharedPosts[$0] }
                                     .flatMap { viewModel.sharedPostAuthors[$0.authorID] },
                                 storyPreview: message.storyID.flatMap { viewModel.storyPreviews[$0] },
+                                repliedMessage: message.replyToMessageID.flatMap { repliedID in
+                                    viewModel.messages.first { $0.id == repliedID }
+                                },
                                 onToggleReaction: { emoji in
                                     Task { await viewModel.toggleReaction(messageID: message.id, emoji: emoji) }
                                 },
@@ -173,6 +186,9 @@ struct ChatView: View {
                                 },
                                 onForward: {
                                     forwardingMessage = message
+                                },
+                                onReply: {
+                                    viewModel.replyingTo = message
                                 },
                                 showReadReceipts: viewModel.showReadReceipts
                             )
@@ -254,6 +270,13 @@ struct ChatView: View {
                     Button("Denunciar") {
                         reportMessageID = managingMessage.id
                     }
+                }
+                // Responder a un mensaje concreto (cita), comparado con
+                // WhatsApp/Telegram/iMessage/Instagram DM -- sobre
+                // CUALQUIER mensaje (propio o ajeno), ver
+                // ChatViewModel.replyingTo, 0102_message_reply.sql.
+                Button("Responder") {
+                    viewModel.replyingTo = managingMessage
                 }
                 // Fijar un mensaje real (propio o ajeno), VISIBLE PARA
                 // TODOS los participantes -- a diferencia de "Destacar"
@@ -359,6 +382,34 @@ struct ChatView: View {
     @State private var isRecording = false
 
     private var composer: some View {
+        VStack(spacing: 0) {
+            // Responder a un mensaje concreto (cita), comparado con
+            // WhatsApp/Telegram/iMessage/Instagram DM -- vista previa
+            // real de a qué se está respondiendo, encima del compositor,
+            // con una forma real de cancelarlo antes de enviar. Ver
+            // ChatViewModel.replyingTo, 0102_message_reply.sql.
+            if let replyingToPreviewText {
+                HStack {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Respondiendo")
+                            .font(.caption2)
+                            .foregroundStyle(Color.accentColor)
+                        Text(replyingToPreviewText)
+                            .font(.caption)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Button("✕") { viewModel.replyingTo = nil }
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 6)
+                .background(Color.gray.opacity(0.12))
+            }
+            messageInputRow
+        }
+    }
+
+    private var messageInputRow: some View {
         HStack {
             // Hallazgo real: el chat solo soportaba texto — ver
             // 0016_message_media.sql / ChatViewModel.sendPhoto.
@@ -416,6 +467,13 @@ private struct MessageBubble: View {
     // Responder a una historia real (0071_message_story_reply.sql),
     // comparado con Instagram/WhatsApp Status/Snapchat.
     var storyPreview: ChatViewModel.StoryPreview? = nil
+    // Responder a un mensaje concreto (cita), comparado con
+    // WhatsApp/Telegram/iMessage/Instagram DM -- resuelto por el llamador
+    // (ChatView.body) entre los ya cargados del mismo chat; si es nil
+    // (p. ej. quedó fuera de la página cargada, o se borró y quedó en
+    // null por `on delete set null`), se omite sin más, sin texto de
+    // relleno inventado. Ver 0102_message_reply.sql.
+    var repliedMessage: ChatMessage? = nil
     let onToggleReaction: (String) -> Void
     // Hallazgo real, comparado con WhatsApp/Telegram/Messenger: mantener
     // pulsado un mensaje propio borraba al instante sin confirmación --
@@ -429,6 +487,9 @@ private struct MessageBubble: View {
     // Reenviar un mensaje real (0072_message_forward.sql), comparado con
     // WhatsApp/Telegram/Messenger.
     var onForward: () -> Void = {}
+    // Responder a un mensaje concreto (cita), comparado con
+    // WhatsApp/Telegram/iMessage/Instagram DM.
+    var onReply: () -> Void = {}
     // Recibo de lectura real ("Leído ✓✓"), comparado con WhatsApp/
     // Instagram/Messenger -- ya es false si CUALQUIERA de los dos
     // desactivó el suyo, ver ChatViewModel.loadReadReceiptsVisibility(),
@@ -442,11 +503,38 @@ private struct MessageBubble: View {
     @State private var fullScreenURL: URL?
     private let reactionEmojis = ["❤", "😂", "😮", "😢", "👍"]
 
+    // Responder a un mensaje concreto (cita) -- precalculado aparte, no
+    // inline dentro del ViewBuilder: mismo motivo real ya documentado
+    // esta sesión (ReelsView.swift/StoriesBar.swift) de por qué el
+    // compilador de Swift puede tardar demasiado en type-checkear una
+    // expresión compleja anidada dentro de un ViewBuilder.
+    private var repliedPreviewText: String? {
+        guard let repliedMessage else { return nil }
+        if let body = repliedMessage.body { return String(body.prefix(80)) }
+        if repliedMessage.mediaURL != nil { return "📷 Foto" }
+        if repliedMessage.audioURL != nil { return "🎤 Nota de voz" }
+        return "Mensaje"
+    }
+
     var body: some View {
         VStack(alignment: isMine ? .trailing : .leading, spacing: 2) {
             HStack {
                 if isMine { Spacer() }
                 Group {
+                    VStack(alignment: .leading, spacing: 2) {
+                    // Responder a un mensaje concreto (cita), comparado
+                    // con WhatsApp/Telegram/iMessage/Instagram DM -- vista
+                    // previa pequeña por encima del propio contenido, sin
+                    // importar de qué tipo sea (texto/foto/audio).
+                    if let repliedPreviewText {
+                        Text(repliedPreviewText)
+                            .font(.caption2)
+                            .lineLimit(1)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.gray.opacity(0.12))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
                     // Enviar una publicación a un chat real
                     // (0069_message_shared_post.sql), comparado con
                     // Instagram/TikTok/Twitter/Snapchat -- toque en
@@ -529,6 +617,7 @@ private struct MessageBubble: View {
                             .foregroundStyle(isMine ? .white : .primary)
                             .clipShape(RoundedRectangle(cornerRadius: 16))
                     }
+                    }
                 }
                 // Hallazgo real: última pieza de "chat funcional con
                 // fotos, voz, reacciones, read receipts" alcanzable sin
@@ -588,9 +677,16 @@ private struct MessageBubble: View {
                     .foregroundStyle(.secondary)
             }
             if message.body != nil || message.mediaURL != nil || message.audioURL != nil {
-                Button("↪ Reenviar", action: onForward)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 10) {
+                    // Responder a un mensaje concreto (cita), comparado
+                    // con WhatsApp/Telegram/iMessage/Instagram DM.
+                    Button("↩ Responder", action: onReply)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Button("↪ Reenviar", action: onForward)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
             if isMine {
                 let showRead = message.readAt != nil && showReadReceipts

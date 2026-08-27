@@ -38,6 +38,11 @@ final class ChatViewModel: ObservableObject {
     @Published var hasMoreHistory = false
     @Published var isLoadingOlder = false
     private let olderPageSize = 50
+    // Responder a un mensaje concreto (cita), comparado con
+    // WhatsApp/Telegram/iMessage/Instagram DM -- mensaje real que se está
+    // citando ahora mismo en el compositor, ver 0102_message_reply.sql.
+    // Equivalente de ChatViewModel.kt.replyingTo.
+    @Published var replyingTo: ChatMessage?
     // Última pieza real de "chat funcional con fotos, voz, reacciones,
     // read receipts" alcanzable sin infraestructura mayor — solo queda voz
     // (grabación nativa, alcance propio, documentado aparte).
@@ -676,6 +681,7 @@ final class ChatViewModel: ObservableObject {
         var body: String? = nil
         var media_url: String? = nil
         var audio_url: String? = nil
+        var reply_to_message_id: UUID? = nil
     }
 
     func sendMessage() async {
@@ -693,10 +699,17 @@ final class ChatViewModel: ObservableObject {
         // quedaba visible para siempre encima del compositor. Mismo fix
         // ya construido en la versión Kotlin equivalente.
         icebreaker = nil
+        // Responder a un mensaje concreto (cita), comparado con
+        // WhatsApp/Telegram/iMessage/Instagram DM -- se consume aquí y se
+        // limpia, tanto si el envío sale bien como si falla (mismo
+        // criterio real ya usado en la versión Kotlin equivalente: la
+        // cita no sobrevive a un envío fallido, se vuelve a elegir).
+        let replyToID = replyingTo?.id
+        replyingTo = nil
         do {
             try await SupabaseManager.shared.client
                 .from("messages")
-                .insert(NewMessage(chat_id: chatID, sender_id: currentUserID, body: draft))
+                .insert(NewMessage(chat_id: chatID, sender_id: currentUserID, body: draft, reply_to_message_id: replyToID))
                 .execute()
             draft = ""
         } catch {

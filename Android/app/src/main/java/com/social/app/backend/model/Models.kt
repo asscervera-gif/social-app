@@ -176,7 +176,11 @@ data class ChatMessage(
     // de starred_messages (totalmente privado), comparado con
     // WhatsApp/Telegram, ver 0089_pin_message.sql.
     @SerialName("pinned_at") val pinnedAt: String? = null,
-    @SerialName("pinned_by") val pinnedBy: String? = null
+    @SerialName("pinned_by") val pinnedBy: String? = null,
+    // Responder a un mensaje concreto (cita), comparado con
+    // WhatsApp/Telegram/iMessage/Instagram DM -- referencia al mensaje
+    // real citado, nunca una copia. Ver 0102_message_reply.sql.
+    @SerialName("reply_to_message_id") val replyToMessageId: String? = null
 )
 
 /** Hallazgo de integridad corregido (ver duel-ai/index.ts): antes incluía

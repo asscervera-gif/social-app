@@ -2422,6 +2422,85 @@ async function main() {
     await db.query(`delete from post_notification_subscriptions where subscriber_id = $1 and creator_id = $2`, [u2, u1]);
   });
 
+  // --- messages.reply_to_message_id/group_messages.reply_to_message_id
+  // (0102_message_reply.sql): responder a un mensaje concreto (cita),
+  // comparado con WhatsApp/Telegram/iMessage/Instagram DM. Usuarios
+  // NUEVOS a propósito (mismo motivo ya documentado varias veces esta
+  // sesión con storyResponder/storyOtherViewer/hlAuthor): sin ninguna
+  // relación previa de bloqueo que pueda contaminar esta prueba de
+  // mensajería. ---
+  await asSuperuser();
+  const replyA = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const replyB = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name) values ($1, 'Responde A'), ($2, 'Responde B')
+     on conflict (id) do update set display_name = excluded.display_name`,
+    [replyA, replyB]
+  );
+  const replyChat = (await db.query(`insert into chats (user_a_id, user_b_id) values ($1, $2) returning id`, [replyA, replyB])).rows[0];
+
+  await asUser(replyA);
+  const originalMessage = (await db.query(
+    `insert into messages (chat_id, sender_id, body) values ($1, $2, 'mensaje original real') returning id`, [replyChat.id, replyA]
+  )).rows[0];
+
+  await asUser(replyB);
+  const replyMessage = (await db.query(
+    `insert into messages (chat_id, sender_id, body, reply_to_message_id) values ($1, $2, 'respondiendo de verdad', $3) returning id`,
+    [replyChat.id, replyB, originalMessage.id]
+  )).rows[0];
+  const replySeen = (await db.query(`select reply_to_message_id from messages where id = $1`, [replyMessage.id])).rows[0];
+  check('trg_check_reply_same_chat: SÍ deja responder a un mensaje real del mismo chat', replySeen.reply_to_message_id === originalMessage.id);
+
+  // Chat ajeno real, sin ninguna relación con replyChat -- el mensaje
+  // citado de ahí NUNCA debe poder colarse como respuesta en replyChat.
+  await asUser(replyA);
+  const otherChat = (await db.query(`insert into chats (user_a_id, user_b_id) values ($1, $2) returning id`, [replyA, u4])).rows[0];
+  const foreignMessage = (await db.query(
+    `insert into messages (chat_id, sender_id, body) values ($1, $2, 'mensaje de otro chat real') returning id`, [otherChat.id, replyA]
+  )).rows[0];
+  await expectFail('trg_check_reply_same_chat: NO deja citar un mensaje real de OTRO chat distinto', async () => {
+    await db.query(
+      `insert into messages (chat_id, sender_id, body, reply_to_message_id) values ($1, $2, 'cita cruzada real', $3)`,
+      [replyChat.id, replyA, foreignMessage.id]
+    );
+  });
+
+  // Al borrar el mensaje citado, la respuesta real se queda sin él
+  // (`on delete set null`) -- nunca bloqueada por el propio trigger de
+  // integridad, que solo se dispara en INSERT.
+  await asSuperuser();
+  await db.query(`delete from messages where id = $1`, [originalMessage.id]);
+  const replyAfterOriginalDeleted = (await db.query(`select reply_to_message_id from messages where id = $1`, [replyMessage.id])).rows[0];
+  check('reply_to_message_id: al borrar el mensaje citado real, la respuesta se queda sin él (on delete set null), no bloqueada', replyAfterOriginalDeleted.reply_to_message_id === null);
+
+  // Mismo espejo real en un chat de grupo.
+  await asUser(replyA);
+  const replyGroupId = crypto.randomUUID();
+  await db.query(`insert into group_chats (id, name, created_by) values ($1, $2, $3)`, [replyGroupId, 'Grupo para responder', replyA]);
+  await db.query(`insert into group_chat_members (group_chat_id, user_id) values ($1, $2)`, [replyGroupId, replyB]);
+  const originalGroupMessage = (await db.query(
+    `insert into group_messages (group_chat_id, sender_id, body) values ($1, $2, 'mensaje de grupo real') returning id`, [replyGroupId, replyA]
+  )).rows[0];
+  await asUser(replyB);
+  await expectOk('trg_check_group_reply_same_chat: SÍ deja responder a un mensaje real del mismo grupo', async () => {
+    await db.query(
+      `insert into group_messages (group_chat_id, sender_id, body, reply_to_message_id) values ($1, $2, 'respondiendo en grupo de verdad', $3)`,
+      [replyGroupId, replyB, originalGroupMessage.id]
+    );
+  });
+  const otherGroupId = crypto.randomUUID();
+  await db.query(`insert into group_chats (id, name, created_by) values ($1, $2, $3)`, [otherGroupId, 'Otro grupo real', replyB]);
+  const foreignGroupMessage = (await db.query(
+    `insert into group_messages (group_chat_id, sender_id, body) values ($1, $2, 'mensaje de otro grupo real') returning id`, [otherGroupId, replyB]
+  )).rows[0];
+  await expectFail('trg_check_group_reply_same_chat: NO deja citar un mensaje real de OTRO grupo distinto', async () => {
+    await db.query(
+      `insert into group_messages (group_chat_id, sender_id, body, reply_to_message_id) values ($1, $2, 'cita cruzada real de grupo', $3)`,
+      [replyGroupId, replyB, foreignGroupMessage.id]
+    );
+  });
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado
