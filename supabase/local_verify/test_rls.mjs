@@ -2971,6 +2971,34 @@ async function main() {
   const scChatHijack = (await db.query(`insert into chats (user_a_id, user_b_id, compatibility_score) values ($1, $2, 100) returning compatibility_score`, [scU7, scU8])).rows[0];
   check('seed_chat_compatibility: un compatibility_score=100 mandado directo por el cliente en el INSERT queda sobrescrito de verdad a 0 (sin intereses reales compartidos)', scChatHijack.compatibility_score === 0);
 
+  // --- compatibility_votes_insert (0112_compatibility_votes_cooldown.sql):
+  // cooldown real de 30s entre votos de la MISMA persona en el MISMO
+  // chat, sexto hallazgo de la auditoría de sistemas propios de SOCIAL.
+  // Usuarios NUEVOS a propósito, mismo motivo ya documentado varias
+  // veces esta sesión. ---
+  await asSuperuser();
+  const cvU1 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const cvU2 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name) values ($1, 'Cv1'), ($2, 'Cv2')
+     on conflict (id) do update set display_name = excluded.display_name`,
+    [cvU1, cvU2]
+  );
+  const cvChat = (await db.query(`insert into chats (user_a_id, user_b_id) values ($1, $2) returning id`, [cvU1, cvU2])).rows[0];
+
+  await asUser(cvU1);
+  await expectOk('compatibility_votes_insert: cvU1 SÍ puede votar la primera vez', async () => {
+    await db.query(`insert into compatibility_votes (chat_id, voter_id, delta) values ($1, $2, 10)`, [cvChat.id, cvU1]);
+  });
+  await expectFail('compatibility_votes_insert: cooldown real de 30s -- cvU1 NO puede votar otra vez de inmediato', async () => {
+    await db.query(`insert into compatibility_votes (chat_id, voter_id, delta) values ($1, $2, 10)`, [cvChat.id, cvU1]);
+  });
+
+  await asUser(cvU2);
+  await expectOk('compatibility_votes_insert: el cooldown es POR PERSONA -- cvU2 SÍ puede votar aunque cvU1 esté en cooldown', async () => {
+    await db.query(`insert into compatibility_votes (chat_id, voter_id, delta) values ($1, $2, 10)`, [cvChat.id, cvU2]);
+  });
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

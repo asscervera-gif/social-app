@@ -899,7 +899,14 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
                 val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
                 SupabaseManager.client.from("compatibility_votes").insert(NewVote(chatId, userId, delta))
             } catch (e: Exception) {
-                _errorMessage.value = "No se pudo registrar el voto."
+                // Cooldown real de 30s entre votos (0112_compatibility_votes_cooldown.sql):
+                // a diferencia de un error de red normal, este rechazo es
+                // real y frecuente -- sin revertir aquí, el número
+                // optimista de arriba se quedaba mal hasta el próximo
+                // evento real de Realtime en `chats` (que podía tardar o
+                // no llegar nunca si nadie más toca el chat).
+                _compatibility.value = (_compatibility.value - delta).coerceIn(0, 100)
+                _errorMessage.value = "Espera unos segundos antes de volver a votar."
             }
         }
     }

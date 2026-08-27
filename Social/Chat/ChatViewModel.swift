@@ -856,7 +856,15 @@ final class ChatViewModel: ObservableObject {
                 .insert(NewVote(chat_id: chatID, voter_id: currentUserID, delta: delta))
                 .execute()
         } catch {
-            errorMessage = "No se pudo registrar el voto."
+            // Cooldown real de 30s entre votos
+            // (0112_compatibility_votes_cooldown.sql): a diferencia de un
+            // error de red normal, este rechazo es real y frecuente --
+            // sin revertir aquí, el número optimista de arriba se
+            // quedaba mal hasta el próximo evento real de Realtime en
+            // `chats` (que podía tardar o no llegar nunca si nadie más
+            // toca el chat). Mismo fix ya construido en Kotlin.
+            compatibilityScore = max(0, min(100, compatibilityScore - delta))
+            errorMessage = "Espera unos segundos antes de volver a votar."
         }
     }
 
