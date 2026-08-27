@@ -83,6 +83,7 @@ private const val CLOSE_FRIENDS_ROUTE = "close_friends"
 private const val HASHTAG_SEARCH_ROUTE = "search_hashtag/{tag}"
 private const val DUEL_HISTORY_ROUTE = "duel_history"
 private const val CHAT_LIST_ROUTE = "chat_list"
+private const val ARCHIVED_CHATS_ROUTE = "archived_chats"
 private const val MY_POSTS_ROUTE = "my_posts"
 private const val SAVED_POSTS_ROUTE = "saved_posts"
 private const val STARRED_MESSAGES_ROUTE = "starred_messages"
@@ -467,7 +468,15 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                 }
                 composable(CHAT_LIST_ROUTE) {
                     com.social.app.ui.theme.BackScaffold(title = "Tus chats", onBack = { navController.popBackStack() }) {
-                        com.social.app.chat.ChatListScreen(onOpenChat = { chatId -> navController.navigate("chat/$chatId") })
+                        com.social.app.chat.ChatListScreen(
+                            onOpenChat = { chatId -> navController.navigate("chat/$chatId") },
+                            onOpenArchived = { navController.navigate(ARCHIVED_CHATS_ROUTE) }
+                        )
+                    }
+                }
+                composable(ARCHIVED_CHATS_ROUTE) {
+                    com.social.app.ui.theme.BackScaffold(title = "Archivados", onBack = { navController.popBackStack() }) {
+                        com.social.app.chat.ArchivedChatsScreen(onOpenChat = { chatId -> navController.navigate("chat/$chatId") })
                     }
                 }
                 composable(AJUSTES_ROUTE) {

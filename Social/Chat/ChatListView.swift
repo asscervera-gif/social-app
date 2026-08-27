@@ -40,6 +40,17 @@ struct ChatListView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
+            // "Archivados" real, comparado con WhatsApp/Telegram -- antes
+            // "Ocultar conversación" (0044_chats_hide.sql) era un viaje
+            // solo de ida, sin ninguna sección real para volver a verlos.
+            // Ver ArchivedChatsView.swift/ChatListViewModel.loadArchived().
+            NavigationLink {
+                ArchivedChatsView(viewModel: viewModel, onOpenChat: onOpenChat)
+            } label: {
+                Text("🗄 Archivados")
+                    .font(.footnote)
+                    .foregroundStyle(Color.accentColor)
+            }
             if viewModel.chats.isEmpty && !viewModel.isLoading {
                 Text("Todavía no tienes ningún chat.")
                     .foregroundStyle(.secondary)

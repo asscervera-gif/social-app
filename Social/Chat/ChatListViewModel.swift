@@ -76,6 +76,11 @@ final class ChatListViewModel: ObservableObject {
     @Published var chats: [ChatListEntry] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    // Archivados real, comparado con WhatsApp/Telegram: hasta ahora
+    // "Ocultar conversación" (0044_chats_hide.sql) era un viaje solo de
+    // ida. Reutiliza tal cual hidden_by_a/hidden_by_b, sin migración --
+    // filtro INVERSO de load(). Ver ArchivedChatsView.swift.
+    @Published var archivedChats: [ChatListEntry] = []
     // Nota efímera real PROPIA, comparado con Instagram/Facebook
     // Messenger -- ver 0110_profile_notes.sql.
     @Published var myNote: String?
@@ -123,82 +128,8 @@ final class ChatListViewModel: ObservableObject {
     func load() async {
         isLoading = true
         defer { isLoading = false }
-        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
         do {
-            struct MyNoteRow: Decodable { let note_text: String?; let note_updated_at: String? }
-            if let myRow: MyNoteRow = try? await SupabaseManager.shared.client
-                .from("profiles")
-                .select("note_text,note_updated_at")
-                .eq("id", value: userID)
-                .single()
-                .execute()
-                .value {
-                myNote = isNoteFresh(myRow.note_updated_at) ? myRow.note_text : nil
-            } else {
-                myNote = nil
-            }
-
-            // Hallazgo real: la lista de chats seguía mostrando
-            // conversaciones con gente que has bloqueado — el envío de
-            // mensajes ya está bloqueado en el servidor
-            // (0013_block_enforcement_chat.sql), pero el chat en sí
-            // seguía apareciendo en la lista, algo que ninguna app de
-            // mensajería grande hace. Mismo hallazgo y mismo fix ya
-            // aplicados en la versión Kotlin equivalente.
-            struct BlockRow: Decodable { let blocked_id: UUID }
-            var blockedIDs: Set<UUID> = []
-            if let blockRows: [BlockRow] = try? await SupabaseManager.shared.client
-                .from("blocks")
-                .select()
-                .execute()
-                .value {
-                blockedIDs = Set(blockRows.map { $0.blocked_id })
-            }
-
-            // Hallazgo real: sin límite, a diferencia de la convención
-            // del resto del proyecto (mismo patrón corregido en
-            // ChatViewModel.loadHistory() esta pasada).
-            let allChats: [Chat] = try await SupabaseManager.shared.client
-                .from("chats")
-                .select()
-                .or("user_a_id.eq.\(userID),user_b_id.eq.\(userID)")
-                .limit(200)
-                .execute()
-                .value
-            let myChats = allChats.filter {
-                let otherID = $0.userAID == userID ? $0.userBID : $0.userAID
-                let hiddenForMe = $0.userAID == userID ? $0.hiddenByA : $0.hiddenByB
-                return !blockedIDs.contains(otherID) && !hiddenForMe
-            }
-
-            // Hallazgo real: la lista no ordenaba por actividad reciente,
-            // comparado con cualquier app de mensajería (WhatsApp/Instagram
-            // DMs siempre muestran el chat más reciente arriba) — se
-            // quedaba en el orden por defecto de la base de datos.
-            var entries: [ChatListEntry] = []
-            for chat in myChats {
-                let otherID = chat.userAID == userID ? chat.userBID : chat.userAID
-                let otherProfile = await otherProfileInfo(id: otherID)
-                let last = await lastMessage(chatID: chat.id)
-                // Marcar como no leído manualmente, comparado con
-                // WhatsApp/Telegram/Messenger -- capa personal por
-                // encima del estado real de lectura del último mensaje
-                // (0088_mark_chat_unread.sql).
-                let markedUnreadForMe = chat.userAID == userID ? chat.markedUnreadByA : chat.markedUnreadByB
-                let freshNote = isNoteFresh(otherProfile?.note_updated_at) ? otherProfile?.note_text : nil
-                entries.append(ChatListEntry(
-                    id: chat.id, chat: chat,
-                    otherName: otherProfile?.display_name ?? "Perfil",
-                    otherAvatarConfig: otherProfile?.avatar_config,
-                    lastMessage: last?.body, lastActivity: last?.created_at ?? chat.createdAt,
-                    iAmUserA: chat.userAID == userID,
-                    isMutedForMe: chat.userAID == userID ? chat.mutedByA : chat.mutedByB,
-                    hasUnread: (last != nil && last!.sender_id != userID && last!.read_at == nil) || markedUnreadForMe,
-                    isPinnedForMe: chat.userAID == userID ? chat.pinnedByA : chat.pinnedByB,
-                    markedUnreadForMe: markedUnreadForMe,
-                    otherNoteText: freshNote
-                ))
-            }
+            let entries = try await fetchEntries(wantHidden: false)
             // Fijado primero (mismo criterio que WhatsApp/Telegram),
             // actividad reciente dentro de cada grupo.
             chats = entries.sorted {
@@ -208,6 +139,97 @@ final class ChatListViewModel: ObservableObject {
         } catch {
             errorMessage = "No se pudieron cargar tus chats."
         }
+    }
+
+    /// Archivados real, comparado con WhatsApp/Telegram -- filtro INVERSO
+    /// de load() (hiddenForMe == true en vez de false), misma consulta,
+    /// sin migración. Equivalente de ChatListViewModel.kt.loadArchived().
+    func loadArchived() async {
+        do {
+            let entries = try await fetchEntries(wantHidden: true)
+            archivedChats = entries.sorted { $0.lastActivity > $1.lastActivity }
+        } catch {
+            errorMessage = "No se pudieron cargar los chats archivados."
+        }
+    }
+
+    private func fetchEntries(wantHidden: Bool) async throws -> [ChatListEntry] {
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return [] }
+        struct MyNoteRow: Decodable { let note_text: String?; let note_updated_at: String? }
+        if let myRow: MyNoteRow = try? await SupabaseManager.shared.client
+            .from("profiles")
+            .select("note_text,note_updated_at")
+            .eq("id", value: userID)
+            .single()
+            .execute()
+            .value {
+            myNote = isNoteFresh(myRow.note_updated_at) ? myRow.note_text : nil
+        } else {
+            myNote = nil
+        }
+
+        // Hallazgo real: la lista de chats seguía mostrando
+        // conversaciones con gente que has bloqueado — el envío de
+        // mensajes ya está bloqueado en el servidor
+        // (0013_block_enforcement_chat.sql), pero el chat en sí
+        // seguía apareciendo en la lista, algo que ninguna app de
+        // mensajería grande hace. Mismo hallazgo y mismo fix ya
+        // aplicados en la versión Kotlin equivalente.
+        struct BlockRow: Decodable { let blocked_id: UUID }
+        var blockedIDs: Set<UUID> = []
+        if let blockRows: [BlockRow] = try? await SupabaseManager.shared.client
+            .from("blocks")
+            .select()
+            .execute()
+            .value {
+            blockedIDs = Set(blockRows.map { $0.blocked_id })
+        }
+
+        // Hallazgo real: sin límite, a diferencia de la convención
+        // del resto del proyecto (mismo patrón corregido en
+        // ChatViewModel.loadHistory() esta pasada).
+        let allChats: [Chat] = try await SupabaseManager.shared.client
+            .from("chats")
+            .select()
+            .or("user_a_id.eq.\(userID),user_b_id.eq.\(userID)")
+            .limit(200)
+            .execute()
+            .value
+        let myChats = allChats.filter {
+            let otherID = $0.userAID == userID ? $0.userBID : $0.userAID
+            let hiddenForMe = $0.userAID == userID ? $0.hiddenByA : $0.hiddenByB
+            return !blockedIDs.contains(otherID) && hiddenForMe == wantHidden
+        }
+
+        // Hallazgo real: la lista no ordenaba por actividad reciente,
+        // comparado con cualquier app de mensajería (WhatsApp/Instagram
+        // DMs siempre muestran el chat más reciente arriba) — se
+        // quedaba en el orden por defecto de la base de datos.
+        var entries: [ChatListEntry] = []
+        for chat in myChats {
+            let otherID = chat.userAID == userID ? chat.userBID : chat.userAID
+            let otherProfile = await otherProfileInfo(id: otherID)
+            let last = await lastMessage(chatID: chat.id)
+            // Marcar como no leído manualmente, comparado con
+            // WhatsApp/Telegram/Messenger -- capa personal por
+            // encima del estado real de lectura del último mensaje
+            // (0088_mark_chat_unread.sql).
+            let markedUnreadForMe = chat.userAID == userID ? chat.markedUnreadByA : chat.markedUnreadByB
+            let freshNote = isNoteFresh(otherProfile?.note_updated_at) ? otherProfile?.note_text : nil
+            entries.append(ChatListEntry(
+                id: chat.id, chat: chat,
+                otherName: otherProfile?.display_name ?? "Perfil",
+                otherAvatarConfig: otherProfile?.avatar_config,
+                lastMessage: last?.body, lastActivity: last?.created_at ?? chat.createdAt,
+                iAmUserA: chat.userAID == userID,
+                isMutedForMe: chat.userAID == userID ? chat.mutedByA : chat.mutedByB,
+                hasUnread: (last != nil && last!.sender_id != userID && last!.read_at == nil) || markedUnreadForMe,
+                isPinnedForMe: chat.userAID == userID ? chat.pinnedByA : chat.pinnedByB,
+                markedUnreadForMe: markedUnreadForMe,
+                otherNoteText: freshNote
+            ))
+        }
+        return entries
     }
 
     private struct NameRow: Decodable {
@@ -279,6 +301,29 @@ final class ChatListViewModel: ObservableObject {
             } catch {
                 errorMessage = "No se pudo ocultar la conversación."
                 await load()
+            }
+        }
+    }
+
+    /// "Desarchivar" -- inverso real de hideChat(), mismas columnas
+    /// (hidden_by_a/hidden_by_b), sin migración. Comparado con
+    /// WhatsApp/Telegram: antes no había forma de volver a ver un chat
+    /// oculto salvo esperar un mensaje nuevo. Equivalente de
+    /// ChatListViewModel.kt.unhideChat().
+    func unhideChat(_ entry: ChatListEntry) {
+        archivedChats.removeAll { $0.id == entry.id }
+        Task {
+            do {
+                let column = entry.iAmUserA ? "hidden_by_a" : "hidden_by_b"
+                try await SupabaseManager.shared.client
+                    .from("chats")
+                    .update([column: false])
+                    .eq("id", value: entry.chat.id)
+                    .execute()
+                await load()
+            } catch {
+                errorMessage = "No se pudo desarchivar la conversación."
+                await loadArchived()
             }
         }
     }

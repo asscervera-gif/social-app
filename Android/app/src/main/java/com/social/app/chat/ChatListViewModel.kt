@@ -151,6 +151,16 @@ class ChatListViewModel : ViewModel() {
     private val _chats = MutableStateFlow<List<ChatListEntry>>(emptyList())
     val chats: StateFlow<List<ChatListEntry>> = _chats.asStateFlow()
 
+    // Archivados real, comparado con WhatsApp/Telegram: hasta ahora
+    // "Ocultar conversación" (0044_chats_hide.sql) era un viaje solo de
+    // ida -- el chat desaparecía de la lista sin ninguna forma real de
+    // volver a verlo salvo esperar a que la otra persona escribiera de
+    // nuevo (eso lo desoculta solo). Reutiliza tal cual
+    // hidden_by_a/hidden_by_b, sin migración: esta pantalla es
+    // simplemente el filtro INVERSO de load().
+    private val _archivedChats = MutableStateFlow<List<ChatListEntry>>(emptyList())
+    val archivedChats: StateFlow<List<ChatListEntry>> = _archivedChats.asStateFlow()
+
     // Nota efímera real PROPIA, comparado con Instagram/Facebook
     // Messenger -- ver 0110_profile_notes.sql.
     private val _myNote = MutableStateFlow<String?>(null)
@@ -209,57 +219,84 @@ class ChatListViewModel : ViewModel() {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
-                try {
-                    val myRow = SupabaseManager.client.from("profiles")
-                        .select(columns = Columns.raw("note_text,note_updated_at")) { filter { eq("id", userId) } }
-                        .decodeSingleOrNull<MyNoteRow>()
-                    _myNote.value = myRow?.noteText?.takeIf { isNoteFresh(myRow.noteUpdatedAt) }
-                } catch (e: Exception) {
-                    _myNote.value = null
-                }
-                // Hallazgo real: la lista de chats seguía mostrando
-                // conversaciones con gente que has bloqueado — el envío
-                // de mensajes ya está bloqueado en el servidor
-                // (0013_block_enforcement_chat.sql), pero el chat en sí
-                // seguía apareciendo en la lista, algo que ninguna app de
-                // mensajería grande hace.
-                val blockedIds = try {
-                    SupabaseManager.client.from("blocks")
-                        .select(columns = Columns.raw("blocked_id"))
-                        .decodeList<BlockRow>()
-                        .map { it.blockedId }
-                        .toSet()
-                } catch (e: Exception) {
-                    emptySet()
-                }
-                // Hallazgo real: sin `.limit()`, a diferencia de la
-                // convención del resto del proyecto (mismo patrón
-                // corregido en ChatViewModel.loadHistory() esta pasada).
-                val myChats = SupabaseManager.client.from("chats")
-                    .select(columns = Columns.raw("id,user_a_id,user_b_id,compatibility_score,created_at,hidden_by_a,hidden_by_b,muted_by_a,muted_by_b,pinned_by_a,pinned_by_b,marked_unread_by_a,marked_unread_by_b")) {
-                        filter {
-                            or {
-                                eq("user_a_id", userId)
-                                eq("user_b_id", userId)
-                            }
-                        }
-                        limit(200)
-                    }
-                    .decodeList<ChatRow>()
-                    .filter {
-                        val otherId = if (it.userAId == userId) it.userBId else it.userAId
-                        val hiddenForMe = if (it.userAId == userId) it.hiddenByA else it.hiddenByB
-                        otherId !in blockedIds && !hiddenForMe
-                    }
+                val entries = fetchEntries(wantHidden = false)
+                // Fijado primero (mismo criterio que WhatsApp/Telegram),
+                // actividad reciente dentro de cada grupo.
+                _chats.value = entries.sortedWith(compareByDescending<ChatListEntry> { it.isPinnedForMe }.thenByDescending { it.lastActivity })
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudieron cargar tus chats."
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
 
-                // Hallazgo real: la lista no ordenaba por actividad
-                // reciente, comparado con cualquier app de mensajería
-                // (WhatsApp/Instagram DMs siempre muestran el chat más
-                // reciente arriba) — se quedaba en el orden por defecto de
-                // la base de datos, sin importar si acababa de llegar un
-                // mensaje a un chat antiguo.
-                val entries = myChats.map { row ->
+    /** Archivados real, comparado con WhatsApp/Telegram -- filtro INVERSO
+     * de load() (hidden_for_me = true en vez de false), misma consulta,
+     * sin migración. */
+    fun loadArchived() {
+        viewModelScope.launch {
+            try {
+                val entries = fetchEntries(wantHidden = true)
+                _archivedChats.value = entries.sortedByDescending { it.lastActivity }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudieron cargar los chats archivados."
+            }
+        }
+    }
+
+    private suspend fun fetchEntries(wantHidden: Boolean): List<ChatListEntry> {
+        val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return emptyList()
+        try {
+            val myRow = SupabaseManager.client.from("profiles")
+                .select(columns = Columns.raw("note_text,note_updated_at")) { filter { eq("id", userId) } }
+                .decodeSingleOrNull<MyNoteRow>()
+            _myNote.value = myRow?.noteText?.takeIf { isNoteFresh(myRow.noteUpdatedAt) }
+        } catch (e: Exception) {
+            _myNote.value = null
+        }
+        // Hallazgo real: la lista de chats seguía mostrando
+        // conversaciones con gente que has bloqueado — el envío
+        // de mensajes ya está bloqueado en el servidor
+        // (0013_block_enforcement_chat.sql), pero el chat en sí
+        // seguía apareciendo en la lista, algo que ninguna app de
+        // mensajería grande hace.
+        val blockedIds = try {
+            SupabaseManager.client.from("blocks")
+                .select(columns = Columns.raw("blocked_id"))
+                .decodeList<BlockRow>()
+                .map { it.blockedId }
+                .toSet()
+        } catch (e: Exception) {
+            emptySet()
+        }
+        // Hallazgo real: sin `.limit()`, a diferencia de la
+        // convención del resto del proyecto (mismo patrón
+        // corregido en ChatViewModel.loadHistory() esta pasada).
+        val myChats = SupabaseManager.client.from("chats")
+            .select(columns = Columns.raw("id,user_a_id,user_b_id,compatibility_score,created_at,hidden_by_a,hidden_by_b,muted_by_a,muted_by_b,pinned_by_a,pinned_by_b,marked_unread_by_a,marked_unread_by_b")) {
+                filter {
+                    or {
+                        eq("user_a_id", userId)
+                        eq("user_b_id", userId)
+                    }
+                }
+                limit(200)
+            }
+            .decodeList<ChatRow>()
+            .filter {
+                val otherId = if (it.userAId == userId) it.userBId else it.userAId
+                val hiddenForMe = if (it.userAId == userId) it.hiddenByA else it.hiddenByB
+                otherId !in blockedIds && hiddenForMe == wantHidden
+            }
+
+        // Hallazgo real: la lista no ordenaba por actividad
+        // reciente, comparado con cualquier app de mensajería
+        // (WhatsApp/Instagram DMs siempre muestran el chat más
+        // reciente arriba) — se quedaba en el orden por defecto de
+        // la base de datos, sin importar si acababa de llegar un
+        // mensaje a un chat antiguo.
+        return myChats.map { row ->
                     val chat = Chat(row.id, row.userAId, row.userBId, row.compatibilityScore)
                     val otherId = if (row.userAId == userId) row.userBId else row.userAId
                     val otherProfile = try {
@@ -301,15 +338,6 @@ class ChatListViewModel : ViewModel() {
                         markedUnreadForMe = markedUnreadForMe,
                         otherNoteText = freshNote
                     )
-                }
-                // Fijado primero (mismo criterio que WhatsApp/Telegram),
-                // actividad reciente dentro de cada grupo.
-                _chats.value = entries.sortedWith(compareByDescending<ChatListEntry> { it.isPinnedForMe }.thenByDescending { it.lastActivity })
-            } catch (e: Exception) {
-                _errorMessage.value = "No se pudieron cargar tus chats."
-            } finally {
-                _isLoading.value = false
-            }
         }
     }
 
@@ -328,6 +356,25 @@ class ChatListViewModel : ViewModel() {
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo ocultar la conversación."
                 load()
+            }
+        }
+    }
+
+    /** "Desarchivar" -- inverso real de hideChat(), mismas columnas
+     * (hidden_by_a/hidden_by_b), sin migración. Comparado con
+     * WhatsApp/Telegram: antes no había forma de volver a ver un chat
+     * oculto salvo esperar un mensaje nuevo. */
+    fun unhideChat(entry: ChatListEntry) {
+        _archivedChats.update { it.filter { e -> e.chat.id != entry.chat.id } }
+        viewModelScope.launch {
+            try {
+                val column = if (entry.iAmUserA) "hidden_by_a" else "hidden_by_b"
+                SupabaseManager.client.from("chats")
+                    .update({ set(column, false) }) { filter { eq("id", entry.chat.id) } }
+                load()
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo desarchivar la conversación."
+                loadArchived()
             }
         }
     }

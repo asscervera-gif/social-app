@@ -42,7 +42,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun ChatListScreen(viewModel: ChatListViewModel = viewModel(), onOpenChat: (String) -> Unit) {
+fun ChatListScreen(viewModel: ChatListViewModel = viewModel(), onOpenChat: (String) -> Unit, onOpenArchived: () -> Unit = {}) {
     val chats by viewModel.chats.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
@@ -83,6 +83,16 @@ fun ChatListScreen(viewModel: ChatListViewModel = viewModel(), onOpenChat: (Stri
                 noteDraft = myNote ?: ""
                 showNoteDialog = true
             }
+        )
+        // "Archivados" real, comparado con WhatsApp/Telegram -- antes
+        // "Ocultar conversación" (0044_chats_hide.sql) era un viaje solo
+        // de ida, sin ninguna sección real para volver a verlos. Ver
+        // ArchivedChatsScreen.kt/ChatListViewModel.loadArchived().
+        Text(
+            "🗄 Archivados",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(top = 8.dp).clickable { onOpenArchived() }
         )
         if (isLoading) {
             CircularProgressIndicator(modifier = Modifier.padding(top = 12.dp))
