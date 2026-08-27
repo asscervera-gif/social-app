@@ -294,106 +294,31 @@ struct MyPostsView: View {
                 Text(emptyStateText).foregroundStyle(.secondary)
             }
             ForEach(visiblePosts) { post in
-                // "¿Quién puede comentar?" real, comparado con Twitter/X/
-                // TikTok -- calculado aparte para no anidar un switch
-                // dentro del propio Button (mismo motivo real ya
-                // documentado en ReelsView.swift: el compilador de Swift
-                // real puede tardar demasiado en type-checkear una
-                // expresión compleja inlineada dentro de un ViewBuilder).
-                let audienceLabel: String = {
-                    switch post.replyAudience {
-                    case "followers": return "quienes sigo"
-                    case "mentioned": return "a quien mencione"
-                    default: return "todos"
-                    }
-                }()
-                VStack(alignment: .leading, spacing: 4) {
-                    // Hallazgo real, mismo hueco ya cerrado en Guardados:
-                    // esta lista tampoco mostraba la imagen de la
-                    // publicación, solo texto.
-                    if let mediaURL = post.mediaURL, let url = URL(string: mediaURL) {
-                        AsyncImage(url: url) { image in
-                            image.resizable().scaledToFill()
-                        } placeholder: {
-                            RoundedRectangle(cornerRadius: 8).fill(.gray.opacity(0.15))
-                        }
-                        .frame(height: 160)
-                        .clipped()
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .onTapGesture { fullScreenURL = url }
-                    }
-                    // Fijar una publicación en el perfil, comparado con
-                    // Instagram -- el propio icono ya comunica el
-                    // estado, mismo criterio que "Fijado" en mensajes/
-                    // comentarios.
-                    if post.pinnedAt != nil {
-                        Text("📌 Fijada").font(.caption.bold()).foregroundStyle(.accentColor)
-                    }
-                    Text(post.caption ?? "")
-                    if let taggedProfileID = post.taggedProfileID {
-                        Text("con \(taggedName(taggedProfileID))")
-                            .font(.caption.bold())
-                            .foregroundStyle(.blue)
-                    }
-                    Text("❤ \(post.likeCount) · 💬 \(post.commentCount)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .swipeActions {
-                    Button("Borrar", role: .destructive) {
-                        Task { await viewModel.delete(post) }
-                    }
-                    Button("Editar") {
+                // Aviso de proceso, encontrado en CI real (no simulado):
+                // el compilador de Swift real llegó a tardar demasiado
+                // en type-checkear esta fila con sus siete/ocho botones
+                // de swipe inline ("the compiler is unable to
+                // type-check this expression in reasonable time") --
+                // mismo motivo real ya documentado en ReelsView.swift,
+                // aquí resuelto extrayendo la fila entera a su propio
+                // View (MyPostRow, más abajo) en vez de solo una
+                // variable suelta.
+                MyPostRow(
+                    post: post,
+                    taggedName: taggedName,
+                    onTapImage: { fullScreenURL = $0 },
+                    onDelete: { Task { await viewModel.delete(post) } },
+                    onEdit: {
                         editingPost = post
                         editedCaption = post.caption ?? ""
-                    }
-                    .tint(.blue)
-                    // Fijar una publicación en el perfil (hasta 3),
-                    // comparado con Instagram -- ver
-                    // MyPostsViewModel.togglePinned(),
-                    // 0106_pin_posts_to_profile.sql.
-                    Button(post.pinnedAt != nil ? "Desfijar" : "Fijar") {
-                        Task { await viewModel.togglePinned(post) }
-                    }
-                    .tint(.yellow)
-                    // Archivar publicaciones real
-                    // (0076_archive_posts.sql), comparado con Instagram/
-                    // Facebook -- antes o se dejaba visible para siempre o
-                    // se borraba para siempre, sin término medio.
-                    Button(post.archivedAt != nil ? "Desarchivar" : "Archivar") {
-                        Task { await viewModel.toggleArchive(post) }
-                    }
-                    .tint(.gray)
-                    // Desactivar los comentarios de esta publicación real,
-                    // comparado con Instagram/TikTok -- los comentarios
-                    // previos se quedan, solo se cierra la puerta a
-                    // comentarios nuevos (0086_disable_comments.sql).
-                    Button(post.commentsDisabled ? "Activar comentarios" : "Desactivar comentarios") {
-                        Task { await viewModel.toggleCommentsDisabled(post) }
-                    }
-                    .tint(.indigo)
-                    // Ocultar el número de "me gusta" real, comparado con
-                    // Instagram/Facebook -- el propio autor sigue viendo
-                    // su cifra real siempre, solo desaparece para los
-                    // demás. Ver 0094_hide_like_count.sql.
-                    Button(post.hideLikeCount ? "Mostrar número de me gusta" : "Ocultar número de me gusta") {
-                        Task { await viewModel.toggleHideLikeCount(post) }
-                    }
-                    .tint(.purple)
-                    // Marcar contenido como sensible, comparado con
-                    // Instagram/Twitter/TikTok -- ver
-                    // 0096_sensitive_content.sql.
-                    Button(post.isSensitive ? "Quitar aviso de sensible" : "Marcar como sensible") {
-                        Task { await viewModel.toggleSensitive(post) }
-                    }
-                    .tint(.orange)
-                    // "¿Quién puede comentar?" real, comparado con
-                    // Twitter/X/TikTok -- ver 0097_reply_audience.sql.
-                    Button("Comentan: \(audienceLabel)") {
-                        Task { await viewModel.cycleReplyAudience(post) }
-                    }
-                    .tint(.teal)
-                }
+                    },
+                    onTogglePinned: { Task { await viewModel.togglePinned(post) } },
+                    onToggleArchive: { Task { await viewModel.toggleArchive(post) } },
+                    onToggleCommentsDisabled: { Task { await viewModel.toggleCommentsDisabled(post) } },
+                    onToggleHideLikeCount: { Task { await viewModel.toggleHideLikeCount(post) } },
+                    onToggleSensitive: { Task { await viewModel.toggleSensitive(post) } },
+                    onCycleReplyAudience: { Task { await viewModel.cycleReplyAudience(post) } }
+                )
             }
         }
         .navigationTitle("Tus publicaciones")
@@ -437,6 +362,109 @@ struct MyPostsView: View {
                     }
                 }
             }
+        }
+    }
+}
+
+/// Fila real de "Tus publicaciones" -- View propio (no inline dentro
+/// del ForEach de MyPostsView.body) porque el compilador de Swift real
+/// llegó a tardar demasiado en type-checkear los siete/ocho botones de
+/// swipe inlineados de un tirón (aviso de proceso real, encontrado en
+/// CI, no simulado): "the compiler is unable to type-check this
+/// expression in reasonable time". Mismo motivo real ya documentado en
+/// ReelsView.swift, aquí resuelto con un View propio en vez de solo una
+/// variable suelta (el propio `body` de MyPostsView seguía siendo
+/// demasiado grande incluso con `audienceLabel` ya calculado aparte).
+private struct MyPostRow: View {
+    let post: Post
+    let taggedName: (UUID) -> String
+    let onTapImage: (URL) -> Void
+    let onDelete: () -> Void
+    let onEdit: () -> Void
+    let onTogglePinned: () -> Void
+    let onToggleArchive: () -> Void
+    let onToggleCommentsDisabled: () -> Void
+    let onToggleHideLikeCount: () -> Void
+    let onToggleSensitive: () -> Void
+    let onCycleReplyAudience: () -> Void
+
+    // "¿Quién puede comentar?" real, comparado con Twitter/X/TikTok --
+    // calculado aparte, mismo motivo real de arriba.
+    private var audienceLabel: String {
+        switch post.replyAudience {
+        case "followers": return "quienes sigo"
+        case "mentioned": return "a quien mencione"
+        default: return "todos"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            // Hallazgo real, mismo hueco ya cerrado en Guardados: esta
+            // lista tampoco mostraba la imagen de la publicación, solo
+            // texto.
+            if let mediaURL = post.mediaURL, let url = URL(string: mediaURL) {
+                AsyncImage(url: url) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    RoundedRectangle(cornerRadius: 8).fill(.gray.opacity(0.15))
+                }
+                .frame(height: 160)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .onTapGesture { onTapImage(url) }
+            }
+            // Fijar una publicación en el perfil, comparado con
+            // Instagram -- el propio icono ya comunica el estado, mismo
+            // criterio que "Fijado" en mensajes/comentarios.
+            if post.pinnedAt != nil {
+                Text("📌 Fijada").font(.caption.bold()).foregroundStyle(.accentColor)
+            }
+            Text(post.caption ?? "")
+            if let taggedProfileID = post.taggedProfileID {
+                Text("con \(taggedName(taggedProfileID))")
+                    .font(.caption.bold())
+                    .foregroundStyle(.blue)
+            }
+            Text("❤ \(post.likeCount) · 💬 \(post.commentCount)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .swipeActions {
+            Button("Borrar", role: .destructive, action: onDelete)
+            Button("Editar", action: onEdit)
+                .tint(.blue)
+            // Fijar una publicación en el perfil (hasta 3), comparado
+            // con Instagram -- ver MyPostsViewModel.togglePinned(),
+            // 0106_pin_posts_to_profile.sql.
+            Button(post.pinnedAt != nil ? "Desfijar" : "Fijar", action: onTogglePinned)
+                .tint(.yellow)
+            // Archivar publicaciones real (0076_archive_posts.sql),
+            // comparado con Instagram/Facebook -- antes o se dejaba
+            // visible para siempre o se borraba para siempre, sin
+            // término medio.
+            Button(post.archivedAt != nil ? "Desarchivar" : "Archivar", action: onToggleArchive)
+                .tint(.gray)
+            // Desactivar los comentarios de esta publicación real,
+            // comparado con Instagram/TikTok -- los comentarios previos
+            // se quedan, solo se cierra la puerta a comentarios nuevos
+            // (0086_disable_comments.sql).
+            Button(post.commentsDisabled ? "Activar comentarios" : "Desactivar comentarios", action: onToggleCommentsDisabled)
+                .tint(.indigo)
+            // Ocultar el número de "me gusta" real, comparado con
+            // Instagram/Facebook -- el propio autor sigue viendo su
+            // cifra real siempre, solo desaparece para los demás. Ver
+            // 0094_hide_like_count.sql.
+            Button(post.hideLikeCount ? "Mostrar número de me gusta" : "Ocultar número de me gusta", action: onToggleHideLikeCount)
+                .tint(.purple)
+            // Marcar contenido como sensible, comparado con Instagram/
+            // Twitter/TikTok -- ver 0096_sensitive_content.sql.
+            Button(post.isSensitive ? "Quitar aviso de sensible" : "Marcar como sensible", action: onToggleSensitive)
+                .tint(.orange)
+            // "¿Quién puede comentar?" real, comparado con Twitter/X/
+            // TikTok -- ver 0097_reply_audience.sql.
+            Button("Comentan: \(audienceLabel)", action: onCycleReplyAudience)
+                .tint(.teal)
         }
     }
 }
