@@ -42,7 +42,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun ChatListScreen(viewModel: ChatListViewModel = viewModel(), onOpenChat: (String) -> Unit, onOpenArchived: () -> Unit = {}) {
+fun ChatListScreen(
+    viewModel: ChatListViewModel = viewModel(),
+    onOpenChat: (String) -> Unit,
+    onOpenArchived: () -> Unit = {},
+    onOpenCallHistory: () -> Unit = {}
+) {
     val chats by viewModel.chats.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
@@ -93,6 +98,20 @@ fun ChatListScreen(viewModel: ChatListViewModel = viewModel(), onOpenChat: (Stri
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(top = 8.dp).clickable { onOpenArchived() }
+        )
+        // Historial de llamadas real, comparado con WhatsApp/Messenger/
+        // FaceTime -- SOCIAL ya tenía llamadas 1:1 reales (0079_calls.sql)
+        // pero ninguna pantalla mostraba quién llamó, quién perdió una
+        // llamada, ni la duración real -- confirmado en el propio código
+        // (`grep` de "historial de llamadas"/"call history" sin resultados
+        // en todo el repo). Sin migración: `calls` ya tiene todo lo
+        // necesario (caller_id/callee_id/status/created_at/ended_at),
+        // `calls_select` ya restringe a los dos participantes reales.
+        Text(
+            "📞 Llamadas",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(top = 4.dp).clickable { onOpenCallHistory() }
         )
         if (isLoading) {
             CircularProgressIndicator(modifier = Modifier.padding(top = 12.dp))

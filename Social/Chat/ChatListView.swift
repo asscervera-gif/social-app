@@ -51,6 +51,16 @@ struct ChatListView: View {
                     .font(.footnote)
                     .foregroundStyle(Color.accentColor)
             }
+            // Historial de llamadas real, comparado con WhatsApp/
+            // Messenger/FaceTime -- ver CallHistoryView.swift/
+            // CallHistoryViewModel.swift.
+            NavigationLink {
+                CallHistoryView()
+            } label: {
+                Text("📞 Llamadas")
+                    .font(.footnote)
+                    .foregroundStyle(Color.accentColor)
+            }
             if viewModel.chats.isEmpty && !viewModel.isLoading {
                 Text("Todavía no tienes ningún chat.")
                     .foregroundStyle(.secondary)
