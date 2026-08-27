@@ -461,6 +461,14 @@ struct ChatView: View {
                 Text("🟢 En línea")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+            } else if let lastActive = viewModel.opponentLastActiveAt {
+                // "Últ. vez hace...", comparado con WhatsApp -- alcance
+                // deliberado, sin interruptor de privacidad recíproco
+                // todavía. Ver ChatViewModel.loadOpponentLastActive(),
+                // 0119_last_active_at.sql.
+                Text("Últ. vez \(relativeTime(lastActive))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
 
             HStack(spacing: 10) {

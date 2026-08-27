@@ -3194,6 +3194,18 @@ async function main() {
   const dfAfterTamper = (await db.query(`select deleted_for from messages where id = $1`, [dfMsg.id])).rows[0];
   check('protect_message_columns: el array real sigue teniendo a dfU1 (nadie puede quitar a otro)', dfAfterTamper.deleted_for.length === 1);
 
+  // --- profiles.last_active_at (0119_last_active_at.sql): "Últ. vez",
+  // comparado con WhatsApp. ---
+  const defaultLastActive = (await db.query(`select last_active_at from profiles where id = $1`, [u1])).rows[0];
+  check('profiles.last_active_at: arranca en null por defecto', defaultLastActive.last_active_at === null);
+  await asUser(u1);
+  await expectOk('profiles_update_own: u1 SÍ puede actualizar su propia last_active_at', async () => {
+    await db.query(`update profiles set last_active_at = now() where id = $1`, [u1]);
+  });
+  await asUser(u2);
+  const lastActiveSeenByOther = (await db.query(`select last_active_at from profiles where id = $1`, [u1])).rows[0];
+  check('profiles_select_public: u2 real SÍ ve la last_active_at de u1', lastActiveSeenByOther.last_active_at !== null);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

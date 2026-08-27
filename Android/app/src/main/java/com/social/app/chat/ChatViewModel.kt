@@ -213,7 +213,36 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
             markMessageNotificationsRead()
             loadReactions()
             loadStarred()
+            loadOpponentLastActive()
+            // "Últ. vez hace...", comparado con WhatsApp -- heurística
+            // real de actividad: abrir un chat cuenta como "usando la
+            // app ahora mismo". Alcance deliberado: sin interruptor de
+            // privacidad recíproco todavía (0119_last_active_at.sql).
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                SupabaseManager.client.from("profiles")
+                    .update({ set("last_active_at", java.time.Instant.now().toString()) }) { filter { eq("id", userId) } }
+            } catch (e: Exception) { /* no crítico */ }
         }
+    }
+
+    private val _opponentLastActiveAt = MutableStateFlow<String?>(null)
+    val opponentLastActiveAt: StateFlow<String?> = _opponentLastActiveAt.asStateFlow()
+
+    @Serializable
+    private data class LastActiveRow(@SerialName("last_active_at") val lastActiveAt: String? = null)
+
+    private suspend fun loadOpponentLastActive() {
+        try {
+            val chat = SupabaseManager.client.from("chats")
+                .select { filter { eq("id", chatId) } }
+                .decodeSingle<Chat>()
+            val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
+            val opponent = if (chat.userAId == myId) chat.userBId else chat.userAId
+            _opponentLastActiveAt.value = SupabaseManager.client.from("profiles")
+                .select(columns = Columns.raw("last_active_at")) { filter { eq("id", opponent) } }
+                .decodeSingleOrNull<LastActiveRow>()?.lastActiveAt
+        } catch (e: Exception) { /* no crítico */ }
     }
 
     @Serializable

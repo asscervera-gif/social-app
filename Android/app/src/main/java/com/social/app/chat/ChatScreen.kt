@@ -249,6 +249,7 @@ fun ChatScreen(
             )
         }
         val isOpponentOnline by viewModel.isOpponentOnline.collectAsState()
+        val opponentLastActiveAt by viewModel.opponentLastActiveAt.collectAsState()
         if (isOpponentOnline) {
             Text(
                 "🟢 En línea",
@@ -256,6 +257,18 @@ fun ChatScreen(
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary
+            )
+        } else if (opponentLastActiveAt != null) {
+            // "Últ. vez hace...", comparado con WhatsApp -- alcance
+            // deliberado, sin interruptor de privacidad recíproco
+            // todavía. Ver ChatViewModel.loadOpponentLastActive(),
+            // 0119_last_active_at.sql.
+            Text(
+                "Últ. vez ${com.social.app.util.relativeTime(opponentLastActiveAt!!)}",
+                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
 

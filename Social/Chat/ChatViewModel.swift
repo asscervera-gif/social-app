@@ -151,6 +151,42 @@ final class ChatViewModel: ObservableObject {
         await markMessageNotificationsRead()
         await loadReactions()
         await loadStarred()
+        await loadOpponentLastActive()
+        // "Últ. vez hace...", comparado con WhatsApp -- heurística real
+        // de actividad: abrir un chat cuenta como "usando la app ahora
+        // mismo". Alcance deliberado: sin interruptor de privacidad
+        // recíproco todavía (0119_last_active_at.sql). Equivalente de
+        // ChatViewModel.kt.start().
+        if let userID = try? await SupabaseManager.shared.client.auth.session.user.id {
+            try? await SupabaseManager.shared.client
+                .from("profiles")
+                .update(["last_active_at": ISO8601DateFormatter().string(from: Date())])
+                .eq("id", value: userID)
+                .execute()
+        }
+    }
+
+    @Published var opponentLastActiveAt: String?
+
+    private func loadOpponentLastActive() async {
+        struct LastActiveRow: Decodable { let last_active_at: String? }
+        guard let chat: Chat = try? await SupabaseManager.shared.client
+            .from("chats")
+            .select()
+            .eq("id", value: chatID)
+            .single()
+            .execute()
+            .value else { return }
+        let opponent = chat.userAID == currentUserID ? chat.userBID : chat.userAID
+        if let row: LastActiveRow = try? await SupabaseManager.shared.client
+            .from("profiles")
+            .select("last_active_at")
+            .eq("id", value: opponent)
+            .single()
+            .execute()
+            .value {
+            opponentLastActiveAt = row.last_active_at
+        }
     }
 
     // Mensajes destacados reales, comparado con WhatsApp
