@@ -97,13 +97,36 @@ final class ReelsViewModel: ObservableObject {
                 blockedIDs = Set(blockRows.map { $0.blocked_id })
             }
 
+            // Silenciar palabras reales en TU PROPIO feed, comparado con
+            // Twitter/X -- cierra el "hueco real aparte" documentado en la
+            // ronda de 0116_muted_feed_keywords.sql (solo cubrió el feed
+            // principal de publicaciones, nunca reels). Mismo criterio
+            // exacto que HomeViewModel.swift: resuelto en cliente, nunca
+            // en RLS. Equivalente de ReelsViewModel.kt.
+            struct MutedFeedKeywordsRow: Decodable { let muted_feed_keywords: [String] }
+            var mutedFeedKeywords: [String] = []
+            if let myID, let row: MutedFeedKeywordsRow = try? await client
+                .from("profiles")
+                .select("muted_feed_keywords")
+                .eq("id", value: myID)
+                .single()
+                .execute()
+                .value {
+                mutedFeedKeywords = row.muted_feed_keywords
+            }
+
             let allReels: [Reel] = try await client.from("reels")
                 .select()
                 .order("created_at", ascending: false)
                 .limit(30)
                 .execute()
                 .value
-            var recentReels = allReels.filter { !blockedIDs.contains($0.authorID) }
+            var recentReels = allReels.filter {
+                !blockedIDs.contains($0.authorID) &&
+                    !mutedFeedKeywords.contains { word in
+                        $0.caption?.range(of: word, options: .caseInsensitive) != nil
+                    }
+            }
 
             if let pinnedReelID, !recentReels.contains(where: { $0.id == pinnedReelID }) {
                 let pinned: Reel? = try? await client.from("reels")

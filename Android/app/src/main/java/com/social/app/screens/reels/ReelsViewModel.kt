@@ -83,6 +83,14 @@ class ReelsViewModel : ViewModel() {
     @Serializable
     private data class BlockRow(@SerialName("blocked_id") val blockedId: String)
 
+    // Silenciar palabras reales en TU PROPIO feed, comparado con
+    // Twitter/X -- cierra el "hueco real aparte" documentado en la ronda
+    // de 0116_muted_feed_keywords.sql (solo cubrió el feed principal de
+    // publicaciones, nunca reels). Mismo criterio exacto que
+    // HomeViewModel.kt: resuelto en cliente, nunca en RLS.
+    @Serializable
+    private data class MutedFeedKeywordsRow(@SerialName("muted_feed_keywords") val mutedFeedKeywords: List<String> = emptyList())
+
     @Serializable
     private data class NewReelLike(
         @SerialName("reel_id") val reelId: String,
@@ -122,13 +130,24 @@ class ReelsViewModel : ViewModel() {
                 } catch (e: Exception) {
                     emptySet()
                 }
+                val mutedFeedKeywords = try {
+                    if (myId == null) emptyList() else SupabaseManager.client.from("profiles")
+                        .select(columns = Columns.raw("muted_feed_keywords")) { filter { eq("id", myId) } }
+                        .decodeSingleOrNull<MutedFeedKeywordsRow>()
+                        ?.mutedFeedKeywords ?: emptyList()
+                } catch (e: Exception) {
+                    emptyList()
+                }
                 val recentReels = SupabaseManager.client.from("reels")
                     .select {
                         order("created_at", Order.DESCENDING)
                         limit(30)
                     }
                     .decodeList<Reel>()
-                    .filter { it.authorId !in blockedIds }
+                    .filter {
+                        it.authorId !in blockedIds &&
+                            mutedFeedKeywords.none { word -> it.caption?.contains(word, ignoreCase = true) == true }
+                    }
 
                 _reels.value = if (pinnedReelId != null && recentReels.none { it.id == pinnedReelId }) {
                     val pinned = try {
