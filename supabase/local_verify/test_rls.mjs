@@ -2860,6 +2860,50 @@ async function main() {
   const afterHijackAttempt = (await db.query(`select created_by from group_chats where id = $1`, [rnGroupId])).rows[0];
   check('protect_group_chat_identity: un admin real (rnAdmin) NO puede robar el grupo reescribiendo created_by (revertido de verdad)', afterHijackAttempt.created_by === rnCreator);
 
+  // --- apply_duel_compatibility (0109_duel_affects_compatibility.sql):
+  // el resultado real de un duelo por fin ajusta chats.compatibility_score,
+  // no solo la pantalla de resultado del duelo. Usuarios NUEVOS a
+  // propósito, mismo motivo ya documentado varias veces esta sesión. ---
+  await asSuperuser();
+  const dcU1 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const dcU2 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name) values ($1, 'DuelUno'), ($2, 'DuelDos')
+     on conflict (id) do update set display_name = excluded.display_name`,
+    [dcU1, dcU2]
+  );
+  const dcChat = (await db.query(`insert into chats (user_a_id, user_b_id) values ($1, $2) returning id, compatibility_score`, [dcU1, dcU2])).rows[0];
+  check('apply_duel_compatibility: el chat nuevo arranca en 50 por defecto', dcChat.compatibility_score === 50);
+
+  // Simula exactamente lo que hace duel-ai/index.ts (handleScoreDuel):
+  // un INSERT real en `duels` con `service_role`, con compatibility_delta
+  // ya calculado por la IA -- el cliente nunca inserta aquí (0035).
+  await db.query(
+    `insert into duels (chat_id, initiator_id, opponent_id, questions, answers, compatibility_delta, explanation, is_public)
+     values ($1, $2, $3, '[]', '[]', 10, 'primer duelo real', false)`,
+    [dcChat.id, dcU1, dcU2]
+  );
+  const dcAfterFirst = (await db.query(`select compatibility_score from chats where id = $1`, [dcChat.id])).rows[0];
+  check('apply_duel_compatibility: un duelo real con delta +10 sube el % real del chat a 60', dcAfterFirst.compatibility_score === 60);
+
+  // Un segundo duelo con delta grande debe QUEDARSE en 100, no pasarse.
+  await db.query(
+    `insert into duels (chat_id, initiator_id, opponent_id, questions, answers, compatibility_delta, explanation, is_public)
+     values ($1, $2, $3, '[]', '[]', 100, 'segundo duelo real', false)`,
+    [dcChat.id, dcU1, dcU2]
+  );
+  const dcAfterHigh = (await db.query(`select compatibility_score from chats where id = $1`, [dcChat.id])).rows[0];
+  check('apply_duel_compatibility: un delta real que se pasaría de 100 queda tope real en 100', dcAfterHigh.compatibility_score === 100);
+
+  // Un tercer duelo con delta muy negativo debe QUEDARSE en 0, no bajar de ahí.
+  await db.query(
+    `insert into duels (chat_id, initiator_id, opponent_id, questions, answers, compatibility_delta, explanation, is_public)
+     values ($1, $2, $3, '[]', '[]', -1000, 'tercer duelo real', false)`,
+    [dcChat.id, dcU1, dcU2]
+  );
+  const dcAfterLow = (await db.query(`select compatibility_score from chats where id = $1`, [dcChat.id])).rows[0];
+  check('apply_duel_compatibility: un delta real muy negativo queda tope real en 0, nunca negativo', dcAfterLow.compatibility_score === 0);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado
