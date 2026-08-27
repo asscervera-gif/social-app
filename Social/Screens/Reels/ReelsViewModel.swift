@@ -318,10 +318,12 @@ final class ReelsViewModel: ObservableObject {
 
     /// Sube el vídeo real al bucket `media` (StorageUploader.uploadVideo,
     /// mismo patrón que las fotos de publicaciones) e inserta la fila real
-    /// en `reels`. Sin miniatura real todavía: `thumbnail_url` se deja sin
-    /// fijar -- generar un fotograma real necesitaría decodificar el
-    /// vídeo (AVAssetImageGenerator), hueco real documentado, no fingido
-    /// con un color aleatorio. Equivalente de ReelsViewModel.kt.upload().
+    /// en `reels`. Miniatura real, comparado con TikTok/Instagram Reels/
+    /// YouTube Shorts -- cierra el hueco deliberado documentado antes:
+    /// `thumbnailURL` se dejaba siempre sin fijar. Ver
+    /// StorageUploader.uploadVideoThumbnail(). Si falla (vídeo sin
+    /// fotograma decodificable), el reel se sigue publicando igual, solo
+    /// sin miniatura real. Equivalente de ReelsViewModel.kt.upload().
     func upload(videoData: Data, fileExtension: String, caption: String, isSocialOnly: Bool, locationName: String = "") async -> Bool {
         isUploading = true
         defer { isUploading = false }
@@ -331,6 +333,7 @@ final class ReelsViewModel: ObservableObject {
             let caption: String?
             let is_social_only: Bool
             let location_name: String?
+            let thumbnail_url: String?
         }
         do {
             guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return false }
@@ -339,9 +342,10 @@ final class ReelsViewModel: ObservableObject {
             let trimmedLocation = locationName.trimmingCharacters(in: .whitespacesAndNewlines)
             let finalLocation = trimmedLocation.isEmpty ? nil : String(trimmedLocation.prefix(100))
             let videoURL = try await StorageUploader.uploadVideo(data: videoData, fileExtension: fileExtension, userID: userID)
+            let thumbnailURL = await StorageUploader.uploadVideoThumbnail(videoData: videoData, fileExtension: fileExtension, userID: userID)
             try await SupabaseManager.shared.client
                 .from("reels")
-                .insert(NewReel(author_id: userID, video_url: videoURL, caption: caption.isEmpty ? nil : caption, is_social_only: isSocialOnly, location_name: finalLocation))
+                .insert(NewReel(author_id: userID, video_url: videoURL, caption: caption.isEmpty ? nil : caption, is_social_only: isSocialOnly, location_name: finalLocation, thumbnail_url: thumbnailURL))
                 .execute()
             AnalyticsManager.track("reel_created")
             await load()

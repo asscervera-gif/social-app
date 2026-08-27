@@ -17,6 +17,10 @@
 //
 
 import Foundation
+import AVFoundation
+#if canImport(UIKit)
+import UIKit
+#endif
 
 enum StorageUploader {
     static func uploadImage(data: Data, fileExtension: String, userID: UUID) async throws -> String {
@@ -40,5 +44,40 @@ enum StorageUploader {
     /// usa. Equivalente de `uploadVideo` (Kotlin).
     static func uploadVideo(data: Data, fileExtension: String, userID: UUID) async throws -> String {
         try await uploadImage(data: data, fileExtension: fileExtension, userID: userID)
+    }
+
+    /// Miniatura real de un vídeo de Reels, comparado con TikTok/
+    /// Instagram Reels/YouTube Shorts -- cierra el hueco deliberado
+    /// documentado en ReelsViewModel.swift.upload(): `thumbnailURL` se
+    /// dejaba siempre sin fijar. Decodifica un fotograma real del propio
+    /// vídeo (`AVAssetImageGenerator`, API nativa de iOS, sin dependencia
+    /// nueva) en vez de fingir con un color de relleno. `AVURLAsset`
+    /// necesita una URL de archivo real -- `videoData` se escribe primero
+    /// a un archivo temporal (mismo criterio ya usado para notas de voz
+    /// grabadas, VoiceRecorder.swift). `nil` si el vídeo no tiene ningún
+    /// fotograma decodificable -- el reel se sigue publicando igual, solo
+    /// sin miniatura real.
+    static func uploadVideoThumbnail(videoData: Data, fileExtension: String, userID: UUID) async -> String? {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension(fileExtension)
+        do {
+            try videoData.write(to: tempURL)
+            defer { try? FileManager.default.removeItem(at: tempURL) }
+            let asset = AVURLAsset(url: tempURL)
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            // Fotograma a 1s real (no en 0, que en muchos vídeos reales
+            // cae en un frame negro/de transición antes de que arranque
+            // el contenido de verdad) -- mismo criterio visual que
+            // TikTok/Instagram al elegir portada.
+            let cgImage = try generator.copyCGImage(at: CMTime(seconds: 1, preferredTimescale: 600), actualTime: nil)
+            #if canImport(UIKit)
+            guard let jpegData = UIImage(cgImage: cgImage).jpegData(compressionQuality: 0.8) else { return nil }
+            return try? await uploadImage(data: jpegData, fileExtension: "jpg", userID: userID)
+            #else
+            return nil
+            #endif
+        } catch {
+            return nil
+        }
     }
 }

@@ -47,4 +47,36 @@ object StorageUploader {
      * el sitio donde se usa. Mismo criterio que `uploadAudio` en
      * StorageUploader.swift: reutiliza la lógica tal cual. */
     suspend fun uploadVideo(context: Context, uri: Uri, userId: String): String = uploadImage(context, uri, userId)
+
+    /** Miniatura real de un vídeo de Reels, comparado con TikTok/
+     * Instagram Reels/YouTube Shorts -- cierra el hueco deliberado
+     * documentado en ReelsViewModel.kt.upload(): `thumbnail_url` se
+     * dejaba siempre sin fijar. Decodifica un fotograma real del propio
+     * vídeo (`MediaMetadataRetriever`, API nativa de Android, sin
+     * dependencia nueva) en vez de fingir con un color de relleno.
+     * `null` si el vídeo no tiene ningún fotograma decodificable -- el
+     * reel se sigue publicando igual, solo sin miniatura real (mismo
+     * criterio de "no bloquear el resto" que el resto de esta app). */
+    suspend fun uploadVideoThumbnail(context: Context, uri: Uri, userId: String): String? = withContext(Dispatchers.IO) {
+        val retriever = android.media.MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(context, uri)
+            // Fotograma a 1s real (no en 0, que en muchos vídeos reales
+            // cae en un frame negro/de transición antes de que arranque
+            // el contenido de verdad) -- mismo criterio visual que
+            // TikTok/Instagram al elegir portada.
+            val frame = retriever.getFrameAtTime(1_000_000L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                ?: retriever.getFrameAtTime(0L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                ?: return@withContext null
+            val stream = java.io.ByteArrayOutputStream()
+            frame.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, stream)
+            val path = "$userId/${UUID.randomUUID()}_thumb.jpg"
+            SupabaseManager.client.storage.from("media").upload(path, stream.toByteArray())
+            SupabaseManager.client.storage.from("media").publicUrl(path)
+        } catch (e: Exception) {
+            null
+        } finally {
+            retriever.release()
+        }
+    }
 }

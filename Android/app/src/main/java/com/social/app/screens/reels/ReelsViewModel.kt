@@ -317,15 +317,18 @@ class ReelsViewModel : ViewModel() {
         @SerialName("video_url") val videoUrl: String,
         val caption: String?,
         @SerialName("is_social_only") val isSocialOnly: Boolean,
-        @SerialName("location_name") val locationName: String? = null
+        @SerialName("location_name") val locationName: String? = null,
+        @SerialName("thumbnail_url") val thumbnailUrl: String? = null
     )
 
     /** Sube el vídeo real al bucket `media` (StorageUploader.uploadVideo,
      * mismo patrón que las fotos de publicaciones) e inserta la fila real
-     * en `reels`. Sin miniatura real todavía: `thumbnail_url` se deja sin
-     * fijar -- generar un fotograma real necesitaría decodificar el vídeo
-     * (MediaMetadataRetriever), hueco real documentado, no fingido con un
-     * color aleatorio. */
+     * en `reels`. Miniatura real, comparado con TikTok/Instagram Reels/
+     * YouTube Shorts -- cierra el hueco deliberado documentado antes:
+     * `thumbnail_url` se dejaba siempre sin fijar. Ver
+     * StorageUploader.uploadVideoThumbnail(). Si falla (vídeo sin
+     * fotograma decodificable), el reel se sigue publicando igual, solo
+     * sin miniatura real -- nunca bloquea la publicación por esto. */
     fun upload(context: Context, videoUri: Uri, caption: String, isSocialOnly: Boolean, locationName: String = "", onDone: (Boolean) -> Unit) {
         viewModelScope.launch {
             _isUploading.value = true
@@ -338,7 +341,12 @@ class ReelsViewModel : ViewModel() {
                 // (0114_reel_location_tag.sql).
                 val trimmedLocation = locationName.trim().ifEmpty { null }?.take(100)
                 val videoUrl = StorageUploader.uploadVideo(context, videoUri, userId)
-                SupabaseManager.client.from("reels").insert(NewReel(userId, videoUrl, caption.ifBlank { null }, isSocialOnly, trimmedLocation))
+                val thumbnailUrl = try {
+                    StorageUploader.uploadVideoThumbnail(context, videoUri, userId)
+                } catch (e: Exception) {
+                    null
+                }
+                SupabaseManager.client.from("reels").insert(NewReel(userId, videoUrl, caption.ifBlank { null }, isSocialOnly, trimmedLocation, thumbnailUrl))
                 com.social.app.backend.AnalyticsManager.track("reel_created")
                 load()
                 onDone(true)
