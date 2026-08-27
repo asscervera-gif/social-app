@@ -559,4 +559,25 @@ class StoriesViewModel : ViewModel() {
             }
         }
     }
+
+    /** Añadir una historia real a un destacado YA EXISTENTE, comparado con
+     * Instagram -- cierra el hueco deliberado documentado en
+     * createHighlight() de arriba. Misma tabla real
+     * (story_highlight_items, 0101_story_highlights.sql), sin migración:
+     * el propio RLS ya exige ser dueño real tanto del destacado como de
+     * la historia. La portada del destacado no se toca -- solo la del
+     * destacado recién CREADO se fija (mismo criterio ya establecido). */
+    fun addStoryToHighlight(highlightId: String, storyId: String, onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("story_highlight_items")
+                    .insert(NewHighlightItem(highlightId, storyId))
+                com.social.app.backend.AnalyticsManager.track("story_added_to_highlight")
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo añadir al destacado."
+            } finally {
+                onDone()
+            }
+        }
+    }
 }

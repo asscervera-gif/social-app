@@ -244,6 +244,10 @@ private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewMod
     // 0101_story_highlights.sql.
     var showHighlightDialog by remember { mutableStateOf(false) }
     var highlightTitleInput by remember { mutableStateOf("") }
+    // Añadir a un destacado YA EXISTENTE, comparado con Instagram -- cierra
+    // el hueco deliberado documentado en StoriesViewModel.createHighlight().
+    var showNewHighlightInput by remember { mutableStateOf(false) }
+    val myHighlights by viewModel.myHighlights.collectAsState()
     val progress = remember(index) { androidx.compose.animation.core.Animatable(0f) }
     // Responder a una historia real (0071_message_story_reply.sql),
     // comparado con Instagram/WhatsApp Status/Snapchat.
@@ -658,37 +662,67 @@ private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewMod
     }
 
     // Destacados reales de historias en el perfil, comparado con
-    // Instagram -- crea siempre un destacado NUEVO a partir de la
-    // historia real activa que se está viendo (alcance deliberado: sin
-    // ofrecer añadir a uno ya existente desde este mismo diálogo, ver
-    // StoriesViewModel.createHighlight()).
+    // Instagram -- ofrece añadir a uno YA EXISTENTE (cierra el hueco
+    // deliberado documentado en StoriesViewModel.createHighlight()) o
+    // crear uno nuevo, mismo diálogo real.
     if (showHighlightDialog) {
         AlertDialog(
-            onDismissRequest = { showHighlightDialog = false; highlightTitleInput = "" },
-            title = { Text("Nuevo destacado") },
+            onDismissRequest = { showHighlightDialog = false; showNewHighlightInput = false; highlightTitleInput = "" },
+            title = { Text(if (showNewHighlightInput) "Nuevo destacado" else "Añadir a destacado") },
             text = {
-                androidx.compose.material3.OutlinedTextField(
-                    value = highlightTitleInput,
-                    onValueChange = { highlightTitleInput = it },
-                    label = { Text("Título (p. ej. \"Viajes\")") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                if (showNewHighlightInput) {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = highlightTitleInput,
+                        onValueChange = { highlightTitleInput = it },
+                        label = { Text("Título (p. ej. \"Viajes\")") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else {
+                    Column {
+                        if (myHighlights.isEmpty()) {
+                            Text("Todavía no tienes ningún destacado.")
+                        }
+                        myHighlights.forEach { highlight ->
+                            Text(
+                                highlight.title,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        viewModel.addStoryToHighlight(highlight.id, story.id)
+                                        showHighlightDialog = false
+                                    }
+                                    .padding(vertical = 10.dp)
+                            )
+                        }
+                        Text(
+                            "+ Crear nuevo",
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showNewHighlightInput = true }
+                                .padding(vertical = 10.dp)
+                        )
+                    }
+                }
             },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (highlightTitleInput.isNotBlank()) {
-                            viewModel.createHighlight(story.id, highlightTitleInput)
-                        }
-                        showHighlightDialog = false
-                        highlightTitleInput = ""
-                    },
-                    enabled = highlightTitleInput.isNotBlank()
-                ) { Text("Crear") }
+                if (showNewHighlightInput) {
+                    TextButton(
+                        onClick = {
+                            if (highlightTitleInput.isNotBlank()) {
+                                viewModel.createHighlight(story.id, highlightTitleInput)
+                            }
+                            showHighlightDialog = false
+                            showNewHighlightInput = false
+                            highlightTitleInput = ""
+                        },
+                        enabled = highlightTitleInput.isNotBlank()
+                    ) { Text("Crear") }
+                }
             },
             dismissButton = {
-                TextButton(onClick = { showHighlightDialog = false; highlightTitleInput = "" }) { Text("Cancelar") }
+                TextButton(onClick = { showHighlightDialog = false; showNewHighlightInput = false; highlightTitleInput = "" }) { Text("Cancelar") }
             }
         )
     }

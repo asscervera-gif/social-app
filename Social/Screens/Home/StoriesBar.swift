@@ -206,6 +206,9 @@ private struct StoryViewer: View {
     // 0101_story_highlights.sql.
     @State private var showHighlightDialog = false
     @State private var highlightTitleInput = ""
+    // Añadir a un destacado YA EXISTENTE, comparado con Instagram -- cierra
+    // el hueco deliberado documentado en StoriesViewModel.createHighlight().
+    @State private var showNewHighlightInput = false
 
     private func goNext() {
         if index < group.stories.count - 1 {
@@ -565,40 +568,61 @@ private struct StoryViewer: View {
             }
         }
         // Destacados reales de historias en el perfil, comparado con
-        // Instagram -- crea siempre un destacado NUEVO a partir de la
-        // historia real activa que se está viendo (alcance deliberado:
-        // sin ofrecer añadir a uno ya existente desde este mismo diálogo,
-        // ver StoriesViewModel.createHighlight()).
+        // Instagram -- ofrece añadir a uno YA EXISTENTE (cierra el hueco
+        // deliberado documentado en StoriesViewModel.createHighlight()) o
+        // crear uno nuevo, mismo diálogo real.
         .sheet(isPresented: Binding(
             get: { showHighlightDialog },
             set: { isPresented in
                 showHighlightDialog = isPresented
-                if !isPresented { highlightTitleInput = "" }
+                if !isPresented { highlightTitleInput = ""; showNewHighlightInput = false }
             }
         )) {
             NavigationStack {
-                Form {
-                    TextField("Título (p. ej. \"Viajes\")", text: $highlightTitleInput)
+                Group {
+                    if showNewHighlightInput {
+                        Form {
+                            TextField("Título (p. ej. \"Viajes\")", text: $highlightTitleInput)
+                        }
+                    } else {
+                        List {
+                            if viewModel.myHighlights.isEmpty {
+                                Text("Todavía no tienes ningún destacado.")
+                                    .foregroundStyle(.secondary)
+                            }
+                            ForEach(viewModel.myHighlights) { highlight in
+                                Button(highlight.title) {
+                                    if let story = group.stories[safe: index] {
+                                        Task { await viewModel.addStoryToHighlight(highlightID: highlight.id, storyID: story.id) }
+                                    }
+                                    showHighlightDialog = false
+                                }
+                            }
+                            Button("+ Crear nuevo") { showNewHighlightInput = true }
+                        }
+                    }
                 }
-                .navigationTitle("Nuevo destacado")
+                .navigationTitle(showNewHighlightInput ? "Nuevo destacado" : "Añadir a destacado")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cancelar") { showHighlightDialog = false }
                     }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Crear") {
-                            if let story = group.stories[safe: index], !highlightTitleInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                let title = highlightTitleInput
-                                Task { await viewModel.createHighlight(storyID: story.id, title: title) }
+                    if showNewHighlightInput {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Crear") {
+                                if let story = group.stories[safe: index], !highlightTitleInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                    let title = highlightTitleInput
+                                    Task { await viewModel.createHighlight(storyID: story.id, title: title) }
+                                }
+                                showHighlightDialog = false
                             }
-                            showHighlightDialog = false
+                            .disabled(highlightTitleInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         }
-                        .disabled(highlightTitleInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                 }
             }
-            .presentationDetents([.height(160)])
+            .presentationDetents([.height(280)])
         }
     }
 }

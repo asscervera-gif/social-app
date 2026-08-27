@@ -554,4 +554,27 @@ final class StoriesViewModel: ObservableObject {
             errorMessage = "No se pudo crear el destacado."
         }
     }
+
+    /// Añadir una historia real a un destacado YA EXISTENTE, comparado
+    /// con Instagram -- cierra el hueco deliberado documentado en
+    /// createHighlight() de arriba. Misma tabla real
+    /// (story_highlight_items, 0101_story_highlights.sql), sin
+    /// migración: el propio RLS ya exige ser dueño real tanto del
+    /// destacado como de la historia. Equivalente de
+    /// StoriesViewModel.kt.addStoryToHighlight().
+    func addStoryToHighlight(highlightID: UUID, storyID: UUID) async {
+        struct NewHighlightItem: Encodable {
+            let highlight_id: UUID
+            let story_id: UUID
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("story_highlight_items")
+                .insert(NewHighlightItem(highlight_id: highlightID, story_id: storyID))
+                .execute()
+            AnalyticsManager.track("story_added_to_highlight")
+        } catch {
+            errorMessage = "No se pudo añadir al destacado."
+        }
+    }
 }
