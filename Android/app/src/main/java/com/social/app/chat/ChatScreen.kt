@@ -979,6 +979,9 @@ fun ChatScreen(
 private fun AudioMessageBubble(url: String, isMine: Boolean) {
     var isPlaying by remember { mutableStateOf(false) }
     var player by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
+    // Velocidad de reproducción real (1x/1.5x/2x), comparado con
+    // WhatsApp -- hueco real, básico en cualquier nota de voz grande.
+    var speed by remember { mutableStateOf(1f) }
 
     androidx.compose.runtime.DisposableEffect(url) {
         onDispose {
@@ -999,7 +1002,10 @@ private fun AudioMessageBubble(url: String, isMine: Boolean) {
                         setDataSource(url)
                         setOnCompletionListener { isPlaying = false }
                         prepareAsync()
-                        setOnPreparedListener { start() }
+                        setOnPreparedListener {
+                            try { playbackParams = playbackParams.setSpeed(speed) } catch (e: Exception) {}
+                            start()
+                        }
                     }
                     player = p
                     if (p.isPlaying.not()) {
@@ -1012,6 +1018,18 @@ private fun AudioMessageBubble(url: String, isMine: Boolean) {
     ) {
         Text(if (isPlaying) "⏸" else "▶")
         Text(" Nota de voz", color = if (isMine) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color.Unspecified)
+        Text(
+            " ${speed}x",
+            color = if (isMine) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color.Unspecified,
+            modifier = Modifier.clickable {
+                speed = when (speed) { 1f -> 1.5f; 1.5f -> 2f; else -> 1f }
+                player?.let {
+                    try {
+                        it.playbackParams = it.playbackParams.setSpeed(speed)
+                    } catch (e: Exception) { /* no soportado en este dispositivo */ }
+                }
+            }
+        )
     }
 }
 

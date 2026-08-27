@@ -877,11 +877,20 @@ private struct AudioMessageBubble: View {
 
     @State private var player: AVAudioPlayer?
     @State private var isPlaying = false
+    // Velocidad de reproducción real (1x/1.5x/2x), comparado con
+    // WhatsApp -- hueco real, básico en cualquier nota de voz grande.
+    // Equivalente de ChatScreen.kt.AudioMessageBubble.
+    @State private var speed: Float = 1
 
     var body: some View {
         HStack {
             Image(systemName: isPlaying ? "pause.fill" : "play.fill")
             Text("Nota de voz")
+            Text("\(speed == 1 ? "1" : (speed == 1.5 ? "1.5" : "2"))x")
+                .onTapGesture {
+                    speed = speed == 1 ? 1.5 : (speed == 1.5 ? 2 : 1)
+                    player?.rate = speed
+                }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -902,6 +911,8 @@ private struct AudioMessageBubble: View {
                         if let data = try? Data(contentsOf: url) {
                             player = try? AVAudioPlayer(data: data)
                         }
+                        player?.enableRate = true
+                        player?.rate = speed
                         player?.play()
                         isPlaying = true
                     }
