@@ -45,6 +45,10 @@ struct GroupMessage: Codable, Identifiable {
     // WhatsApp/Telegram/iMessage/Instagram DM -- referencia al mensaje
     // real citado, nunca una copia. Ver 0102_message_reply.sql.
     var replyToMessageID: UUID? = nil
+    // "Eliminar para mí" real, comparado con WhatsApp -- resuelto en el
+    // cliente (mismo criterio que ChatViewModel.swift, 0118). Ver
+    // 0120_delete_group_message_for_me.sql.
+    var deletedFor: [UUID] = []
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -60,6 +64,7 @@ struct GroupMessage: Codable, Identifiable {
         case pinnedAt = "pinned_at"
         case pinnedBy = "pinned_by"
         case replyToMessageID = "reply_to_message_id"
+        case deletedFor = "deleted_for"
     }
 }
 
@@ -658,6 +663,30 @@ final class GroupChatViewModel: ObservableObject {
     /// (0065_group_messages_edit_delete.sql), comparado con WhatsApp/
     /// Telegram/Messenger -- "borrar para todos", mismo criterio simple
     /// que ChatViewModel.swift.deleteMessage() (chat 1:1).
+    /// "Eliminar para mí" real, comparado con WhatsApp -- sobre
+    /// CUALQUIER mensaje de grupo (propio o ajeno): el resto del grupo
+    /// lo sigue viendo con normalidad, la fila real nunca se borra --
+    /// solo se añade mi propio id a `deleted_for`, y
+    /// GroupChatView.swift ya filtra en cliente cualquier mensaje donde
+    /// aparezca mi id (0120_delete_group_message_for_me.sql).
+    /// Equivalente de GroupChatViewModel.kt.deleteForMe().
+    func deleteForMe(_ messageID: UUID) async {
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        guard let index = messages.firstIndex(where: { $0.id == messageID }) else { return }
+        if messages[index].deletedFor.contains(userID) { return }
+        let updated = messages[index].deletedFor + [userID]
+        do {
+            try await SupabaseManager.shared.client
+                .from("group_messages")
+                .update(["deleted_for": updated])
+                .eq("id", value: messageID)
+                .execute()
+            messages[index].deletedFor = updated
+        } catch {
+            errorMessage = "No se pudo eliminar el mensaje para ti."
+        }
+    }
+
     func deleteMessage(_ messageID: UUID) async {
         messages.removeAll { $0.id == messageID }
         do {

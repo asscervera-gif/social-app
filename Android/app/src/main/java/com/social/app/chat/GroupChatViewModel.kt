@@ -60,7 +60,12 @@ data class GroupMessage(
     // Responder a un mensaje concreto (cita), comparado con
     // WhatsApp/Telegram/iMessage/Instagram DM -- referencia al mensaje
     // real citado, nunca una copia. Ver 0102_message_reply.sql.
-    @SerialName("reply_to_message_id") val replyToMessageId: String? = null
+    @SerialName("reply_to_message_id") val replyToMessageId: String? = null,
+    // "Eliminar para mí" real, comparado con WhatsApp -- resuelto en el
+    // cliente (mismo criterio que ChatViewModel.kt, 0118): la fila
+    // sigue existiendo de verdad para el resto del grupo, solo se
+    // oculta en MI propia lista. Ver 0120_delete_group_message_for_me.sql.
+    @SerialName("deleted_for") val deletedFor: List<String> = emptyList()
 )
 
 /**
@@ -649,6 +654,29 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
      * (0065_group_messages_edit_delete.sql), comparado con WhatsApp/
      * Telegram/Messenger -- "borrar para todos", mismo criterio simple
      * que ChatViewModel.kt.deleteMessage() (chat 1:1). */
+    /** "Eliminar para mí" real, comparado con WhatsApp -- sobre CUALQUIER
+     * mensaje de grupo (propio o ajeno): el resto del grupo lo sigue
+     * viendo con normalidad, la fila real nunca se borra -- solo se
+     * añade mi propio id a `deleted_for`, y GroupChatScreen.kt ya
+     * filtra en cliente cualquier mensaje donde aparezca mi id
+     * (0120_delete_group_message_for_me.sql). */
+    fun deleteForMe(messageId: String) {
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                val current = _messages.value.firstOrNull { it.id == messageId }?.deletedFor ?: emptyList()
+                if (userId in current) return@launch
+                SupabaseManager.client.from("group_messages")
+                    .update({ set("deleted_for", current + userId) }) { filter { eq("id", messageId) } }
+                _messages.update { list ->
+                    list.map { if (it.id == messageId) it.copy(deletedFor = it.deletedFor + userId) else it }
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo eliminar el mensaje para ti."
+            }
+        }
+    }
+
     fun deleteMessage(messageId: String) {
         _messages.update { list -> list.filter { it.id != messageId } }
         viewModelScope.launch {

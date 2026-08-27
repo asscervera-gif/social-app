@@ -76,7 +76,7 @@ fun GroupChatScreen(
     callManager: com.social.app.calls.CallManager? = null
 ) {
     val viewModel = remember(groupChatId) { GroupChatViewModel(groupChatId) }
-    val messages by viewModel.messages.collectAsState()
+    val allGroupMessages by viewModel.messages.collectAsState()
     val members by viewModel.members.collectAsState()
     // Administradores reales de grupo, comparado con WhatsApp/Telegram/
     // Messenger -- ver 0107_group_chat_admins.sql.
@@ -121,6 +121,10 @@ fun GroupChatScreen(
     // WhatsApp/Telegram/Messenger.
     var forwardingMessage by remember { mutableStateOf<GroupMessage?>(null) }
     val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
+    // "Eliminar para mí" real, comparado con WhatsApp -- resuelto en el
+    // cliente (mismo criterio que ChatScreen.kt, 0118). Ver
+    // GroupChatViewModel.deleteForMe(), 0120_delete_group_message_for_me.sql.
+    val messages = allGroupMessages.filter { myId !in it.deletedFor }
     val listState = rememberLazyListState()
 
     // Nota de voz real (0062_group_message_audio.sql) -- mismo patrón
@@ -595,11 +599,21 @@ fun GroupChatScreen(
                         viewModel.toggleStar(message.id)
                         managingMessage = null
                     }) { Text(if (isStarred) "Quitar destacado" else "Destacar") }
+                    // "Eliminar para mí" real, comparado con WhatsApp --
+                    // sobre CUALQUIER mensaje (propio o ajeno): el resto
+                    // del grupo lo sigue viendo con normalidad. Distinto
+                    // de "Borrar para todos" (abajo, solo el propio
+                    // remitente). Ver GroupChatViewModel.deleteForMe(),
+                    // 0120_delete_group_message_for_me.sql.
+                    TextButton(onClick = {
+                        viewModel.deleteForMe(message.id)
+                        managingMessage = null
+                    }) { Text("Eliminar para mí") }
                     if (isMineMessage) {
                         TextButton(onClick = {
                             viewModel.deleteMessage(message.id)
                             managingMessage = null
-                        }) { Text("Borrar") }
+                        }) { Text("Borrar para todos") }
                     }
                     TextButton(onClick = { managingMessage = null }) { Text("Cancelar") }
                 }

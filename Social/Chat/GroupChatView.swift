@@ -108,7 +108,12 @@ struct GroupChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 6) {
-                        ForEach(viewModel.messages) { message in
+                        // "Eliminar para mí" real, comparado con
+                        // WhatsApp -- resuelto en cliente (mismo
+                        // criterio que ChatView.swift, 0118). Ver
+                        // GroupChatViewModel.deleteForMe(),
+                        // 0120_delete_group_message_for_me.sql.
+                        ForEach(viewModel.messages.filter { myID == nil || !$0.deletedFor.contains(myID!) }) { message in
                             let sender = viewModel.members.first { $0.id == message.senderID }
                             let isMine = message.senderID == myID
                             GroupMessageBubble(
@@ -346,8 +351,15 @@ struct GroupChatView: View {
                 Button(viewModel.starredMessageIDs.contains(managingMessage.id) ? "Quitar destacado" : "Destacar") {
                     Task { await viewModel.toggleStar(managingMessage.id) }
                 }
+                // "Eliminar para mí" real, comparado con WhatsApp --
+                // sobre CUALQUIER mensaje (propio o ajeno): el resto del
+                // grupo lo sigue viendo con normalidad. Distinto de
+                // "Borrar para todos" (abajo, solo el propio remitente).
+                Button("Eliminar para mí") {
+                    Task { await viewModel.deleteForMe(managingMessage.id) }
+                }
                 if managingMessage.senderID == myID {
-                    Button("Borrar", role: .destructive) {
+                    Button("Borrar para todos", role: .destructive) {
                         Task { await viewModel.deleteMessage(managingMessage.id) }
                     }
                 }

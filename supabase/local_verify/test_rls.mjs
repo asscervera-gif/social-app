@@ -3206,6 +3206,35 @@ async function main() {
   const lastActiveSeenByOther = (await db.query(`select last_active_at from profiles where id = $1`, [u1])).rows[0];
   check('profiles_select_public: u2 real SÍ ve la last_active_at de u1', lastActiveSeenByOther.last_active_at !== null);
 
+  // --- group_messages.deleted_for (0120_delete_group_message_for_me.sql):
+  // "Eliminar para mí" también en grupo, mismo diseño que 0118. ---
+  await asSuperuser();
+  const gdU1 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const gdU2 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(`insert into profiles (id, display_name) values ($1,'Gd1'),($2,'Gd2') on conflict (id) do update set display_name=excluded.display_name`, [gdU1, gdU2]);
+  await asUser(gdU1);
+  const gdGroupId = crypto.randomUUID();
+  await db.query(`insert into group_chats (id, name, created_by) values ($1, $2, $3)`, [gdGroupId, 'Grupo eliminar para mí', gdU1]);
+  await db.query(`insert into group_chat_members (group_chat_id, user_id) values ($1, $2)`, [gdGroupId, gdU2]);
+  const gdMsg = (await db.query(`insert into group_messages (group_chat_id, sender_id, body) values ($1,$2,'hola grupo real') returning id`, [gdGroupId, gdU1])).rows[0];
+
+  await expectOk('protect_group_message_identity: gdU1 SÍ puede eliminar su mensaje real de grupo solo para sí mismo', async () => {
+    await db.query(`update group_messages set deleted_for = array[$2]::uuid[] where id = $1`, [gdMsg.id, gdU1]);
+  });
+  const gdAfterOwnDelete = (await db.query(`select deleted_for from group_messages where id = $1`, [gdMsg.id])).rows[0];
+  check('protect_group_message_identity: el array real de grupo queda con gdU1 tras "eliminar para mí"', gdAfterOwnDelete.deleted_for.length === 1 && gdAfterOwnDelete.deleted_for[0] === gdU1);
+
+  await asUser(gdU2);
+  const gdSeenByU2 = (await db.query(`select id from group_messages where id = $1`, [gdMsg.id])).rows;
+  check('group_messages_select: gdU2 SIGUE viendo el mensaje real con normalidad (solo se borró para gdU1, resuelto en cliente)', gdSeenByU2.length === 1);
+
+  await expectOk('protect_group_message_identity: gdU2 NO consigue quitar a gdU1 del array real de grupo (revertido)', async () => {
+    await db.query(`update group_messages set deleted_for = array[]::uuid[] where id = $1`, [gdMsg.id]);
+  });
+  await asSuperuser();
+  const gdAfterTamper = (await db.query(`select deleted_for from group_messages where id = $1`, [gdMsg.id])).rows[0];
+  check('protect_group_message_identity: el array real de grupo sigue teniendo a gdU1 (nadie puede quitar a otro)', gdAfterTamper.deleted_for.length === 1);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado
