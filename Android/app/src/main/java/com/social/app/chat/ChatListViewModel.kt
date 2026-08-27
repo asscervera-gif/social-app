@@ -52,7 +52,13 @@ data class ChatListEntry(
     // aparte de `hasUnread` (que ya combina esto con el estado real de
     // lectura) porque el botón de la UI necesita saber CUÁL de los dos
     // motivos aplica para decidir su propia etiqueta.
-    val markedUnreadForMe: Boolean
+    val markedUnreadForMe: Boolean,
+    // Nota efímera real sobre el perfil de la otra persona, comparado con
+    // Instagram/Facebook Messenger -- ver 0110_profile_notes.sql. Ya
+    // filtrada por caducidad real de 24h antes de llegar aquí (mismo
+    // criterio que `stories`: la caducidad es responsabilidad del
+    // cliente, no del servidor, documentado también en la migración).
+    val otherNoteText: String?
 )
 
 // Hallazgo real, comparado con WhatsApp/Instagram/Messenger: la lista de
@@ -61,11 +67,30 @@ data class ChatListEntry(
 @Serializable
 private data class NameRow(
     @SerialName("display_name") val displayName: String,
-    @SerialName("avatar_config") val avatarConfig: Map<String, String>? = null
+    @SerialName("avatar_config") val avatarConfig: Map<String, String>? = null,
+    @SerialName("note_text") val noteText: String? = null,
+    @SerialName("note_updated_at") val noteUpdatedAt: String? = null
 )
 
 @Serializable
 private data class BlockRow(@SerialName("blocked_id") val blockedId: String)
+
+@Serializable
+private data class MyNoteRow(
+    @SerialName("note_text") val noteText: String? = null,
+    @SerialName("note_updated_at") val noteUpdatedAt: String? = null
+)
+
+// Nota efímera real (0110_profile_notes.sql): caduca a las 24h -- misma
+// responsabilidad real del cliente ya documentada en la propia migración.
+private fun isNoteFresh(updatedAt: String?): Boolean {
+    if (updatedAt == null) return false
+    return try {
+        java.time.Duration.between(Instant.parse(updatedAt), Instant.now()).toHours() < 24
+    } catch (e: Exception) {
+        false
+    }
+}
 
 // Hallazgo real, comparado con WhatsApp/Instagram/Messenger: "Tus chats"
 // no distinguía visualmente qué conversaciones tenían mensajes sin leer.
@@ -126,6 +151,11 @@ class ChatListViewModel : ViewModel() {
     private val _chats = MutableStateFlow<List<ChatListEntry>>(emptyList())
     val chats: StateFlow<List<ChatListEntry>> = _chats.asStateFlow()
 
+    // Nota efímera real PROPIA, comparado con Instagram/Facebook
+    // Messenger -- ver 0110_profile_notes.sql.
+    private val _myNote = MutableStateFlow<String?>(null)
+    val myNote: StateFlow<String?> = _myNote.asStateFlow()
+
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
@@ -180,6 +210,14 @@ class ChatListViewModel : ViewModel() {
             _isLoading.value = true
             try {
                 val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                try {
+                    val myRow = SupabaseManager.client.from("profiles")
+                        .select(columns = Columns.raw("note_text,note_updated_at")) { filter { eq("id", userId) } }
+                        .decodeSingleOrNull<MyNoteRow>()
+                    _myNote.value = myRow?.noteText?.takeIf { isNoteFresh(myRow.noteUpdatedAt) }
+                } catch (e: Exception) {
+                    _myNote.value = null
+                }
                 // Hallazgo real: la lista de chats seguía mostrando
                 // conversaciones con gente que has bloqueado — el envío
                 // de mensajes ya está bloqueado en el servidor
@@ -226,11 +264,12 @@ class ChatListViewModel : ViewModel() {
                     val otherId = if (row.userAId == userId) row.userBId else row.userAId
                     val otherProfile = try {
                         SupabaseManager.client.from("profiles")
-                            .select(columns = Columns.raw("display_name,avatar_config")) { filter { eq("id", otherId) } }
+                            .select(columns = Columns.raw("display_name,avatar_config,note_text,note_updated_at")) { filter { eq("id", otherId) } }
                             .decodeSingleOrNull<NameRow>()
                     } catch (e: Exception) {
                         null
                     }
+                    val freshNote = otherProfile?.noteText?.takeIf { isNoteFresh(otherProfile.noteUpdatedAt) }
 
                     val lastMessage = try {
                         SupabaseManager.client.from("messages")
@@ -259,7 +298,8 @@ class ChatListViewModel : ViewModel() {
                         // mensaje (0088_mark_chat_unread.sql).
                         hasUnread = (lastMessage != null && lastMessage.senderId != userId && lastMessage.readAt == null) || markedUnreadForMe,
                         isPinnedForMe = if (row.userAId == userId) row.pinnedByA else row.pinnedByB,
-                        markedUnreadForMe = markedUnreadForMe
+                        markedUnreadForMe = markedUnreadForMe,
+                        otherNoteText = freshNote
                     )
                 }
                 // Fijado primero (mismo criterio que WhatsApp/Telegram),
@@ -395,6 +435,28 @@ class ChatListViewModel : ViewModel() {
                 _errorMessage.value = "No se pudo cambiar el estado de leído."
             } finally {
                 load()
+            }
+        }
+    }
+
+    /** "Nota" real sobre el propio perfil, comparado con Instagram/
+     * Facebook Messenger -- ver 0110_profile_notes.sql. Un texto en
+     * blanco la borra (mismo criterio que Instagram real: volver a
+     * tocar tu propia nota y dejarla vacía la quita, no la deja como
+     * cadena vacía visible). */
+    fun setMyNote(text: String) {
+        val trimmed = text.trim()
+        _myNote.value = trimmed.ifBlank { null }
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                SupabaseManager.client.from("profiles")
+                    .update({
+                        set("note_text", trimmed.ifBlank { null })
+                        set("note_updated_at", java.time.Instant.now().toString())
+                    }) { filter { eq("id", userId) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo guardar la nota."
             }
         }
     }

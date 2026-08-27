@@ -2904,6 +2904,28 @@ async function main() {
   const dcAfterLow = (await db.query(`select compatibility_score from chats where id = $1`, [dcChat.id])).rows[0];
   check('apply_duel_compatibility: un delta real muy negativo queda tope real en 0, nunca negativo', dcAfterLow.compatibility_score === 0);
 
+  // --- profiles.note_text/note_updated_at (0110_profile_notes.sql): nota
+  // efímera real sobre el propio perfil, comparado con Instagram/Facebook
+  // Messenger -- sin RLS ni trigger nuevos (profiles_update_own ya cubre
+  // tocar la propia fila, profiles_select_public ya expone el resto de
+  // columnas de cualquier perfil visible), solo se confirma el valor por
+  // defecto, el límite real de longitud y que otro usuario real la ve. ---
+  await asSuperuser();
+  const npDefault = (await db.query(`select note_text, note_updated_at from profiles where id = $1`, [u1])).rows[0];
+  check('profiles.note_text: arranca en null por defecto', npDefault.note_text === null && npDefault.note_updated_at === null);
+
+  await asUser(u1);
+  await expectOk('profiles_update_own: u1 SÍ puede ponerse una nota real de perfil', async () => {
+    await db.query(`update profiles set note_text = 'pensando en pizza 🍕', note_updated_at = now() where id = $1`, [u1]);
+  });
+  await expectFail('profiles_note_text_length: más de 60 caracteres reales NO se puede guardar', async () => {
+    await db.query(`update profiles set note_text = $2 where id = $1`, [u1, 'x'.repeat(61)]);
+  });
+
+  await asUser(u2);
+  const noteSeenByOther = (await db.query(`select note_text from profiles where id = $1`, [u1])).rows[0];
+  check('profiles_select_public: u2 real SÍ ve la nota de u1 (para pintarla en la bandeja de chats)', noteSeenByOther.note_text === 'pensando en pizza 🍕');
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

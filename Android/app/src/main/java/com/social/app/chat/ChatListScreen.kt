@@ -2,6 +2,7 @@ package com.social.app.chat
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,6 +46,12 @@ fun ChatListScreen(viewModel: ChatListViewModel = viewModel(), onOpenChat: (Stri
     val chats by viewModel.chats.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    // Nota efímera real sobre el propio perfil, comparado con Instagram/
+    // Facebook Messenger -- ver ChatListViewModel.setMyNote(),
+    // 0110_profile_notes.sql.
+    val myNote by viewModel.myNote.collectAsState()
+    var showNoteDialog by remember { mutableStateOf(false) }
+    var noteDraft by remember { mutableStateOf("") }
 
     DisposableEffect(Unit) {
         viewModel.start()
@@ -65,6 +72,18 @@ fun ChatListScreen(viewModel: ChatListViewModel = viewModel(), onOpenChat: (Stri
     Box(modifier = Modifier.fillMaxSize().nestedScroll(pullState.nestedScrollConnection)) {
     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
         Text("Tus chats", style = MaterialTheme.typography.headlineSmall)
+        // Nota efímera real sobre el propio perfil, comparado con
+        // Instagram/Facebook Messenger -- caduca sola a las 24h (ver
+        // ChatListViewModel.setMyNote(), 0110_profile_notes.sql).
+        Text(
+            myNote?.let { "📝 $it" } ?: "📝 Escribe una nota (dura 24h)…",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp).clickable {
+                noteDraft = myNote ?: ""
+                showNoteDialog = true
+            }
+        )
         if (isLoading) {
             CircularProgressIndicator(modifier = Modifier.padding(top = 12.dp))
         }
@@ -109,6 +128,17 @@ fun ChatListScreen(viewModel: ChatListViewModel = viewModel(), onOpenChat: (Stri
                                 MaterialTheme.typography.titleSmall
                             }
                         )
+                        // Nota efímera real de la otra persona, comparado
+                        // con Instagram/Facebook Messenger -- ya filtrada
+                        // por caducidad de 24h en ChatListViewModel.
+                        entry.otherNoteText?.let {
+                            Text(
+                                "📝 $it",
+                                style = MaterialTheme.typography.bodySmall.copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1
+                            )
+                        }
                         Text(
                             entry.lastMessage?.takeIf { it.isNotBlank() } ?: "Sin mensajes todavía",
                             style = if (entry.hasUnread) {
@@ -185,5 +215,27 @@ fun ChatListScreen(viewModel: ChatListViewModel = viewModel(), onOpenChat: (Stri
         }
     }
         PullToRefreshContainer(state = pullState, modifier = Modifier.align(Alignment.TopCenter))
+    }
+    if (showNoteDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showNoteDialog = false },
+            title = { Text("Tu nota (dura 24h)") },
+            text = {
+                androidx.compose.material3.OutlinedTextField(
+                    value = noteDraft,
+                    onValueChange = { if (it.length <= 60) noteDraft = it },
+                    placeholder = { Text("¿Qué estás pensando?") }
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    viewModel.setMyNote(noteDraft)
+                    showNoteDialog = false
+                }) { Text("Guardar") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showNoteDialog = false }) { Text("Cancelar") }
+            }
+        )
     }
 }

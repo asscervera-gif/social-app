@@ -49,6 +49,26 @@ struct ChatListEntry: Identifiable {
     // lectura) porque el botón de la UI necesita saber CUÁL de los dos
     // motivos aplica para decidir su propia etiqueta.
     let markedUnreadForMe: Bool
+    // Nota efímera real de la otra persona, comparado con Instagram/
+    // Facebook Messenger -- ver 0110_profile_notes.sql. Ya filtrada por
+    // caducidad real de 24h antes de llegar aquí (mismo criterio que
+    // `stories`: la caducidad es responsabilidad del cliente, no del
+    // servidor, documentado también en la migración). Equivalente de
+    // ChatListEntry.otherNoteText (Kotlin).
+    let otherNoteText: String?
+}
+
+/// Nota efímera real (0110_profile_notes.sql): caduca a las 24h -- misma
+/// responsabilidad real del cliente ya documentada en la propia
+/// migración. Equivalente de isNoteFresh() en ChatListViewModel.kt.
+private func isNoteFresh(_ updatedAt: String?) -> Bool {
+    guard let updatedAt else { return false }
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    guard let then = formatter.date(from: updatedAt) ?? ISO8601DateFormatter().date(from: updatedAt) else {
+        return false
+    }
+    return Date().timeIntervalSince(then) < 24 * 3600
 }
 
 @MainActor
@@ -56,6 +76,9 @@ final class ChatListViewModel: ObservableObject {
     @Published var chats: [ChatListEntry] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    // Nota efímera real PROPIA, comparado con Instagram/Facebook
+    // Messenger -- ver 0110_profile_notes.sql.
+    @Published var myNote: String?
 
     private var channel: RealtimeChannelV2?
 
@@ -102,6 +125,19 @@ final class ChatListViewModel: ObservableObject {
         defer { isLoading = false }
         guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
         do {
+            struct MyNoteRow: Decodable { let note_text: String?; let note_updated_at: String? }
+            if let myRow: MyNoteRow = try? await SupabaseManager.shared.client
+                .from("profiles")
+                .select("note_text,note_updated_at")
+                .eq("id", value: userID)
+                .single()
+                .execute()
+                .value {
+                myNote = isNoteFresh(myRow.note_updated_at) ? myRow.note_text : nil
+            } else {
+                myNote = nil
+            }
+
             // Hallazgo real: la lista de chats seguía mostrando
             // conversaciones con gente que has bloqueado — el envío de
             // mensajes ya está bloqueado en el servidor
@@ -149,6 +185,7 @@ final class ChatListViewModel: ObservableObject {
                 // encima del estado real de lectura del último mensaje
                 // (0088_mark_chat_unread.sql).
                 let markedUnreadForMe = chat.userAID == userID ? chat.markedUnreadByA : chat.markedUnreadByB
+                let freshNote = isNoteFresh(otherProfile?.note_updated_at) ? otherProfile?.note_text : nil
                 entries.append(ChatListEntry(
                     id: chat.id, chat: chat,
                     otherName: otherProfile?.display_name ?? "Perfil",
@@ -158,7 +195,8 @@ final class ChatListViewModel: ObservableObject {
                     isMutedForMe: chat.userAID == userID ? chat.mutedByA : chat.mutedByB,
                     hasUnread: (last != nil && last!.sender_id != userID && last!.read_at == nil) || markedUnreadForMe,
                     isPinnedForMe: chat.userAID == userID ? chat.pinnedByA : chat.pinnedByB,
-                    markedUnreadForMe: markedUnreadForMe
+                    markedUnreadForMe: markedUnreadForMe,
+                    otherNoteText: freshNote
                 ))
             }
             // Fijado primero (mismo criterio que WhatsApp/Telegram),
@@ -175,12 +213,14 @@ final class ChatListViewModel: ObservableObject {
     private struct NameRow: Decodable {
         let display_name: String
         let avatar_config: [String: String]?
+        let note_text: String?
+        let note_updated_at: String?
     }
 
     private func otherProfileInfo(id: UUID) async -> NameRow? {
         try? await SupabaseManager.shared.client
             .from("profiles")
-            .select("display_name,avatar_config")
+            .select("display_name,avatar_config,note_text,note_updated_at")
             .eq("id", value: id)
             .single()
             .execute()
@@ -263,7 +303,8 @@ final class ChatListViewModel: ObservableObject {
                 otherAvatarConfig: entry.otherAvatarConfig, lastMessage: entry.lastMessage,
                 lastActivity: entry.lastActivity, iAmUserA: entry.iAmUserA, isMutedForMe: true,
                 hasUnread: entry.hasUnread, isPinnedForMe: entry.isPinnedForMe,
-                markedUnreadForMe: entry.markedUnreadForMe
+                markedUnreadForMe: entry.markedUnreadForMe,
+                otherNoteText: entry.otherNoteText
             )
         }
         let untilString: String? = until.map { ISO8601DateFormatter().string(from: $0) }
@@ -297,7 +338,8 @@ final class ChatListViewModel: ObservableObject {
                 otherAvatarConfig: entry.otherAvatarConfig, lastMessage: entry.lastMessage,
                 lastActivity: entry.lastActivity, iAmUserA: entry.iAmUserA, isMutedForMe: false,
                 hasUnread: entry.hasUnread, isPinnedForMe: entry.isPinnedForMe,
-                markedUnreadForMe: entry.markedUnreadForMe
+                markedUnreadForMe: entry.markedUnreadForMe,
+                otherNoteText: entry.otherNoteText
             )
         }
         let mutedColumn = entry.iAmUserA ? "muted_by_a" : "muted_by_b"
@@ -337,7 +379,8 @@ final class ChatListViewModel: ObservableObject {
                 otherAvatarConfig: entry.otherAvatarConfig, lastMessage: entry.lastMessage,
                 lastActivity: entry.lastActivity, iAmUserA: entry.iAmUserA, isMutedForMe: entry.isMutedForMe,
                 hasUnread: entry.hasUnread, isPinnedForMe: newValue,
-                markedUnreadForMe: entry.markedUnreadForMe
+                markedUnreadForMe: entry.markedUnreadForMe,
+                otherNoteText: entry.otherNoteText
             )
         }
         chats.sort {
@@ -385,7 +428,8 @@ final class ChatListViewModel: ObservableObject {
                 otherAvatarConfig: entry.otherAvatarConfig, lastMessage: entry.lastMessage,
                 lastActivity: entry.lastActivity, iAmUserA: entry.iAmUserA, isMutedForMe: entry.isMutedForMe,
                 hasUnread: entry.hasUnread, isPinnedForMe: entry.isPinnedForMe,
-                markedUnreadForMe: newValue
+                markedUnreadForMe: newValue,
+                otherNoteText: entry.otherNoteText
             )
         }
         Task {
@@ -407,6 +451,33 @@ final class ChatListViewModel: ObservableObject {
                 errorMessage = "No se pudo cambiar el estado de leído."
             }
             await load()
+        }
+    }
+
+    /// "Nota" real sobre el propio perfil, comparado con Instagram/
+    /// Facebook Messenger -- ver 0110_profile_notes.sql. Un texto en
+    /// blanco la borra (mismo criterio que Instagram real: volver a
+    /// tocar tu propia nota y dejarla vacía la quita, no la deja como
+    /// cadena vacía visible). Equivalente de
+    /// ChatListViewModel.kt.setMyNote().
+    func setMyNote(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        myNote = trimmed.isEmpty ? nil : trimmed
+        struct NoteUpdate: Encodable {
+            let note_text: String?
+            let note_updated_at: String
+        }
+        Task {
+            guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+            do {
+                try await SupabaseManager.shared.client
+                    .from("profiles")
+                    .update(NoteUpdate(note_text: trimmed.isEmpty ? nil : trimmed, note_updated_at: ISO8601DateFormatter().string(from: Date())))
+                    .eq("id", value: userID)
+                    .execute()
+            } catch {
+                errorMessage = "No se pudo guardar la nota."
+            }
         }
     }
 }
