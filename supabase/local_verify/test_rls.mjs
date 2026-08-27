@@ -1452,6 +1452,51 @@ async function main() {
   const responseAsOtherViewer = (await db.query(`select id from story_question_responses where question_id = $1`, [storyQuestion.id])).rows;
   check('story_question_responses_select: otro espectador real (storyOtherViewer), que no escribió esa respuesta ni es el autor, NO la ve', responseAsOtherViewer.length === 0);
 
+  // --- story_polls/story_poll_votes/private.story_poll_counts()
+  // (0100_story_polls.sql): encuesta real en una historia, comparado con
+  // Instagram/Twitter/X -- el reparto agregado es público para cualquier
+  // espectador real, pero un voto individual solo lo ve quien lo emitió
+  // y el autor real de la historia. ---
+  await asUser(u1);
+  const pollStory = (await db.query(`insert into stories (author_id, media_url) values ($1, 'encuesta.jpg') returning id`, [u1])).rows[0];
+  const poll = (await db.query(
+    `insert into story_polls (story_id, question, options) values ($1, '¿Pizza o sushi?', '["Pizza", "Sushi"]'::jsonb) returning id`, [pollStory.id]
+  )).rows[0];
+
+  await expectFail('story_poll_votes_insert_own: un option_index real fuera de rango (2, solo hay 0 y 1) NO se puede votar', async () => {
+    await db.query(`insert into story_poll_votes (poll_id, voter_id, option_index) values ($1, $2, 2)`, [poll.id, u1]);
+  });
+
+  await asUser(storyResponder);
+  await expectOk('story_poll_votes_insert_own: storyResponder SÍ puede votar de verdad ("Pizza")', async () => {
+    await db.query(`insert into story_poll_votes (poll_id, voter_id, option_index) values ($1, $2, 0)`, [poll.id, storyResponder]);
+  });
+  await asUser(storyOtherViewer);
+  await expectOk('story_poll_votes_insert_own: storyOtherViewer SÍ puede votar de verdad ("Sushi")', async () => {
+    await db.query(`insert into story_poll_votes (poll_id, voter_id, option_index) values ($1, $2, 1)`, [poll.id, storyOtherViewer]);
+  });
+
+  const ownVoteAsOtherViewer = (await db.query(`select option_index from story_poll_votes where poll_id = $1 and voter_id = $2`, [poll.id, storyOtherViewer])).rows;
+  check('story_poll_votes_select: storyOtherViewer SÍ ve su propio voto real', ownVoteAsOtherViewer.length === 1 && ownVoteAsOtherViewer[0].option_index === 1);
+  const otherVoteAsOtherViewer = (await db.query(`select id from story_poll_votes where poll_id = $1 and voter_id = $2`, [poll.id, storyResponder])).rows;
+  check('story_poll_votes_select: storyOtherViewer NO ve el voto real de storyResponder (ni siquiera que existe)', otherVoteAsOtherViewer.length === 0);
+
+  const countsAsOtherViewer = (await db.query(`select vote_counts from story_polls where id = $1`, [poll.id])).rows[0];
+  check(
+    'sync_story_poll_counts: cualquier espectador real (storyOtherViewer) SÍ ve el reparto agregado real (1 voto por opción), sin ver quién votó qué',
+    JSON.stringify(countsAsOtherViewer.vote_counts) === JSON.stringify([1, 1])
+  );
+
+  await expectOk('story_poll_votes_update_own: storyOtherViewer SÍ puede cambiar de opción real ("Pizza" en vez de "Sushi")', async () => {
+    await db.query(`update story_poll_votes set option_index = 0 where poll_id = $1 and voter_id = $2`, [poll.id, storyOtherViewer]);
+  });
+  const countsAfterChange = (await db.query(`select vote_counts from story_polls where id = $1`, [poll.id])).rows[0];
+  check('sync_story_poll_counts: tras cambiar de opción real, el reparto agregado ya refleja 2 votos en "Pizza" y 0 en "Sushi"', JSON.stringify(countsAfterChange.vote_counts) === JSON.stringify([2, 0]));
+
+  await asUser(u1);
+  const votesAsAuthor = (await db.query(`select voter_id, option_index from story_poll_votes where poll_id = $1 order by voter_id`, [poll.id])).rows;
+  check('story_poll_votes_select: el autor real de la historia (u1) SÍ ve TODOS los votos individuales, con quién los emitió', votesAsAuthor.length === 2);
+
   await asUser(u1);
   await expectOk('close_friends_insert_own: u1 SÍ puede añadir a u2 como mejor amigo real', async () => {
     await db.query(`insert into close_friends (owner_id, friend_id) values ($1, $2)`, [u1, u2]);

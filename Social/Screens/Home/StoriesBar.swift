@@ -24,6 +24,13 @@ struct StoriesBar: View {
     // audiencia en vez de un tercer paso aparte. Ver
     // StoriesViewModel.createStory(), 0099_story_questions.sql.
     @State private var pendingQuestion = ""
+    // Encuesta real en una historia, comparado con Instagram/Twitter/X --
+    // opcional, mismo paso real de audiencia que la pregunta de arriba.
+    // Solo dos opciones en la propia interfaz de creación (el mínimo
+    // real que exige 0100_story_polls.sql), igual que StoriesBar.kt.
+    @State private var pendingPollQuestion = ""
+    @State private var pendingPollOptionA = ""
+    @State private var pendingPollOptionB = ""
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -89,7 +96,15 @@ struct StoriesBar: View {
         // opcional en el mismo paso.
         .sheet(isPresented: Binding(
             get: { pendingImageData != nil },
-            set: { isPresented in if !isPresented { pendingImageData = nil; pendingQuestion = "" } }
+            set: { isPresented in
+                if !isPresented {
+                    pendingImageData = nil
+                    pendingQuestion = ""
+                    pendingPollQuestion = ""
+                    pendingPollOptionA = ""
+                    pendingPollOptionB = ""
+                }
+            }
         )) {
             NavigationStack {
                 Form {
@@ -104,21 +119,39 @@ struct StoriesBar: View {
                     Section {
                         TextField("Añadir pregunta (opcional)", text: $pendingQuestion)
                     }
+                    // Encuesta real en una historia, comparado con
+                    // Instagram/Twitter/X -- opcional e independiente de
+                    // la pregunta de arriba, pueden coexistir.
+                    Section {
+                        TextField("Añadir encuesta (opcional)", text: $pendingPollQuestion)
+                        TextField("Opción 1", text: $pendingPollOptionA)
+                        TextField("Opción 2", text: $pendingPollOptionB)
+                    }
                     Section {
                         Button("Todos") {
                             if let data = pendingImageData {
                                 let question = pendingQuestion
+                                let pollQuestion = pendingPollQuestion
+                                let pollOptions = [pendingPollOptionA, pendingPollOptionB]
                                 pendingImageData = nil
                                 pendingQuestion = ""
-                                Task { await viewModel.createStory(imageData: data, visibility: "everyone", questionPrompt: question) }
+                                pendingPollQuestion = ""
+                                pendingPollOptionA = ""
+                                pendingPollOptionB = ""
+                                Task { await viewModel.createStory(imageData: data, visibility: "everyone", questionPrompt: question, pollQuestion: pollQuestion, pollOptions: pollOptions) }
                             }
                         }
                         Button("Mejores amigos") {
                             if let data = pendingImageData {
                                 let question = pendingQuestion
+                                let pollQuestion = pendingPollQuestion
+                                let pollOptions = [pendingPollOptionA, pendingPollOptionB]
                                 pendingImageData = nil
                                 pendingQuestion = ""
-                                Task { await viewModel.createStory(imageData: data, visibility: "close_friends", questionPrompt: question) }
+                                pendingPollQuestion = ""
+                                pendingPollOptionA = ""
+                                pendingPollOptionB = ""
+                                Task { await viewModel.createStory(imageData: data, visibility: "close_friends", questionPrompt: question, pollQuestion: pollQuestion, pollOptions: pollOptions) }
                             }
                         }
                     }
@@ -230,6 +263,55 @@ private struct StoryViewer: View {
                 }
                 .padding(.top, 24)
                 .padding(.horizontal, 16)
+
+                // Encuesta real en una historia, comparado con
+                // Instagram/Twitter/X -- ver StoriesViewModel.storyPolls/
+                // myPollVotes, 0100_story_polls.sql. Centrada, como un
+                // adhesivo real sobre la propia foto (a diferencia de la
+                // pregunta/respuesta de más abajo, que van pegadas
+                // abajo). Equivalente del bloque de StoriesBar.kt.
+                if let poll = viewModel.storyPolls[story.id] {
+                    let myVote = viewModel.myPollVotes[poll.id]
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(poll.question)
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                        ForEach(Array(poll.options.enumerated()), id: \.offset) { optionIndex, optionText in
+                            let votesForOption = poll.vote_counts[safe: optionIndex] ?? 0
+                            let totalVotes = poll.vote_counts.reduce(0, +)
+                            let percent = totalVotes == 0 ? 0 : (votesForOption * 100) / totalVotes
+                            if let myVote {
+                                ZStack(alignment: .leading) {
+                                    Capsule().fill(Color.white.opacity(0.2))
+                                    GeometryReader { geo in
+                                        Capsule()
+                                            .fill(optionIndex == myVote ? Color.accentColor : Color.white.opacity(0.35))
+                                            .frame(width: geo.size.width * CGFloat(percent) / 100)
+                                    }
+                                    Text("\(optionText) · \(percent)%")
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 12)
+                                }
+                                .frame(height: 36)
+                            } else {
+                                Button {
+                                    Task { await viewModel.voteOnPoll(pollID: poll.id, optionIndex: optionIndex) }
+                                } label: {
+                                    Text(optionText)
+                                        .foregroundStyle(.white)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 8)
+                                        .overlay(Capsule().stroke(Color.white, lineWidth: 1))
+                                }
+                            }
+                        }
+                    }
+                    .padding(16)
+                    .background(Color.black.opacity(0.55))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .padding(.horizontal, 32)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                }
 
                 // Adhesivo de pregunta real en una historia ("Pregúntame
                 // algo"), comparado con Instagram -- ver

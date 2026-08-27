@@ -33,6 +33,17 @@ struct StoryQuestionRow: Decodable, Identifiable {
     let prompt: String
 }
 
+// Encuesta real en una historia, comparado con Instagram/Twitter/X --
+// ver 0100_story_polls.sql. Equivalente de StoryPollRow en
+// StoriesViewModel.kt.
+struct StoryPollRow: Decodable, Identifiable {
+    let id: UUID
+    let story_id: UUID
+    let question: String
+    let options: [String]
+    var vote_counts: [Int] = []
+}
+
 struct StoryGroup: Identifiable {
     var id: UUID { authorID }
     let authorID: UUID
@@ -58,6 +69,13 @@ final class StoriesViewModel: ObservableObject {
     // 0099_story_questions.sql. Equivalente de
     // StoriesViewModel.kt.storyQuestions.
     @Published var storyQuestions: [UUID: StoryQuestionRow] = [:]
+    // Encuesta real en una historia, comparado con Instagram/Twitter/X --
+    // una por story_id como mucho, ver 0100_story_polls.sql. Equivalente
+    // de StoriesViewModel.kt.storyPolls.
+    @Published var storyPolls: [UUID: StoryPollRow] = [:]
+    // Voto propio por encuesta (clave = poll id), comparado con
+    // Instagram/Twitter/X -- ver StoriesViewModel.kt.myPollVotes.
+    @Published var myPollVotes: [UUID: Int] = [:]
 
     private struct BlockRow: Decodable { let blocked_id: UUID }
     private struct MutedStoryAuthorRow: Decodable { let muted_id: UUID }
@@ -119,6 +137,43 @@ final class StoriesViewModel: ObservableObject {
                 storyQuestions = Dictionary(uniqueKeysWithValues: questionRows.map { ($0.story_id, $0) })
             } else {
                 storyQuestions = [:]
+            }
+
+            // Encuesta real en una historia, comparado con
+            // Instagram/Twitter/X -- se carga junto con el resto de
+            // historias, igual que storyQuestions arriba.
+            if stories.isEmpty {
+                storyPolls = [:]
+                myPollVotes = [:]
+            } else if let pollRows: [StoryPollRow] = try? await SupabaseManager.shared.client
+                .from("story_polls")
+                .select("id,story_id,question,options,vote_counts")
+                .in("story_id", values: stories.map { $0.id })
+                .execute()
+                .value {
+                storyPolls = Dictionary(uniqueKeysWithValues: pollRows.map { ($0.story_id, $0) })
+                struct MyVoteRow: Decodable { let poll_id: UUID; let option_index: Int }
+                // `voter_id = userID` explícito -- sin este filtro, la
+                // política story_poll_votes_select también deja ver TODOS
+                // los votos de una encuesta propia (para el autor real de
+                // la historia), y eso contaminaría myPollVotes con votos
+                // ajenos. Mismo filtro real que la versión Kotlin
+                // equivalente (StoriesViewModel.kt.load()).
+                if !pollRows.isEmpty, let userID = try? await SupabaseManager.shared.client.auth.session.user.id,
+                   let voteRows: [MyVoteRow] = try? await SupabaseManager.shared.client
+                    .from("story_poll_votes")
+                    .select("poll_id,option_index")
+                    .eq("voter_id", value: userID)
+                    .in("poll_id", values: pollRows.map { $0.id })
+                    .execute()
+                    .value {
+                    myPollVotes = Dictionary(uniqueKeysWithValues: voteRows.map { ($0.poll_id, $0.option_index) })
+                } else {
+                    myPollVotes = [:]
+                }
+            } else {
+                storyPolls = [:]
+                myPollVotes = [:]
             }
 
             let byAuthor = Dictionary(grouping: stories, by: { $0.author_id })
@@ -244,7 +299,13 @@ final class StoriesViewModel: ObservableObject {
     /// ("Pregúntame algo", 0099_story_questions.sql), comparado con
     /// Instagram, no es obligatorio en ninguna historia. Equivalente de
     /// StoriesViewModel.kt.createStory().
-    func createStory(imageData: Data, visibility: String = "everyone", questionPrompt: String? = nil) async {
+    /// [pollQuestion]/[pollOptions] son opcionales -- la encuesta real
+    /// ("Encuesta", 0100_story_polls.sql), comparado con
+    /// Instagram/Twitter/X, no es obligatoria en ninguna historia, e
+    /// independiente del adhesivo de pregunta ([questionPrompt]) --
+    /// pueden coexistir en la misma historia. Equivalente de
+    /// StoriesViewModel.kt.createStory().
+    func createStory(imageData: Data, visibility: String = "everyone", questionPrompt: String? = nil, pollQuestion: String? = nil, pollOptions: [String] = []) async {
         guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
         isUploading = true
         defer { isUploading = false }
@@ -273,6 +334,23 @@ final class StoriesViewModel: ObservableObject {
                 try await SupabaseManager.shared.client
                     .from("story_questions")
                     .insert(NewStoryQuestion(story_id: insertedStory.id, prompt: String(trimmedPrompt)))
+                    .execute()
+            }
+            // Mismo límite real del CHECK de story_polls (2-4 opciones,
+            // 0100_story_polls.sql) -- opciones vacías se descartan antes
+            // de comprobar el mínimo, igual que un espacio en blanco no
+            // cuenta como una opción real.
+            let trimmedQuestion = pollQuestion?.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200)
+            let trimmedOptions = pollOptions.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+            if let trimmedQuestion, !trimmedQuestion.isEmpty, trimmedOptions.count >= 2 {
+                struct NewStoryPoll: Encodable {
+                    let story_id: UUID
+                    let question: String
+                    let options: [String]
+                }
+                try await SupabaseManager.shared.client
+                    .from("story_polls")
+                    .insert(NewStoryPoll(story_id: insertedStory.id, question: String(trimmedQuestion), options: Array(trimmedOptions.prefix(4))))
                     .execute()
             }
             // Hallazgo real, mismo criterio ya aplicado en la versión
@@ -372,5 +450,39 @@ final class StoriesViewModel: ObservableObject {
             .value) ?? []
         let namesByID = Dictionary(uniqueKeysWithValues: names.map { ($0.id, $0.display_name) })
         return rows.map { StoryQuestionResponse(responderName: namesByID[$0.responder_id] ?? "Alguien", body: $0.body) }
+    }
+
+    /// Votar (o cambiar de opción) en una encuesta real de una historia,
+    /// comparado con Instagram/Twitter/X -- `unique(poll_id, voter_id)`
+    /// en 0100_story_polls.sql hace que un segundo voto sea un cambio de
+    /// opción, no un voto duplicado, de ahí el upsert. `vote_counts` en
+    /// storyPolls se refresca leyendo de vuelta la fila (el trigger real
+    /// `sync_story_poll_counts` ya recalculó el agregado del lado del
+    /// servidor). Equivalente de StoriesViewModel.kt.voteOnPoll().
+    func voteOnPoll(pollID: UUID, optionIndex: Int) async {
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        myPollVotes[pollID] = optionIndex
+        struct NewPollVote: Encodable {
+            let poll_id: UUID
+            let voter_id: UUID
+            let option_index: Int
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("story_poll_votes")
+                .upsert(NewPollVote(poll_id: pollID, voter_id: userID, option_index: optionIndex), onConflict: "poll_id,voter_id")
+                .execute()
+            if let updated: StoryPollRow = try? await SupabaseManager.shared.client
+                .from("story_polls")
+                .select("id,story_id,question,options,vote_counts")
+                .eq("id", value: pollID)
+                .single()
+                .execute()
+                .value {
+                storyPolls[updated.story_id] = updated
+            }
+        } catch {
+            errorMessage = "No se pudo registrar el voto."
+        }
     }
 }

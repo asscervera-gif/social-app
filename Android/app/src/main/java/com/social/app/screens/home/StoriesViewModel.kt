@@ -40,6 +40,17 @@ data class StoryQuestionRow(
     val prompt: String
 )
 
+// Encuesta real en una historia, comparado con Instagram/Twitter/X --
+// ver 0100_story_polls.sql.
+@Serializable
+data class StoryPollRow(
+    val id: String,
+    @SerialName("story_id") val storyId: String,
+    val question: String,
+    val options: List<String>,
+    @SerialName("vote_counts") val voteCounts: List<Int> = emptyList()
+)
+
 data class StoryGroup(
     val authorId: String,
     val authorName: String,
@@ -81,6 +92,17 @@ class StoriesViewModel : ViewModel() {
     private val _storyQuestions = MutableStateFlow<Map<String, StoryQuestionRow>>(emptyMap())
     val storyQuestions: StateFlow<Map<String, StoryQuestionRow>> = _storyQuestions.asStateFlow()
 
+    // Encuesta real en una historia, comparado con Instagram/Twitter/X --
+    // una por story_id como mucho, ver 0100_story_polls.sql.
+    private val _storyPolls = MutableStateFlow<Map<String, StoryPollRow>>(emptyMap())
+    val storyPolls: StateFlow<Map<String, StoryPollRow>> = _storyPolls.asStateFlow()
+
+    // Mi propio voto real por encuesta (poll_id -> option_index), para
+    // saber si ya voté y en qué opción, sin depender de recargar toda la
+    // bandeja tras votar.
+    private val _myPollVotes = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val myPollVotes: StateFlow<Map<String, Int>> = _myPollVotes.asStateFlow()
+
     @Serializable
     private data class NameRow(@SerialName("display_name") val displayName: String)
 
@@ -89,6 +111,12 @@ class StoriesViewModel : ViewModel() {
 
     @Serializable
     private data class MutedStoryAuthorRow(@SerialName("muted_id") val mutedId: String)
+
+    @Serializable
+    private data class MyVoteRow(
+        @SerialName("poll_id") val pollId: String,
+        @SerialName("option_index") val optionIndex: Int
+    )
 
     @Serializable
     private data class NewMutedStoryAuthor(
@@ -181,6 +209,26 @@ class StoriesViewModel : ViewModel() {
                         .select(columns = Columns.raw("id,story_id,prompt")) { filter { isIn("story_id", stories.map { it.id }) } }
                         .decodeList<StoryQuestionRow>()
                         .associateBy { it.storyId }
+                } catch (e: Exception) {
+                    emptyMap()
+                }
+
+                // Encuesta real en una historia, comparado con
+                // Instagram/Twitter/X -- se carga junto con el resto,
+                // igual que la pregunta de arriba.
+                val polls = if (stories.isEmpty()) emptyList() else try {
+                    SupabaseManager.client.from("story_polls")
+                        .select(columns = Columns.raw("id,story_id,question,options,vote_counts")) { filter { isIn("story_id", stories.map { it.id }) } }
+                        .decodeList<StoryPollRow>()
+                } catch (e: Exception) {
+                    emptyList()
+                }
+                _storyPolls.value = polls.associateBy { it.storyId }
+                _myPollVotes.value = if (polls.isEmpty() || myId == null) emptyMap() else try {
+                    SupabaseManager.client.from("story_poll_votes")
+                        .select(columns = Columns.raw("poll_id,option_index")) { filter { eq("voter_id", myId); isIn("poll_id", polls.map { it.id }) } }
+                        .decodeList<MyVoteRow>()
+                        .associate { it.pollId to it.optionIndex }
                 } catch (e: Exception) {
                     emptyMap()
                 }
@@ -278,7 +326,21 @@ class StoriesViewModel : ViewModel() {
     /** [questionPrompt] es opcional -- el adhesivo de pregunta real
      * ("Pregúntame algo", 0099_story_questions.sql), comparado con
      * Instagram, no es obligatorio en ninguna historia. */
-    fun createStory(context: Context, uri: Uri, visibility: String = "everyone", questionPrompt: String? = null, onDone: () -> Unit) {
+    @Serializable
+    private data class NewStoryPoll(
+        @SerialName("story_id") val storyId: String,
+        val question: String,
+        val options: List<String>
+    )
+
+    /** [pollQuestion]/[pollOptions] son opcionales -- la encuesta real
+     * ("Encuesta", 0100_story_polls.sql), comparado con Instagram/
+     * Twitter/X, no es obligatoria en ninguna historia. [pollOptions]
+     * necesita entre 2 y 4 opciones reales (mismo límite del CHECK de
+     * story_polls.options) para llegar a insertarse -- si no las
+     * cumple, la encuesta simplemente no se crea (la historia en sí
+     * sigue publicándose con normalidad). */
+    fun createStory(context: Context, uri: Uri, visibility: String = "everyone", questionPrompt: String? = null, pollQuestion: String? = null, pollOptions: List<String> = emptyList(), onDone: () -> Unit) {
         viewModelScope.launch {
             val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
             _isUploading.value = true
@@ -292,6 +354,11 @@ class StoriesViewModel : ViewModel() {
                 val trimmedPrompt = questionPrompt?.trim()?.take(200)
                 if (!trimmedPrompt.isNullOrEmpty()) {
                     SupabaseManager.client.from("story_questions").insert(NewStoryQuestion(insertedStory.id, trimmedPrompt))
+                }
+                val trimmedPollQuestion = pollQuestion?.trim()?.take(200)
+                val cleanOptions = pollOptions.map { it.trim() }.filter { it.isNotEmpty() }
+                if (!trimmedPollQuestion.isNullOrEmpty() && cleanOptions.size in 2..4) {
+                    SupabaseManager.client.from("story_polls").insert(NewStoryPoll(insertedStory.id, trimmedPollQuestion, cleanOptions))
                 }
                 // Hallazgo real, mismo criterio ya aplicado a
                 // post_created/signup_completed: publicar una historia no
@@ -357,6 +424,43 @@ class StoriesViewModel : ViewModel() {
             true
         } catch (e: Exception) {
             false
+        }
+    }
+
+    @Serializable
+    private data class NewPollVote(
+        @SerialName("poll_id") val pollId: String,
+        @SerialName("voter_id") val voterId: String,
+        @SerialName("option_index") val optionIndex: Int
+    )
+
+    /** Votar/cambiar de opción real en una encuesta de una historia,
+     * comparado con Instagram/Twitter/X -- `upsert` con
+     * `onConflict = "poll_id,voter_id"` porque `unique(poll_id,
+     * voter_id)` (0100_story_polls.sql) ya impide un segundo voto:
+     * cambiar de opción es un UPDATE real de la fila propia, no un
+     * intento de insertar dos veces. El reparto real (`vote_counts`) lo
+     * recalcula el propio trigger del servidor -- este cliente solo
+     * refleja optimistamente MI voto, `load()` trae el reparto real
+     * actualizado en la siguiente carga. */
+    fun voteOnPoll(pollId: String, optionIndex: Int) {
+        _myPollVotes.update { it + (pollId to optionIndex) }
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                SupabaseManager.client.from("story_poll_votes")
+                    .upsert(NewPollVote(pollId, userId, optionIndex), onConflict = "poll_id,voter_id")
+                // Refleja el reparto real recién recalculado por el
+                // trigger del servidor, sin recargar toda la bandeja.
+                val updated = SupabaseManager.client.from("story_polls")
+                    .select(columns = Columns.raw("id,story_id,question,options,vote_counts")) { filter { eq("id", pollId) } }
+                    .decodeSingleOrNull<StoryPollRow>()
+                if (updated != null) {
+                    _storyPolls.update { it + (updated.storyId to updated) }
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo registrar el voto."
+            }
         }
     }
 

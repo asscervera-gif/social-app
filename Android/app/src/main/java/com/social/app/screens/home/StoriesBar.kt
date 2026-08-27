@@ -78,6 +78,13 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
     // audiencia en vez de un tercer paso aparte. Ver
     // StoriesViewModel.createStory(), 0099_story_questions.sql.
     var pendingQuestion by remember { mutableStateOf("") }
+    // Encuesta real en una historia, comparado con Instagram/Twitter/X --
+    // opcional, mismo diálogo real de audiencia. Alcance deliberado: dos
+    // opciones fijas en el compositor (el caso real más común), aunque
+    // el esquema del servidor ya admite hasta 4 (0100_story_polls.sql).
+    var pendingPollQuestion by remember { mutableStateOf("") }
+    var pendingPollOptionA by remember { mutableStateOf("") }
+    var pendingPollOptionB by remember { mutableStateOf("") }
 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) pendingUploadUri = uri
@@ -153,22 +160,60 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
                     )
+                    // Encuesta real en una historia, comparado con
+                    // Instagram/Twitter/X -- opcional, ver
+                    // StoriesViewModel.createStory().
+                    androidx.compose.material3.OutlinedTextField(
+                        value = pendingPollQuestion,
+                        onValueChange = { pendingPollQuestion = it },
+                        label = { Text("Añadir encuesta (opcional)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                    )
+                    if (pendingPollQuestion.isNotBlank()) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                            androidx.compose.material3.OutlinedTextField(
+                                value = pendingPollOptionA,
+                                onValueChange = { pendingPollOptionA = it },
+                                label = { Text("Opción 1") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f)
+                            )
+                            androidx.compose.material3.OutlinedTextField(
+                                value = pendingPollOptionB,
+                                onValueChange = { pendingPollOptionB = it },
+                                label = { Text("Opción 2") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
                 }
             },
             confirmButton = {
                 TextButton(onClick = {
                     val question = pendingQuestion
+                    val pollQuestion = pendingPollQuestion
+                    val pollOptions = listOf(pendingPollOptionA, pendingPollOptionB)
                     pendingUploadUri = null
                     pendingQuestion = ""
-                    viewModel.createStory(context, uri, visibility = "close_friends", questionPrompt = question) {}
+                    pendingPollQuestion = ""
+                    pendingPollOptionA = ""
+                    pendingPollOptionB = ""
+                    viewModel.createStory(context, uri, visibility = "close_friends", questionPrompt = question, pollQuestion = pollQuestion, pollOptions = pollOptions) {}
                 }) { Text("Mejores amigos") }
             },
             dismissButton = {
                 TextButton(onClick = {
                     val question = pendingQuestion
+                    val pollQuestion = pendingPollQuestion
+                    val pollOptions = listOf(pendingPollOptionA, pendingPollOptionB)
                     pendingUploadUri = null
                     pendingQuestion = ""
-                    viewModel.createStory(context, uri, visibility = "everyone", questionPrompt = question) {}
+                    pendingPollQuestion = ""
+                    pendingPollOptionA = ""
+                    pendingPollOptionB = ""
+                    viewModel.createStory(context, uri, visibility = "everyone", questionPrompt = question, pollQuestion = pollQuestion, pollOptions = pollOptions) {}
                 }) { Text("Todos") }
             }
         )
@@ -209,6 +254,10 @@ private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewMod
     var questionAnswerSent by remember(index) { mutableStateOf(false) }
     var showQuestionResponses by remember { mutableStateOf(false) }
     var questionResponses by remember { mutableStateOf<List<StoriesViewModel.StoryQuestionResponse>>(emptyList()) }
+    // Encuesta real en una historia, comparado con Instagram/Twitter/X --
+    // ver StoriesViewModel.storyPolls()/myPollVotes(), 0100_story_polls.sql.
+    val storyPolls by viewModel.storyPolls.collectAsState()
+    val myPollVotes by viewModel.myPollVotes.collectAsState()
 
     if (story == null) {
         onDismiss()
@@ -329,6 +378,59 @@ private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewMod
                             .padding(start = 10.dp)
                             .clickable { viewModel.toggleMuteAuthor(story.authorId) }
                     )
+                }
+            }
+            // Encuesta real en una historia, comparado con Instagram/
+            // Twitter/X -- ver StoriesViewModel.storyPolls()/
+            // myPollVotes(), 0100_story_polls.sql. Se pinta centrada,
+            // como un adhesivo real sobre la propia foto.
+            storyPolls[story.id]?.let { poll ->
+                val myVote = myPollVotes[poll.id]
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .fillMaxWidth(0.8f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.55f))
+                        .padding(16.dp)
+                ) {
+                    Text(poll.question, color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.titleMedium)
+                    poll.options.forEachIndexed { optionIndex, optionText ->
+                        val votesForOption = poll.voteCounts.getOrElse(optionIndex) { 0 }
+                        val totalVotes = poll.voteCounts.sum()
+                        val percent = if (totalVotes == 0) 0 else (votesForOption * 100) / totalVotes
+                        if (myVote != null) {
+                            // Ya voté de verdad: mismo criterio real que
+                            // Instagram/Twitter/X -- barra de porcentaje
+                            // en vez de botón para elegir.
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp)
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.2f))
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth(percent / 100f)
+                                        .background(
+                                            if (optionIndex == myVote) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.White.copy(alpha = 0.35f),
+                                            RoundedCornerShape(20.dp)
+                                        )
+                                )
+                                Text(
+                                    "$optionText · $percent%",
+                                    color = androidx.compose.ui.graphics.Color.White,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                )
+                            }
+                        } else {
+                            androidx.compose.material3.OutlinedButton(
+                                onClick = { viewModel.voteOnPoll(poll.id, optionIndex) },
+                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                            ) { Text(optionText, color = androidx.compose.ui.graphics.Color.White) }
+                        }
+                    }
                 }
             }
             // Adhesivo de pregunta real en una historia ("Pregúntame
