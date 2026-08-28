@@ -11,6 +11,11 @@ import SwiftUI
 
 struct SocialsListView: View {
     @StateObject private var viewModel = SocialsListViewModel()
+    // "Retar a duelo" real directamente desde la lista, sin pasar antes
+    // por el chat, comparado con Snapchat (retos/juegos lanzables desde
+    // la lista de amigos) -- ver DuelEntryPoint.swift.
+    @State private var myID: UUID?
+    @State private var duelOpponent: SocialEntry?
 
     var body: some View {
         List {
@@ -66,6 +71,19 @@ struct SocialsListView: View {
                         }
                     }
                     Spacer()
+                    // "Retar a duelo" real directamente desde la lista,
+                    // sin pasar antes por el chat -- comparado con
+                    // Snapchat (retos/juegos lanzables desde la lista de
+                    // amigos). Antes había que: abrir el perfil, volver,
+                    // buscar el chat, abrirlo, y solo entonces retar.
+                    if entry.chatID != nil {
+                        Button {
+                            duelOpponent = entry
+                        } label: {
+                            Text("⚔️")
+                        }
+                        .buttonStyle(.plain)
+                    }
                     // Hallazgo real: no había forma de quitar un social
                     // aceptado — ver SocialsListViewModel.removeSocial().
                     Button("Quitar", role: .destructive) {
@@ -76,11 +94,21 @@ struct SocialsListView: View {
             }
         }
         .navigationTitle("Tus socials")
-        .task { await viewModel.load() }
+        .task {
+            await viewModel.load()
+            myID = try? await SupabaseManager.shared.client.auth.session.user.id
+        }
         // Hallazgo real, mismo criterio ya aplicado en Home/Match/
         // ChatList/Guardados/Tus publicaciones: comparado con Instagram/
         // Twitter/Facebook, esta pantalla no tenía pull-to-refresh. Ya
         // construido en la versión Kotlin equivalente.
         .refreshable { await viewModel.load() }
+        .sheet(item: $duelOpponent) { entry in
+            if let myID, let chatID = entry.chatID {
+                NavigationStack {
+                    DuelEntryPoint(chatID: chatID, currentUserID: myID, opponentID: entry.id)
+                }
+            }
+        }
     }
 }

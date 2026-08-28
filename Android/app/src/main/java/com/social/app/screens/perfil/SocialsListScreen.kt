@@ -29,7 +29,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
  */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun SocialsListScreen(viewModel: SocialsListViewModel = viewModel(), onOpenProfile: (String) -> Unit) {
+fun SocialsListScreen(
+    viewModel: SocialsListViewModel = viewModel(),
+    onOpenProfile: (String) -> Unit,
+    // "Retar a duelo" real directamente desde la lista, sin pasar antes
+    // por el chat, comparado con Snapchat (retos/juegos lanzables desde
+    // la lista de amigos) -- ver DuelEntryPoint.kt.
+    onStartDuel: (String, String) -> Unit = { _, _ -> }
+) {
     val socials by viewModel.socials.collectAsState()
     val pendingSent by viewModel.pendingSent.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
@@ -126,6 +133,17 @@ fun SocialsListScreen(viewModel: SocialsListViewModel = viewModel(), onOpenProfi
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                            }
+                        }
+                        // "Retar a duelo" real directamente desde la
+                        // lista, sin pasar antes por el chat -- comparado
+                        // con Snapchat (retos/juegos lanzables desde la
+                        // lista de amigos). Antes había que: abrir el
+                        // perfil, volver, buscar el chat, abrirlo, y solo
+                        // entonces retar.
+                        entry.chatId?.let { chatId ->
+                            TextButton(onClick = { onStartDuel(chatId, entry.profileId) }) {
+                                Text("⚔️")
                             }
                         }
                         // Hallazgo real: no había forma de quitar un social

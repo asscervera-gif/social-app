@@ -28,7 +28,13 @@ data class SocialEntry(
     // de SOCIAL: "Tus socials" no mostraba ni ordenaba por compatibilidad
     // pese a que cada social aceptado ya tiene un chat con ese dato real
     // (más significativo aquí que el estimado por intereses del feed).
-    val compatibilityScore: Int = 50
+    val compatibilityScore: Int = 50,
+    // "Retar a duelo" real directamente desde la lista de socials, sin
+    // pasar antes por el chat, comparado con Snapchat (retos/juegos
+    // lanzables desde la lista de amigos) -- ver SocialsListScreen.kt.
+    // null para una solicitud pendiente: el chat real solo se crea al
+    // aceptar (SocialLinkManager.respond()).
+    val chatId: String? = null
 )
 
 /**
@@ -76,7 +82,10 @@ class SocialsListViewModel : ViewModel() {
     private data class BlockRow(@SerialName("blocked_id") val blockedId: String)
 
     @Serializable
-    private data class CompatRow(@SerialName("compatibility_score") val compatibilityScore: Int = 50)
+    private data class CompatRow(
+        val id: String,
+        @SerialName("compatibility_score") val compatibilityScore: Int = 50
+    )
 
     // Mismo orden canónico (menor id primero) que
     // SocialLinkManager.getOrCreateChat() -- `unique(user_a_id,
@@ -85,15 +94,15 @@ class SocialsListViewModel : ViewModel() {
     // al aceptar (SocialLinkManager.respond()). Sin crear un chat nuevo
     // aquí a propósito: esta pantalla solo LEE, nunca debe tener el
     // efecto secundario de crear una fila nueva solo por mostrar la lista.
-    private suspend fun realCompatibility(userId: String, otherId: String): Int {
+    private suspend fun realCompatibility(userId: String, otherId: String): CompatRow {
         val (a, b) = if (userId < otherId) userId to otherId else otherId to userId
         return try {
             SupabaseManager.client.from("chats")
-                .select(columns = Columns.raw("compatibility_score")) { filter { eq("user_a_id", a); eq("user_b_id", b) } }
+                .select(columns = Columns.raw("id,compatibility_score")) { filter { eq("user_a_id", a); eq("user_b_id", b) } }
                 .decodeSingleOrNull<CompatRow>()
-                ?.compatibilityScore ?: 50
+                ?: CompatRow(id = "", compatibilityScore = 50)
         } catch (e: Exception) {
-            50
+            CompatRow(id = "", compatibilityScore = 50)
         }
     }
 
@@ -142,7 +151,8 @@ class SocialsListViewModel : ViewModel() {
                     } catch (e: Exception) {
                         null
                     } ?: return@mapNotNull null
-                    SocialEntry(row.id, otherId, profile.displayName, profile.avatarConfig, realCompatibility(userId, otherId))
+                    val compat = realCompatibility(userId, otherId)
+                    SocialEntry(row.id, otherId, profile.displayName, profile.avatarConfig, compat.compatibilityScore, compat.id.ifEmpty { null })
                 }.sortedByDescending { it.compatibilityScore }
 
                 val pendingRows = SupabaseManager.client.from("socials")

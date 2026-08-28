@@ -471,7 +471,8 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                 composable(SOCIALS_LIST_ROUTE) {
                     com.social.app.ui.theme.BackScaffold(title = "Tus socials", onBack = { navController.popBackStack() }) {
                         com.social.app.screens.perfil.SocialsListScreen(
-                            onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
+                            onOpenProfile = { profileId -> navController.navigate("profile/$profileId") },
+                            onStartDuel = { chatId, opponentId -> navController.navigate("duel/$chatId/$opponentId") }
                         )
                     }
                 }

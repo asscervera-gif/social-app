@@ -29,6 +29,12 @@ struct SocialEntry: Identifiable {
     // (más significativo aquí que el estimado por intereses del feed).
     // Equivalente de SocialEntry.compatibilityScore (Kotlin).
     let compatibilityScore: Int
+    // "Retar a duelo" real directamente desde la lista de socials, sin
+    // pasar antes por el chat, comparado con Snapchat (retos/juegos
+    // lanzables desde la lista de amigos) -- ver SocialsListView.swift.
+    // nil para una solicitud pendiente (pendingSent): el chat real solo
+    // se crea al aceptar (SocialLinkManager.respond()).
+    let chatID: UUID?
 }
 
 @MainActor
@@ -52,7 +58,7 @@ final class SocialsListViewModel: ObservableObject {
 
     private struct BlockRow: Decodable { let blocked_id: UUID }
 
-    private struct CompatRow: Decodable { let compatibility_score: Int }
+    private struct CompatRow: Decodable { let id: UUID; let compatibility_score: Int }
 
     /// Mismo orden canónico (menor id primero) que
     /// SocialLinkManager.getOrCreateChat() -- `unique(user_a_id,
@@ -62,19 +68,19 @@ final class SocialsListViewModel: ObservableObject {
     /// nuevo aquí a propósito: esta pantalla solo LEE, nunca debe tener
     /// el efecto secundario de crear una fila nueva solo por mostrar la
     /// lista. Equivalente de realCompatibility() en Kotlin.
-    private func realCompatibility(userID: UUID, otherID: UUID) async -> Int {
+    private func realCompatibility(userID: UUID, otherID: UUID) async -> (score: Int, chatID: UUID?) {
         let (a, b) = userID.uuidString < otherID.uuidString ? (userID, otherID) : (otherID, userID)
         guard let row: CompatRow = try? await SupabaseManager.shared.client
             .from("chats")
-            .select("compatibility_score")
+            .select("id,compatibility_score")
             .eq("user_a_id", value: a)
             .eq("user_b_id", value: b)
             .single()
             .execute()
             .value else {
-            return 50
+            return (50, nil)
         }
-        return row.compatibility_score
+        return (row.compatibility_score, row.id)
     }
 
     func load() async {
@@ -112,10 +118,11 @@ final class SocialsListViewModel: ObservableObject {
                 let otherID = row.requester_id == userID ? row.addressee_id : row.requester_id
                 if blockedIDs.contains(otherID) { continue }
                 if let profile = await profileInfo(for: otherID) {
+                    let compat = await realCompatibility(userID: userID, otherID: otherID)
                     entries.append(SocialEntry(
                         id: otherID, socialID: row.id,
                         displayName: profile.display_name, avatarConfig: profile.avatar_config,
-                        compatibilityScore: await realCompatibility(userID: userID, otherID: otherID)
+                        compatibilityScore: compat.score, chatID: compat.chatID
                     ))
                 }
             }
@@ -140,7 +147,7 @@ final class SocialsListViewModel: ObservableObject {
                     pendingEntries.append(SocialEntry(
                         id: row.addressee_id, socialID: row.id,
                         displayName: profile.display_name, avatarConfig: profile.avatar_config,
-                        compatibilityScore: 50
+                        compatibilityScore: 50, chatID: nil
                     ))
                 }
             }
