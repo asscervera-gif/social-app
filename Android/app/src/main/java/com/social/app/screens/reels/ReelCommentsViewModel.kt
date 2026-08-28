@@ -66,6 +66,14 @@ class ReelCommentsViewModel(private val reelId: String) : ViewModel() {
     private val _likedCommentIds = MutableStateFlow<Set<String>>(emptySet())
     val likedCommentIds: StateFlow<Set<String>> = _likedCommentIds.asStateFlow()
 
+    // Reacciones con emoji variado, comparado con Facebook -- cierra el
+    // alcance deliberado documentado en la Ronda 80: 0134_comment_reactions.sql
+    // ya cubría reel_comment_likes.emoji desde entonces, solo faltaba el
+    // cliente de Reels. Mismo patrón exacto que CommentsViewModel.kt
+    // (posts).
+    private val _myReactionEmoji = MutableStateFlow<Map<String, String>>(emptyMap())
+    val myReactionEmoji: StateFlow<Map<String, String>> = _myReactionEmoji.asStateFlow()
+
     // Fijar un comentario, comparado con Instagram/Twitter -- solo el
     // autor real del reel puede fijar/desfijar (0084_pin_comments.sql), la
     // propia hoja necesita saber quién es para mostrar el botón solo a esa
@@ -123,13 +131,13 @@ class ReelCommentsViewModel(private val reelId: String) : ViewModel() {
                 val commentIds = loaded.map { it.id }
                 if (myId != null && commentIds.isNotEmpty()) {
                     try {
-                        _likedCommentIds.value = SupabaseManager.client.from("reel_comment_likes")
-                            .select(columns = Columns.raw("reel_comment_id")) {
+                        val rows = SupabaseManager.client.from("reel_comment_likes")
+                            .select(columns = Columns.raw("reel_comment_id,emoji")) {
                                 filter { eq("user_id", myId); isIn("reel_comment_id", commentIds) }
                             }
                             .decodeList<LikedReelCommentRow>()
-                            .map { it.reelCommentId }
-                            .toSet()
+                        _likedCommentIds.value = rows.map { it.reelCommentId }.toSet()
+                        _myReactionEmoji.value = rows.associate { it.reelCommentId to it.emoji }
                     } catch (e: Exception) {
                         // No bloquea el resto de la hoja si falla.
                     }
@@ -200,40 +208,59 @@ class ReelCommentsViewModel(private val reelId: String) : ViewModel() {
     }
 
     @Serializable
-    private data class LikedReelCommentRow(@SerialName("reel_comment_id") val reelCommentId: String)
-
-    @Serializable
-    private data class NewReelCommentLike(
+    private data class LikedReelCommentRow(
         @SerialName("reel_comment_id") val reelCommentId: String,
-        @SerialName("user_id") val userId: String
+        val emoji: String = "❤️"
     )
 
-    /** Toggle real de like/unlike de un comentario de reel -- mismo patrón
-     * exacto que CommentsViewModel.toggleCommentLike() (posts). */
-    fun toggleCommentLike(comment: ReelComment) {
-        val currentlyLiked = _likedCommentIds.value.contains(comment.id)
-        _likedCommentIds.update { if (currentlyLiked) it - comment.id else it + comment.id }
+    @Serializable
+    private data class NewReelCommentReaction(
+        @SerialName("reel_comment_id") val reelCommentId: String,
+        @SerialName("user_id") val userId: String,
+        val emoji: String
+    )
+
+    /** Reacciones con emoji variado a un comentario de reel, comparado con
+     * Facebook -- mismo patrón exacto que
+     * CommentsViewModel.setCommentReaction() (posts), cierra el alcance
+     * deliberado documentado en la Ronda 80. Tocar el mismo emoji ya
+     * activo quita la reacción; tocar uno distinto la cambia con un
+     * UPDATE real (0134 añadió `reel_comment_likes_update_own` justo para
+     * esto). */
+    fun setCommentReaction(comment: ReelComment, emoji: String) {
+        val currentEmoji = _myReactionEmoji.value[comment.id]
+        val removing = currentEmoji == emoji
+        val wasLiked = _likedCommentIds.value.contains(comment.id)
+        if (removing) {
+            _likedCommentIds.update { it - comment.id }
+            _myReactionEmoji.update { it - comment.id }
+        } else {
+            _likedCommentIds.update { it + comment.id }
+            _myReactionEmoji.update { it + (comment.id to emoji) }
+        }
         _comments.update { list ->
             list.map {
-                if (it.id == comment.id) it.copy(likeCount = (it.likeCount + if (currentlyLiked) -1 else 1).coerceAtLeast(0))
+                if (it.id == comment.id) it.copy(likeCount = (it.likeCount + if (removing) -1 else if (wasLiked) 0 else 1).coerceAtLeast(0))
                 else it
             }
         }
         viewModelScope.launch {
             try {
                 val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
-                if (currentlyLiked) {
+                if (removing) {
                     SupabaseManager.client.from("reel_comment_likes").delete {
                         filter { eq("reel_comment_id", comment.id); eq("user_id", userId) }
                     }
+                } else if (wasLiked) {
+                    SupabaseManager.client.from("reel_comment_likes")
+                        .update({ set("emoji", emoji) }) { filter { eq("reel_comment_id", comment.id); eq("user_id", userId) } }
                 } else {
-                    SupabaseManager.client.from("reel_comment_likes").insert(NewReelCommentLike(comment.id, userId))
+                    SupabaseManager.client.from("reel_comment_likes").insert(NewReelCommentReaction(comment.id, userId, emoji))
                     com.social.app.backend.AnalyticsManager.track("reel_comment_liked")
                 }
             } catch (e: Exception) {
-                // Mismo criterio que CommentsViewModel.toggleCommentLike():
-                // un 409 por unique(reel_comment_id, user_id) no es un error
-                // real, el estado deseado ya se cumple.
+                _errorMessage.value = "No se pudo registrar la reacción."
+                load()
             }
         }
     }

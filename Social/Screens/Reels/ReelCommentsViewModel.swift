@@ -47,6 +47,12 @@ final class ReelCommentsViewModel: ObservableObject {
     // concreto de un reel (0054_comment_likes.sql), mismo patrón que
     // CommentsViewModel.likedCommentIDs (posts).
     @Published var likedCommentIDs: Set<UUID> = []
+    // Reacciones con emoji variado, comparado con Facebook -- cierra el
+    // alcance deliberado documentado en la Ronda 80: 0134_comment_reactions.sql
+    // ya cubría reel_comment_likes.emoji desde entonces, solo faltaba el
+    // cliente de Reels. Mismo patrón exacto que CommentsViewModel.swift
+    // (posts).
+    @Published var myReactionEmoji: [UUID: String] = [:]
     // Fijar un comentario, comparado con Instagram/Twitter -- solo el
     // autor real del reel puede fijar/desfijar (0084_pin_comments.sql), la
     // propia hoja necesita saber quién es para mostrar el botón solo a esa
@@ -116,17 +122,18 @@ final class ReelCommentsViewModel: ObservableObject {
             }
 
             if let userID = try? await SupabaseManager.shared.client.auth.session.user.id {
-                struct LikedReelCommentRow: Decodable { let reel_comment_id: UUID }
+                struct LikedReelCommentRow: Decodable { let reel_comment_id: UUID; var emoji: String = "❤️" }
                 let commentIDs = loaded.map { $0.id }
                 if !commentIDs.isEmpty,
                    let likedRows: [LikedReelCommentRow] = try? await SupabaseManager.shared.client
                        .from("reel_comment_likes")
-                       .select("reel_comment_id")
+                       .select("reel_comment_id,emoji")
                        .eq("user_id", value: userID)
                        .in("reel_comment_id", values: commentIDs)
                        .execute()
                        .value {
                     likedCommentIDs = Set(likedRows.map { $0.reel_comment_id })
+                    myReactionEmoji = Dictionary(uniqueKeysWithValues: likedRows.map { ($0.reel_comment_id, $0.emoji) })
                 }
             }
         } catch {
@@ -134,42 +141,59 @@ final class ReelCommentsViewModel: ObservableObject {
         }
     }
 
-    /// Toggle real de like/unlike de un comentario de reel -- mismo patrón
-    /// exacto que CommentsViewModel.toggleCommentLike() (posts).
-    func toggleCommentLike(_ comment: ReelComment) async {
-        let currentlyLiked = likedCommentIDs.contains(comment.id)
-        if currentlyLiked {
+    /// Reacciones con emoji variado a un comentario de reel, comparado con
+    /// Facebook -- mismo patrón exacto que
+    /// CommentsViewModel.setCommentReaction() (posts), cierra el alcance
+    /// deliberado documentado en la Ronda 80. Tocar el mismo emoji ya
+    /// activo quita la reacción; tocar uno distinto la cambia con un
+    /// UPDATE real (0134 añadió `reel_comment_likes_update_own` justo
+    /// para esto).
+    func setCommentReaction(_ comment: ReelComment, emoji: String) async {
+        let currentEmoji = myReactionEmoji[comment.id]
+        let removing = currentEmoji == emoji
+        let wasLiked = likedCommentIDs.contains(comment.id)
+        if removing {
             likedCommentIDs.remove(comment.id)
+            myReactionEmoji.removeValue(forKey: comment.id)
         } else {
             likedCommentIDs.insert(comment.id)
+            myReactionEmoji[comment.id] = emoji
         }
         if let index = comments.firstIndex(where: { $0.id == comment.id }) {
-            comments[index].like_count = max(0, comments[index].like_count + (currentlyLiked ? -1 : 1))
+            let delta = removing ? -1 : (wasLiked ? 0 : 1)
+            comments[index].like_count = max(0, comments[index].like_count + delta)
         }
         guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
-        struct NewReelCommentLike: Encodable {
+        struct NewReelCommentReaction: Encodable {
             let reel_comment_id: UUID
             let user_id: UUID
+            let emoji: String
         }
         do {
-            if currentlyLiked {
+            if removing {
                 try await SupabaseManager.shared.client
                     .from("reel_comment_likes")
                     .delete()
                     .eq("reel_comment_id", value: comment.id)
                     .eq("user_id", value: userID)
                     .execute()
+            } else if wasLiked {
+                try await SupabaseManager.shared.client
+                    .from("reel_comment_likes")
+                    .update(["emoji": emoji])
+                    .eq("reel_comment_id", value: comment.id)
+                    .eq("user_id", value: userID)
+                    .execute()
             } else {
                 try await SupabaseManager.shared.client
                     .from("reel_comment_likes")
-                    .insert(NewReelCommentLike(reel_comment_id: comment.id, user_id: userID))
+                    .insert(NewReelCommentReaction(reel_comment_id: comment.id, user_id: userID, emoji: emoji))
                     .execute()
                 AnalyticsManager.track("reel_comment_liked")
             }
         } catch {
-            // Mismo criterio que CommentsViewModel.toggleCommentLike(): un
-            // 409 por unique(reel_comment_id, user_id) no es un error
-            // real, el estado deseado ya se cumple.
+            errorMessage = "No se pudo registrar la reacción."
+            await load()
         }
     }
 

@@ -101,11 +101,19 @@ struct ReelCommentsView: View {
                             Spacer()
                             // Comparado con Instagram/Twitter/Facebook: dar
                             // like a un comentario concreto (0054_comment_likes.sql).
+                            // Reacciones con emoji variado, comparado con
+                            // Facebook -- cierra el alcance deliberado de
+                            // la Ronda 80. Mantener pulsado abre el
+                            // selector real (contextMenu), tocar alterna
+                            // el emoji ya activo (o ❤️ por defecto). Ver
+                            // ReelCommentsViewModel.setCommentReaction(),
+                            // 0134_comment_reactions.sql.
+                            let myEmoji = viewModel.myReactionEmoji[comment.id] ?? "❤️"
                             Button {
-                                Task { await viewModel.toggleCommentLike(comment) }
+                                Task { await viewModel.setCommentReaction(comment, emoji: myEmoji) }
                             } label: {
                                 HStack(spacing: 2) {
-                                    Text(viewModel.likedCommentIDs.contains(comment.id) ? "❤" : "🤍")
+                                    Text(viewModel.likedCommentIDs.contains(comment.id) ? myEmoji : "🤍")
                                     if comment.like_count > 0 {
                                         Text("\(comment.like_count)").font(.caption2)
                                     }
@@ -113,6 +121,13 @@ struct ReelCommentsView: View {
                             }
                             .buttonStyle(.plain)
                             .font(.caption)
+                            .contextMenu {
+                                ForEach(["❤️", "😂", "😮", "😢", "😡", "👍"], id: \.self) { emoji in
+                                    Button(emoji) {
+                                        Task { await viewModel.setCommentReaction(comment, emoji: emoji) }
+                                    }
+                                }
+                            }
                             // Responder a un comentario concreto (hilo de
                             // un nivel), comparado con Instagram/Facebook/
                             // Twitter/TikTok -- solo sobre un comentario
