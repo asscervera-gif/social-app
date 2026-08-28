@@ -32,16 +32,27 @@ class RestrictedUsersViewModel : ViewModel() {
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
+    // Fecha real de restricción, comparado con Instagram (la pantalla
+    // "Cuentas restringidas" muestra desde cuándo). Mismo hallazgo que
+    // BlockedUsersViewModel.kt (Ronda 82): `restricts.created_at` ya
+    // existe desde 0093_restrict_account.sql, pero nunca se pedía.
+    private val _restrictedAt = MutableStateFlow<Map<String, String>>(emptyMap())
+    val restrictedAt: StateFlow<Map<String, String>> = _restrictedAt.asStateFlow()
+
     @Serializable
-    private data class RestrictRow(@SerialName("restricted_id") val restrictedId: String)
+    private data class RestrictRow(
+        @SerialName("restricted_id") val restrictedId: String,
+        @SerialName("created_at") val createdAt: String = ""
+    )
 
     fun load() {
         viewModelScope.launch {
             _isLoading.value = true
             try {
                 val rows = SupabaseManager.client.from("restricts")
-                    .select(Columns.raw("restricted_id"))
+                    .select(Columns.raw("restricted_id,created_at")) { order("created_at", io.github.jan.supabase.postgrest.query.Order.DESCENDING) }
                     .decodeList<RestrictRow>()
+                _restrictedAt.value = rows.associate { it.restrictedId to it.createdAt }
                 _restricted.value = rows.mapNotNull { row ->
                     try {
                         SupabaseManager.client.from("profiles")

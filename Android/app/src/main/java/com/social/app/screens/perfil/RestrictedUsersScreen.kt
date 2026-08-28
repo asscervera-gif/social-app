@@ -32,6 +32,9 @@ import androidx.compose.ui.unit.dp
 fun RestrictedUsersScreen() {
     val vm = remember { RestrictedUsersViewModel() }
     val restricted by vm.restricted.collectAsState()
+    // Fecha real de restricción, comparado con Instagram -- ver
+    // RestrictedUsersViewModel.restrictedAt().
+    val restrictedAt by vm.restrictedAt.collectAsState()
     val isLoading by vm.isLoading.collectAsState()
     val errorMessage by vm.errorMessage.collectAsState()
 
@@ -59,7 +62,16 @@ fun RestrictedUsersScreen() {
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             com.social.app.avatar.AvatarView(config = profile.avatarConfig ?: emptyMap(), size = 40.dp)
-                            Text(profile.displayName, modifier = Modifier.padding(start = 12.dp))
+                            Column(modifier = Modifier.padding(start = 12.dp)) {
+                                Text(profile.displayName)
+                                restrictedAt[profile.id]?.takeIf { it.isNotBlank() }?.let {
+                                    Text(
+                                        "Restringido ${com.social.app.util.relativeTime(it)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
                         }
                         OutlinedButton(onClick = { vm.unrestrict(profile.id) }) {
                             Text("Dejar de restringir")

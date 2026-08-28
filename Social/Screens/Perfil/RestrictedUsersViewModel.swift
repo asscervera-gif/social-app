@@ -17,18 +17,25 @@ final class RestrictedUsersViewModel: ObservableObject {
     @Published var restricted: [Profile] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    // Fecha real de restricción, comparado con Instagram. Mismo hallazgo
+    // que BlockedUsersViewModel.swift (Ronda 82): `restricts.created_at`
+    // ya existe desde 0093_restrict_account.sql, pero nunca se pedía.
+    // Equivalente de RestrictedUsersViewModel.kt.restrictedAt.
+    @Published var restrictedAt: [UUID: String] = [:]
 
     func load() async {
         isLoading = true
         defer { isLoading = false }
         do {
             let client = SupabaseManager.shared.client
-            struct RestrictRow: Decodable { let restricted_id: UUID }
+            struct RestrictRow: Decodable { let restricted_id: UUID; let created_at: String }
             let rows: [RestrictRow] = try await client
                 .from("restricts")
-                .select("restricted_id")
+                .select("restricted_id,created_at")
+                .order("created_at", ascending: false)
                 .execute()
                 .value
+            restrictedAt = Dictionary(uniqueKeysWithValues: rows.map { ($0.restricted_id, $0.created_at) })
 
             var results: [Profile] = []
             for row in rows {
