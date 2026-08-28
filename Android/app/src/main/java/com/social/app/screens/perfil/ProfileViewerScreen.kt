@@ -28,10 +28,17 @@ import com.social.app.backend.model.Profile
 import com.social.app.chat.FollowManager
 import io.github.jan.supabase.gotrue.auth
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
+import io.github.jan.supabase.postgrest.rpc
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+
+// Insignia real de cumpleaños (🎂), comparado con Instagram -- ver
+// is_birthday_today() (0140_birthday.sql).
+@Serializable
+private data class BirthdayTodayParams(@SerialName("p_profile_id") val profileId: String)
 
 // "Quién visitó tu perfil" real, comparado con LinkedIn/Twitter-X
 // (Premium) -- ver 0132_profile_visits.sql. visited_at se manda
@@ -77,6 +84,10 @@ fun ProfileViewerScreen(profileId: String) {
     // target real en contexto, denuncia por defecto al PROPIO usuario) --
     // aquí sí hay un target real, el sitio correcto para esta acción.
     var showReportSheet by remember { mutableStateOf(false) }
+    // Insignia real de cumpleaños (🎂), comparado con Instagram -- sin
+    // cron, calculado al leer (respeta profiles.show_birthday). Ver
+    // 0140_birthday.sql.
+    var isBirthdayToday by remember { mutableStateOf(false) }
 
     LaunchedEffect(profileId) {
         try {
@@ -96,6 +107,12 @@ fun ProfileViewerScreen(profileId: String) {
         } catch (e: Exception) {
             errorMessage = "No se pudo cargar el perfil."
         }
+        try {
+            isBirthdayToday = SupabaseManager.client.postgrest.rpc(
+                "is_birthday_today",
+                BirthdayTodayParams(profileId)
+            ).decodeAs<Boolean>()
+        } catch (e: Exception) { /* no crítico */ }
 
         // Hallazgo real: no había ningún botón "Seguir" directo en este
         // visor, solo "seguir de vuelta" desde una notificación — ver
@@ -126,6 +143,9 @@ fun ProfileViewerScreen(profileId: String) {
                 Text(profile?.displayName ?: "Perfil", style = MaterialTheme.typography.titleLarge)
                 if (profile?.isVerified == true) {
                     Text(" ✔️", color = MaterialTheme.colorScheme.primary)
+                }
+                if (isBirthdayToday) {
+                    Text(" 🎂", modifier = Modifier)
                 }
             }
             // Nombre de usuario único real (@handle,

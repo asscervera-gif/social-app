@@ -61,10 +61,20 @@ final class AuthViewModel: ObservableObject {
             // verificada con compilador real aquí (límite de plataforma).
             // Se asume conservadoramente que, si tras el signUp no hay
             // sesión activa, hace falta confirmar el email.
+            // Hallazgo real: birthDate ya se pedía para verificar la edad
+            // (arriba) pero se descartaba tras el cálculo -- ahora viaja
+            // igual que display_name, y handle_new_user() (0140_birthday.sql)
+            // la guarda en profiles.birth_date real.
+            let birthDateFormatter = DateFormatter()
+            birthDateFormatter.dateFormat = "yyyy-MM-dd"
+            birthDateFormatter.timeZone = TimeZone(identifier: "UTC")
             try await SupabaseManager.shared.client.auth.signUp(
                 email: email,
                 password: password,
-                data: ["display_name": .string(displayName)]
+                data: [
+                    "display_name": .string(displayName),
+                    "birth_date": .string(birthDateFormatter.string(from: birthDate))
+                ]
             )
             if (try? await SupabaseManager.shared.client.auth.session) == nil {
                 infoMessage = "Te hemos enviado un email para confirmar tu cuenta. Revisa tu correo y vuelve a intentar iniciar sesión después."

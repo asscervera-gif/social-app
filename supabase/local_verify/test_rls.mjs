@@ -3878,6 +3878,49 @@ async function main() {
   const wallpaperMembership = (await db.query(`select wallpaper_key from group_chat_members where group_chat_id = $1 and user_id = $2`, [wpGroupId, u1])).rows[0];
   check('group_chat_members.wallpaper_key: la fila real queda con el fondo elegido', wallpaperMembership.wallpaper_key === 'forest');
 
+  // --- handle_new_user() ampliado (0140_birthday.sql): birth_date real
+  // ya se le pedía al usuario al registrarse para verificar la edad
+  // (AuthViewModel.kt/.swift), pero se descartaba -- ahora viaja en
+  // raw_user_meta_data igual que display_name. ---
+  await asSuperuser();
+  const bdUser = (await db.query(
+    `insert into auth.users (raw_user_meta_data) values ($1) returning id`,
+    [JSON.stringify({ display_name: 'Con fecha', birth_date: '2000-05-15' })]
+  )).rows[0].id;
+  const bdProfile = (await db.query(`select display_name, birth_date from profiles where id = $1`, [bdUser])).rows[0];
+  const bdISO = bdProfile.birth_date instanceof Date ? bdProfile.birth_date.toISOString() : String(bdProfile.birth_date);
+  check('handle_new_user: birth_date real de raw_user_meta_data llega a profiles', bdProfile.birth_date !== null && bdISO.startsWith('2000-05-15'));
+  check('handle_new_user: display_name real sigue funcionando igual que antes', bdProfile.display_name === 'Con fecha');
+
+  const noBdUser = (await db.query(
+    `insert into auth.users (raw_user_meta_data) values ($1) returning id`,
+    [JSON.stringify({ display_name: 'Sin fecha' })]
+  )).rows[0].id;
+  const noBdProfile = (await db.query(`select birth_date from profiles where id = $1`, [noBdUser])).rows[0];
+  check('handle_new_user: sin birth_date real en los metadatos, queda en null (no rompe el registro)', noBdProfile.birth_date === null);
+
+  // --- profiles.birth_date/show_birthday + is_birthday_today()
+  // (0140_birthday.sql): insignia real de cumpleaños (🎂), comparado con
+  // Instagram/Facebook -- sin cron, calculado al leer. ---
+  await asUser(u1);
+  await expectOk('profiles_update_own: u1 SÍ puede fijar su propia fecha de nacimiento', async () => {
+    await db.query(`update profiles set birth_date = current_date where id = $1`, [u1]);
+  });
+  const birthdayToday = (await db.query(`select is_birthday_today($1) as v`, [u1])).rows[0];
+  check('is_birthday_today: hoy real SÍ cuenta como cumpleaños', birthdayToday.v === true);
+
+  await db.query(`update profiles set birth_date = current_date - interval '1 day' where id = $1`, [u1]);
+  const birthdayYesterday = (await db.query(`select is_birthday_today($1) as v`, [u1])).rows[0];
+  check('is_birthday_today: ayer real NO cuenta como cumpleaños', birthdayYesterday.v === false);
+
+  await db.query(`update profiles set birth_date = current_date, show_birthday = false where id = $1`, [u1]);
+  const birthdayHidden = (await db.query(`select is_birthday_today($1) as v`, [u1])).rows[0];
+  check('is_birthday_today: show_birthday=false real oculta la insignia aunque sea hoy', birthdayHidden.v === false);
+  await db.query(`update profiles set show_birthday = true where id = $1`, [u1]);
+
+  const birthdayNoDate = (await db.query(`select is_birthday_today($1) as v`, [u2])).rows[0];
+  check('is_birthday_today: sin fecha de nacimiento real, nunca cuenta como cumpleaños', birthdayNoDate.v === false);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

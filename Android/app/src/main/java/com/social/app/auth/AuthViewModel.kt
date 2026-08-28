@@ -76,7 +76,15 @@ class AuthViewModel : ViewModel() {
                 val result = SupabaseManager.client.auth.signUpWith(Email) {
                     this.email = email
                     this.password = password
-                    data = JsonObject(mapOf("display_name" to JsonPrimitive(displayName)))
+                    // Hallazgo real: birthDate ya se pedía para verificar
+                    // la edad (arriba) pero se descartaba tras el cálculo
+                    // -- ahora viaja igual que display_name, y
+                    // handle_new_user() (0140_birthday.sql) la guarda en
+                    // profiles.birth_date real.
+                    data = JsonObject(mapOf(
+                        "display_name" to JsonPrimitive(displayName),
+                        "birth_date" to JsonPrimitive(birthDate.toString())
+                    ))
                 }
                 // signUpWith devuelve null cuando el proyecto exige
                 // confirmación de email: la cuenta se crea, pero no hay

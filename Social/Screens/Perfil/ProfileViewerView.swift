@@ -35,6 +35,10 @@ struct ProfileViewerView: View {
     // documentado (sin target real en contexto, denuncia por defecto al
     // PROPIO usuario) -- aquí sí hay un target real, el sitio correcto.
     @State private var showReportSheet = false
+    // Insignia real de cumpleaños (🎂), comparado con Instagram -- sin
+    // cron, calculado al leer (respeta profiles.show_birthday). Ver
+    // 0140_birthday.sql. Equivalente de ProfileViewerScreen.kt.
+    @State private var isBirthdayToday = false
 
     var body: some View {
         ScrollView {
@@ -49,6 +53,9 @@ struct ProfileViewerView: View {
                         .font(.title2.bold())
                     if profile?.isVerified == true {
                         Image(systemName: "checkmark.seal.fill").foregroundStyle(.blue)
+                    }
+                    if isBirthdayToday {
+                        Text("🎂")
                     }
                 }
                 // Nombre de usuario único real (@handle,
@@ -169,6 +176,11 @@ struct ProfileViewerView: View {
                 errorMessage = "No se pudo cargar el perfil."
             }
 
+            isBirthdayToday = (try? await client
+                .rpc("is_birthday_today", params: BirthdayTodayParams(p_profile_id: profileID))
+                .execute()
+                .value) ?? false
+
             myID = try? await client.auth.session.user.id
             if let myID, myID != profileID {
                 isFollowing = await followManager.isFollowing(followerID: myID, followeeID: profileID)
@@ -194,3 +206,7 @@ struct ProfileViewerView: View {
         }
     }
 }
+
+// Insignia real de cumpleaños (🎂), comparado con Instagram -- ver
+// is_birthday_today() (0140_birthday.sql).
+private struct BirthdayTodayParams: Encodable { let p_profile_id: UUID }
