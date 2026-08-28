@@ -16,17 +16,40 @@ import SwiftUI
 final class MyPostsViewModel: ObservableObject {
     @Published var posts: [Post] = []
     @Published var errorMessage: String?
+    // Publicación colaborativa real ("Collab"), comparado con Instagram
+    // -- cierra el hueco documentado a propósito en
+    // 0142_post_collaborators.sql: "mostrar la publicación en la
+    // cuadrícula de perfil del INVITADO queda como hueco futuro".
+    // Equivalente de MyPostsViewModel.kt.collabPostIds.
+    @Published var collabPostIDs: Set<UUID> = []
 
     func load() async {
         guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
         do {
-            posts = try await SupabaseManager.shared.client
+            let ownPosts: [Post] = try await SupabaseManager.shared.client
                 .from("posts")
                 .select()
                 .eq("author_id", value: userID)
-                .order("created_at", ascending: false)
                 .execute()
                 .value
+            struct CollabPostIDRow: Decodable { let post_id: UUID }
+            let acceptedIDs = (try? await SupabaseManager.shared.client
+                .from("post_collaborators")
+                .select("post_id")
+                .eq("user_id", value: userID)
+                .eq("status", value: "accepted")
+                .execute()
+                .value as [CollabPostIDRow])?.map { $0.post_id } ?? []
+            let collabPosts: [Post] = acceptedIDs.isEmpty ? [] : ((try? await SupabaseManager.shared.client
+                .from("posts")
+                .select()
+                .in("id", values: acceptedIDs)
+                .execute()
+                .value) ?? [])
+            collabPostIDs = Set(acceptedIDs)
+            var merged = [UUID: Post]()
+            for post in ownPosts + collabPosts { merged[post.id] = post }
+            posts = merged.values.sorted { $0.createdAt > $1.createdAt }
         } catch {
             errorMessage = "No se pudieron cargar tus publicaciones."
         }
@@ -305,6 +328,7 @@ struct MyPostsView: View {
                 // variable suelta.
                 MyPostRow(
                     post: post,
+                    isCollab: viewModel.collabPostIDs.contains(post.id),
                     taggedName: taggedName,
                     onTapImage: { fullScreenURL = $0 },
                     onDelete: { Task { await viewModel.delete(post) } },
@@ -377,6 +401,10 @@ struct MyPostsView: View {
 /// demasiado grande incluso con `audienceLabel` ya calculado aparte).
 private struct MyPostRow: View {
     let post: Post
+    // Publicación colaborativa real ("Collab"), comparado con Instagram
+    // -- esta fila aparece aquí porque mi invitación real ya quedó
+    // aceptada (0142_post_collaborators.sql), no porque yo sea el autor.
+    let isCollab: Bool
     let taggedName: (UUID) -> String
     let onTapImage: (URL) -> Void
     let onDelete: () -> Void
@@ -425,6 +453,9 @@ private struct MyPostRow: View {
                 // sí existe y sí conforma a ShapeStyle.
                 Text("📌 Fijada").font(.caption.bold()).foregroundStyle(Color.accentColor)
             }
+            if isCollab {
+                Text("🤝 Colaboración").font(.caption.bold()).foregroundStyle(Color.accentColor)
+            }
             Text(post.caption ?? "")
             if let taggedProfileID = post.taggedProfileID {
                 Text("con \(taggedName(taggedProfileID))")
@@ -435,7 +466,13 @@ private struct MyPostRow: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+        // Publicación colaborativa real ("Collab"), comparado con
+        // Instagram -- solo el AUTOR real puede editar/fijar/archivar/
+        // borrar (posts_write_own, 0002_rls.sql, sigue exigiendo
+        // author_id = auth.uid()); mostrar estas acciones a un
+        // colaborador aceptado las dejaría fallar en silencio contra RLS.
         .swipeActions {
+            if !isCollab {
             Button("Borrar", role: .destructive, action: onDelete)
             Button("Editar", action: onEdit)
                 .tint(.blue)
@@ -470,6 +507,7 @@ private struct MyPostRow: View {
             // TikTok -- ver 0097_reply_audience.sql.
             Button("Comentan: \(audienceLabel)", action: onCycleReplyAudience)
                 .tint(.teal)
+            }
         }
     }
 }

@@ -37,6 +37,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
+// Publicación colaborativa real ("Collab"), comparado con Instagram --
+// ver 0142_post_collaborators.sql.
+@Serializable
+private data class CollabPostIdRow(@SerialName("post_id") val postId: String)
 
 /**
  * "Tus publicaciones" — Android nunca tuvo la rejilla de 6 subsecciones de
@@ -53,16 +60,42 @@ class MyPostsViewModel : ViewModel() {
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
+    // Publicación colaborativa real ("Collab"), comparado con Instagram --
+    // cierra el hueco documentado a propósito en 0142_post_collaborators.sql:
+    // "mostrar la publicación en la cuadrícula de perfil del INVITADO
+    // queda como hueco futuro". El invitado ve aquí, además de las suyas
+    // propias, cualquier post donde su invitación real ya quedó aceptada.
+    private val _collabPostIds = MutableStateFlow<Set<String>>(emptySet())
+    val collabPostIds: StateFlow<Set<String>> = _collabPostIds.asStateFlow()
+
     fun load() {
         viewModelScope.launch {
             try {
                 val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
-                _posts.value = SupabaseManager.client.from("posts")
-                    .select {
-                        filter { eq("author_id", userId) }
-                        order("created_at", Order.DESCENDING)
-                    }
-                    .decodeList()
+                val ownPosts = SupabaseManager.client.from("posts")
+                    .select { filter { eq("author_id", userId) } }
+                    .decodeList<Post>()
+                val acceptedCollabIds = try {
+                    SupabaseManager.client.from("post_collaborators")
+                        .select(columns = io.github.jan.supabase.postgrest.query.Columns.raw("post_id")) {
+                            filter { eq("user_id", userId); eq("status", "accepted") }
+                        }
+                        .decodeList<CollabPostIdRow>()
+                        .map { it.postId }
+                } catch (e: Exception) {
+                    emptyList()
+                }
+                val collabPosts = if (acceptedCollabIds.isEmpty()) emptyList() else try {
+                    SupabaseManager.client.from("posts")
+                        .select { filter { isIn("id", acceptedCollabIds) } }
+                        .decodeList<Post>()
+                } catch (e: Exception) {
+                    emptyList()
+                }
+                _collabPostIds.value = acceptedCollabIds.toSet()
+                _posts.value = (ownPosts + collabPosts)
+                    .distinctBy { it.id }
+                    .sortedByDescending { it.createdAt }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudieron cargar tus publicaciones."
             }
@@ -231,6 +264,7 @@ class MyPostsViewModel : ViewModel() {
 @Composable
 fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
     val posts by viewModel.posts.collectAsState()
+    val collabPostIds by viewModel.collabPostIds.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     // Hallazgo real, comparado con SOCIAL_APP.html ("Pubs de socials",
     // etiqueta "con Marta"): no había forma de ver solo las publicaciones
@@ -345,6 +379,14 @@ fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
                         if (post.pinnedAt != null) {
                             Text("📌 Fijada", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }
+                        // Publicación colaborativa real ("Collab"),
+                        // comparado con Instagram -- esta fila aparece
+                        // aquí porque mi invitación real ya quedó
+                        // aceptada (0142_post_collaborators.sql), no
+                        // porque yo sea el autor.
+                        if (post.id in collabPostIds) {
+                            Text("🤝 Colaboración", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        }
                         post.caption?.let { Text(it) }
                         post.taggedProfileId?.let { taggedId ->
                             Text(
@@ -363,7 +405,14 @@ fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Row {
+                            // Publicación colaborativa real ("Collab"),
+                            // comparado con Instagram -- solo el AUTOR
+                            // real puede editar/fijar/archivar/borrar
+                            // (posts_write_own, 0002_rls.sql, sigue
+                            // exigiendo author_id = auth.uid()); mostrar
+                            // estos botones a un colaborador aceptado los
+                            // dejaría fallar en silencio contra RLS.
+                            if (post.id !in collabPostIds) Row {
                                 OutlinedButton(
                                     onClick = {
                                         editingPost = post
