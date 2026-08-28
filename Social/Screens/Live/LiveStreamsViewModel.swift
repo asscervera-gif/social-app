@@ -152,6 +152,47 @@ final class LiveStreamsViewModel: ObservableObject {
         await requestToken(streamID: stream.id)
     }
 
+    struct LiveViewerEntry: Identifiable {
+        let id: UUID
+        let displayName: String?
+        let avatarConfig: [String: String]?
+    }
+
+    private struct ViewerRow: Decodable { let viewer_id: UUID }
+    private struct NameRow: Decodable {
+        let id: UUID
+        let display_name: String
+        let avatar_config: [String: String]?
+    }
+
+    /// Lista real de quién está viendo el directo AHORA MISMO, comparado
+    /// con Instagram/TikTok Live -- `live_stream_viewers`
+    /// (0056_live_streams.sql) ya existía de verdad (sincroniza
+    /// `viewer_count` real, RLS ya limitaba la lista completa al propio
+    /// host), pero ningún cliente la consultaba nunca -- el número se
+    /// veía, la lista real detrás nunca. Equivalente de
+    /// LiveStreamsViewModel.kt.fetchViewers().
+    func fetchViewers(_ streamID: UUID) async -> [LiveViewerEntry] {
+        guard let viewerRows: [ViewerRow] = try? await SupabaseManager.shared.client
+            .from("live_stream_viewers")
+            .select("viewer_id")
+            .eq("stream_id", value: streamID)
+            .execute()
+            .value else { return [] }
+        let viewerIDs = viewerRows.map { $0.viewer_id }
+        guard !viewerIDs.isEmpty else { return [] }
+        guard let profiles: [NameRow] = try? await SupabaseManager.shared.client
+            .from("profiles")
+            .select("id,display_name,avatar_config")
+            .in("id", values: viewerIDs)
+            .execute()
+            .value else { return [] }
+        let byID = Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
+        return viewerIDs.compactMap { id in
+            byID[id].map { LiveViewerEntry(id: id, displayName: $0.display_name, avatarConfig: $0.avatar_config) }
+        }
+    }
+
     private func requestToken(streamID: UUID) async -> LiveKitTokenResponse? {
         struct TokenRequest: Encodable {
             let streamId: UUID

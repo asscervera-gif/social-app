@@ -183,6 +183,47 @@ class LiveStreamsViewModel : ViewModel() {
      * usuario real, nunca a partir de lo que mande este cliente. */
     suspend fun requestHostToken(stream: LiveStream): LiveKitTokenResponse? = requestToken(stream.id)
 
+    @Serializable
+    data class LiveViewerEntry(
+        @SerialName("viewer_id") val viewerId: String,
+        val displayName: String? = null,
+        val avatarConfig: Map<String, String>? = null
+    )
+
+    @Serializable
+    private data class ViewerRow(@SerialName("viewer_id") val viewerId: String)
+
+    @Serializable
+    private data class NameRow(
+        val id: String,
+        @SerialName("display_name") val displayName: String,
+        @SerialName("avatar_config") val avatarConfig: Map<String, String>? = null
+    )
+
+    /** Lista real de quién está viendo el directo AHORA MISMO, comparado
+     * con Instagram/TikTok Live -- `live_stream_viewers` (0056_live_streams.sql)
+     * ya existía de verdad (sincroniza `viewer_count` real, RLS ya
+     * limitaba la lista completa al propio host), pero ningún cliente la
+     * consultaba nunca -- el número se veía, la lista real detrás nunca.
+     * Solo el host real ve la lista completa (RLS
+     * `live_stream_viewers_select_own_stream` lo exige, no solo esta UI). */
+    suspend fun fetchViewers(streamId: String): List<LiveViewerEntry> {
+        return try {
+            val viewerRows = SupabaseManager.client.from("live_stream_viewers")
+                .select(columns = Columns.raw("viewer_id")) { filter { eq("stream_id", streamId) } }
+                .decodeList<ViewerRow>()
+            val viewerIds = viewerRows.map { it.viewerId }
+            if (viewerIds.isEmpty()) return emptyList()
+            val profiles = SupabaseManager.client.from("profiles")
+                .select(columns = Columns.raw("id,display_name,avatar_config")) { filter { isIn("id", viewerIds) } }
+                .decodeList<NameRow>()
+            val byId = profiles.associateBy { it.id }
+            viewerIds.mapNotNull { id -> byId[id]?.let { LiveViewerEntry(id, it.displayName, it.avatarConfig) } }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
     /** Sale de un directo ajeno real -- borra la propia fila (RLS
      * `live_stream_viewers_delete_own`); baja `viewer_count` el trigger
      * real, no este código. */

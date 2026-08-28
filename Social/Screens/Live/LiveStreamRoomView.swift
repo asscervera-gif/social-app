@@ -73,6 +73,10 @@ struct LiveStreamRoomView: View {
     // escribir mientras veía un directo.
     @StateObject private var chatViewModel: LiveStreamChatViewModel
     @State private var chatDraft = ""
+    // Lista real de quién está viendo AHORA MISMO, comparado con
+    // Instagram/TikTok Live -- ver LiveStreamsViewModel.fetchViewers().
+    @State private var showViewers = false
+    @State private var viewers: [LiveStreamsViewModel.LiveViewerEntry] = []
 
     init(stream: LiveStream, isHost: Bool, viewModel: LiveStreamsViewModel, onClose: @escaping () -> Void) {
         self.stream = stream
@@ -110,7 +114,18 @@ struct LiveStreamRoomView: View {
 
             VStack {
                 HStack {
-                    Text("👁 \(coordinator.viewerCount)").foregroundStyle(.white).bold()
+                    // Lista real de quién está viendo AHORA MISMO,
+                    // comparado con Instagram/TikTok Live -- ver
+                    // LiveStreamsViewModel.fetchViewers(). Solo el host
+                    // real (RLS ya lo exige, esto es solo la puerta de
+                    // entrada).
+                    Text("👁 \(coordinator.viewerCount)")
+                        .foregroundStyle(.white)
+                        .bold()
+                        .onTapGesture {
+                            guard isHost else { return }
+                            showViewers = true
+                        }
                     Spacer()
                     Text(stream.title ?? "Directo").foregroundStyle(.white).bold()
                 }
@@ -179,6 +194,25 @@ struct LiveStreamRoomView: View {
         }
         .task {
             await chatViewModel.load()
+        }
+        .sheet(isPresented: $showViewers) {
+            NavigationStack {
+                List {
+                    if viewers.isEmpty {
+                        Text("Nadie está viendo el directo ahora mismo.")
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(viewers) { entry in
+                        HStack(spacing: 10) {
+                            ActiveAvatarProvider.shared.avatarView(config: entry.avatarConfig ?? [:], size: 40)
+                            Text(entry.displayName ?? "…")
+                        }
+                    }
+                }
+                .navigationTitle("Espectadores")
+                .navigationBarTitleDisplayMode(.inline)
+            }
+            .task { viewers = await viewModel.fetchViewers(stream.id) }
         }
         .task {
             room.add(delegate: coordinator)

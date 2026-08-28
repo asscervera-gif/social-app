@@ -66,6 +66,7 @@ import kotlinx.coroutines.launch
  * entorno sin esas credenciales, igual que push no puede enviar un aviso
  * real todavía.
  */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun LiveStreamRoomScreen(
     stream: LiveStream,
@@ -80,6 +81,15 @@ fun LiveStreamRoomScreen(
     var localVideoTrack by remember { mutableStateOf<VideoTrack?>(null) }
     var remoteVideoTrack by remember { mutableStateOf<VideoTrack?>(null) }
     var viewerCount by remember { mutableStateOf(stream.viewerCount) }
+    // Lista real de quién está viendo AHORA MISMO, comparado con
+    // Instagram/TikTok Live -- ver LiveStreamsViewModel.fetchViewers(),
+    // 0056_live_streams.sql (la tabla real ya existía, solo faltaba que
+    // algún cliente la consultara).
+    var showViewers by remember { mutableStateOf(false) }
+    var viewers by remember { mutableStateOf<List<LiveStreamsViewModel.LiveViewerEntry>>(emptyList()) }
+    LaunchedEffect(showViewers) {
+        if (showViewers) viewers = viewModel.fetchViewers(stream.id)
+    }
 
     // Chat en vivo real (0059_live_stream_messages.sql), comparado con
     // Instagram/TikTok Live -- antes solo había vídeo, nadie podía
@@ -177,7 +187,16 @@ fun LiveStreamRoomScreen(
             modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(16.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("👁 $viewerCount", color = Color.White, style = MaterialTheme.typography.labelLarge)
+            // Lista real de quién está viendo AHORA MISMO, comparado con
+            // Instagram/TikTok Live -- ver
+            // LiveStreamsViewModel.fetchViewers(). Solo el host real (RLS
+            // ya lo exige, esto es solo la puerta de entrada).
+            Text(
+                "👁 $viewerCount",
+                color = Color.White,
+                style = MaterialTheme.typography.labelLarge,
+                modifier = if (isHost) Modifier.clickable { showViewers = true } else Modifier
+            )
             Text(stream.title ?: "Directo", color = Color.White, style = MaterialTheme.typography.labelLarge)
         }
 
@@ -250,6 +269,34 @@ fun LiveStreamRoomScreen(
                 onClose()
             }) {
                 Text(if (isHost) "Terminar directo" else "Salir")
+            }
+        }
+    }
+
+    // Lista real de quién está viendo AHORA MISMO, comparado con
+    // Instagram/TikTok Live -- ver LiveStreamsViewModel.fetchViewers().
+    if (showViewers) {
+        androidx.compose.material3.ModalBottomSheet(onDismissRequest = { showViewers = false }) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Espectadores", style = MaterialTheme.typography.titleMedium)
+                if (viewers.isEmpty()) {
+                    Text(
+                        "Nadie está viendo el directo ahora mismo.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+                }
+                LazyColumn(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                    items(viewers, key = { it.viewerId }) { entry ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            com.social.app.avatar.AvatarView(config = entry.avatarConfig ?: emptyMap(), size = 40.dp)
+                            Text(entry.displayName ?: "…", modifier = Modifier.padding(start = 10.dp))
+                        }
+                    }
+                }
             }
         }
     }
