@@ -99,6 +99,11 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
     // StoriesViewModel.createStory(), 0147_story_countdown.sql.
     var pendingCountdownLabel by remember { mutableStateOf("") }
     var pendingCountdownTargetAt by remember { mutableStateOf<Long?>(null) }
+    // Sticker de emoji deslizante real ("slider"), comparado con
+    // Instagram (desde 2018)/Facebook Stories -- opcional. Ver
+    // StoriesViewModel.createStory(), 0148_story_slider.sql.
+    var pendingSliderLabel by remember { mutableStateOf("") }
+    var pendingSliderEmoji by remember { mutableStateOf("😍") }
 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) pendingUploadUri = uri
@@ -219,6 +224,27 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
                             Text(pendingCountdownTargetAt?.let { "Fecha elegida ✓" } ?: "Elegir fecha y hora")
                         }
                     }
+                    // Sticker de emoji deslizante real ("slider"),
+                    // comparado con Instagram (desde 2018)/Facebook
+                    // Stories -- opcional.
+                    androidx.compose.material3.OutlinedTextField(
+                        value = pendingSliderLabel,
+                        onValueChange = { pendingSliderLabel = it },
+                        label = { Text("Añadir slider (opcional, ej. \"¿Qué tal esto?\")") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                    )
+                    if (pendingSliderLabel.isNotBlank()) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 8.dp)) {
+                            listOf("😍", "🔥", "😂", "👍").forEach { emoji ->
+                                androidx.compose.material3.FilterChip(
+                                    selected = pendingSliderEmoji == emoji,
+                                    onClick = { pendingSliderEmoji = emoji },
+                                    label = { Text(emoji) }
+                                )
+                            }
+                        }
+                    }
                     // Adhesivo de pregunta real en una historia
                     // ("Pregúntame algo"), comparado con Instagram --
                     // opcional, ver StoriesViewModel.createStory().
@@ -268,6 +294,8 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
                     val linkUrl = pendingLinkUrl
                     val countdownLabel = pendingCountdownLabel
                     val countdownTargetAt = pendingCountdownTargetAt?.let { java.time.Instant.ofEpochMilli(it).toString() }
+                    val sliderLabel = pendingSliderLabel
+                    val sliderEmoji = pendingSliderEmoji
                     pendingUploadUri = null
                     pendingQuestion = ""
                     pendingPollQuestion = ""
@@ -277,7 +305,9 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
                     pendingLinkUrl = ""
                     pendingCountdownLabel = ""
                     pendingCountdownTargetAt = null
-                    viewModel.createStory(context, uri, visibility = "close_friends", caption = caption, linkUrl = linkUrl, countdownLabel = countdownLabel, countdownTargetAt = countdownTargetAt, questionPrompt = question, pollQuestion = pollQuestion, pollOptions = pollOptions) {}
+                    pendingSliderLabel = ""
+                    pendingSliderEmoji = "😍"
+                    viewModel.createStory(context, uri, visibility = "close_friends", caption = caption, linkUrl = linkUrl, countdownLabel = countdownLabel, countdownTargetAt = countdownTargetAt, sliderEmoji = sliderEmoji, sliderLabel = sliderLabel, questionPrompt = question, pollQuestion = pollQuestion, pollOptions = pollOptions) {}
                 }) { Text("Mejores amigos") }
             },
             dismissButton = {
@@ -289,6 +319,8 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
                     val linkUrl = pendingLinkUrl
                     val countdownLabel = pendingCountdownLabel
                     val countdownTargetAt = pendingCountdownTargetAt?.let { java.time.Instant.ofEpochMilli(it).toString() }
+                    val sliderLabel = pendingSliderLabel
+                    val sliderEmoji = pendingSliderEmoji
                     pendingUploadUri = null
                     pendingQuestion = ""
                     pendingPollQuestion = ""
@@ -298,7 +330,9 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
                     pendingLinkUrl = ""
                     pendingCountdownLabel = ""
                     pendingCountdownTargetAt = null
-                    viewModel.createStory(context, uri, visibility = "everyone", caption = caption, linkUrl = linkUrl, countdownLabel = countdownLabel, countdownTargetAt = countdownTargetAt, questionPrompt = question, pollQuestion = pollQuestion, pollOptions = pollOptions) {}
+                    pendingSliderLabel = ""
+                    pendingSliderEmoji = "😍"
+                    viewModel.createStory(context, uri, visibility = "everyone", caption = caption, linkUrl = linkUrl, countdownLabel = countdownLabel, countdownTargetAt = countdownTargetAt, sliderEmoji = sliderEmoji, sliderLabel = sliderLabel, questionPrompt = question, pollQuestion = pollQuestion, pollOptions = pollOptions) {}
                 }) { Text("Todos") }
             }
         )
@@ -487,6 +521,49 @@ private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewMod
                                 .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.4f), androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
                                 .clickable(enabled = story.id !in remindedIds) { viewModel.setCountdownReminder(story) }
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                    }
+                }
+            }
+            // Sticker de emoji deslizante real ("slider"), comparado con
+            // Instagram (desde 2018)/Facebook Stories -- ver
+            // StoriesViewModel.respondToSlider(), 0148_story_slider.sql.
+            story.sliderLabel?.let { label ->
+                var sliderAverage by remember(story.id) { mutableStateOf(story.sliderAverage) }
+                var sliderCount by remember(story.id) { mutableStateOf(story.sliderCount) }
+                var myValue by remember(story.id) { mutableStateOf(50f) }
+                var responded by remember(story.id) { mutableStateOf(false) }
+                val sliderScope = rememberCoroutineScope()
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 32.dp)
+                        .padding(horizontal = 32.dp)
+                ) {
+                    Text(label, color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.titleMedium)
+                    Text(story.sliderEmoji, style = MaterialTheme.typography.displaySmall)
+                    androidx.compose.material3.Slider(
+                        value = myValue,
+                        onValueChange = { myValue = it },
+                        onValueChangeFinished = {
+                            sliderScope.launch {
+                                val result = viewModel.respondToSlider(story, myValue.toInt())
+                                if (result != null) {
+                                    sliderAverage = result.first
+                                    sliderCount = result.second
+                                }
+                                responded = true
+                            }
+                        },
+                        valueRange = 0f..100f,
+                        enabled = story.authorId != myId
+                    )
+                    if (responded && sliderAverage != null) {
+                        Text(
+                            "Promedio real: ${sliderAverage!!.toInt()} (${sliderCount} respuestas)",
+                            color = androidx.compose.ui.graphics.Color.White,
+                            style = MaterialTheme.typography.labelSmall
                         )
                     }
                 }

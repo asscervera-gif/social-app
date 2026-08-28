@@ -46,6 +46,11 @@ struct StoriesBar: View {
     @State private var pendingCountdownLabel = ""
     @State private var pendingCountdownTargetAt: Date = Date().addingTimeInterval(3600)
     @State private var pendingCountdownEnabled = false
+    // Sticker de emoji deslizante real ("slider"), comparado con
+    // Instagram (desde 2018)/Facebook Stories -- opcional. Ver
+    // StoriesViewModel.createStory(), 0148_story_slider.sql.
+    @State private var pendingSliderLabel = ""
+    @State private var pendingSliderEmoji = "😍"
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -150,6 +155,20 @@ struct StoriesBar: View {
                             DatePicker("Fecha", selection: $pendingCountdownTargetAt, in: Date()..., displayedComponents: [.date, .hourAndMinute])
                         }
                     }
+                    // Sticker de emoji deslizante real ("slider"),
+                    // comparado con Instagram (desde 2018)/Facebook
+                    // Stories -- opcional.
+                    Section {
+                        TextField("Añadir slider (opcional, ej. \"¿Qué tal esto?\")", text: $pendingSliderLabel)
+                        if !pendingSliderLabel.isEmpty {
+                            Picker("Emoji", selection: $pendingSliderEmoji) {
+                                ForEach(["😍", "🔥", "😂", "👍"], id: \.self) { emoji in
+                                    Text(emoji).tag(emoji)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                        }
+                    }
                     // Adhesivo de pregunta real en una historia
                     // ("Pregúntame algo"), comparado con Instagram --
                     // opcional.
@@ -174,6 +193,8 @@ struct StoriesBar: View {
                                 let linkURL = pendingLinkURL
                                 let countdownLabel = pendingCountdownEnabled ? pendingCountdownLabel : nil
                                 let countdownTargetAt = pendingCountdownEnabled ? pendingCountdownTargetAt : nil
+                                let sliderLabel = pendingSliderLabel
+                                let sliderEmoji = pendingSliderEmoji
                                 pendingImageData = nil
                                 pendingQuestion = ""
                                 pendingPollQuestion = ""
@@ -183,7 +204,9 @@ struct StoriesBar: View {
                                 pendingLinkURL = ""
                                 pendingCountdownLabel = ""
                                 pendingCountdownEnabled = false
-                                Task { await viewModel.createStory(imageData: data, visibility: "everyone", caption: caption, linkURL: linkURL, countdownLabel: countdownLabel, countdownTargetAt: countdownTargetAt, questionPrompt: question, pollQuestion: pollQuestion, pollOptions: pollOptions) }
+                                pendingSliderLabel = ""
+                                pendingSliderEmoji = "😍"
+                                Task { await viewModel.createStory(imageData: data, visibility: "everyone", caption: caption, linkURL: linkURL, countdownLabel: countdownLabel, countdownTargetAt: countdownTargetAt, sliderEmoji: sliderEmoji, sliderLabel: sliderLabel, questionPrompt: question, pollQuestion: pollQuestion, pollOptions: pollOptions) }
                             }
                         }
                         Button("Mejores amigos") {
@@ -195,6 +218,8 @@ struct StoriesBar: View {
                                 let linkURL = pendingLinkURL
                                 let countdownLabel = pendingCountdownEnabled ? pendingCountdownLabel : nil
                                 let countdownTargetAt = pendingCountdownEnabled ? pendingCountdownTargetAt : nil
+                                let sliderLabel = pendingSliderLabel
+                                let sliderEmoji = pendingSliderEmoji
                                 pendingImageData = nil
                                 pendingQuestion = ""
                                 pendingPollQuestion = ""
@@ -204,7 +229,9 @@ struct StoriesBar: View {
                                 pendingLinkURL = ""
                                 pendingCountdownLabel = ""
                                 pendingCountdownEnabled = false
-                                Task { await viewModel.createStory(imageData: data, visibility: "close_friends", caption: caption, linkURL: linkURL, countdownLabel: countdownLabel, countdownTargetAt: countdownTargetAt, questionPrompt: question, pollQuestion: pollQuestion, pollOptions: pollOptions) }
+                                pendingSliderLabel = ""
+                                pendingSliderEmoji = "😍"
+                                Task { await viewModel.createStory(imageData: data, visibility: "close_friends", caption: caption, linkURL: linkURL, countdownLabel: countdownLabel, countdownTargetAt: countdownTargetAt, sliderEmoji: sliderEmoji, sliderLabel: sliderLabel, questionPrompt: question, pollQuestion: pollQuestion, pollOptions: pollOptions) }
                             }
                         }
                     }
@@ -254,6 +281,13 @@ private struct StoryViewer: View {
     @State private var questionAnswerSent = false
     @State private var showQuestionResponses = false
     @State private var questionResponses: [StoriesViewModel.StoryQuestionResponse] = []
+    // Sticker de emoji deslizante real ("slider"), comparado con
+    // Instagram (desde 2018)/Facebook Stories -- ver
+    // StoriesViewModel.respondToSlider(), 0148_story_slider.sql.
+    @State private var sliderValue: Double = 50
+    @State private var sliderResponded = false
+    @State private var sliderResultAverage: Double?
+    @State private var sliderResultCount: Int = 0
     // Destacados reales de historias en el perfil, comparado con
     // Instagram -- ver StoriesViewModel.createHighlight(),
     // 0101_story_highlights.sql.
@@ -348,6 +382,40 @@ private struct StoryViewer: View {
                             }
                         }
                         .padding(.bottom, story.link_url != nil ? 96 : 32)
+                    }
+                }
+
+                // Sticker de emoji deslizante real ("slider"), comparado
+                // con Instagram (desde 2018)/Facebook Stories -- ver
+                // StoriesViewModel.respondToSlider(),
+                // 0148_story_slider.sql.
+                if let label = story.slider_label {
+                    VStack {
+                        Spacer()
+                        VStack(spacing: 6) {
+                            Text(label).font(.headline).foregroundStyle(.white)
+                            Text(story.slider_emoji).font(.largeTitle)
+                            Slider(value: $sliderValue, in: 0...100, step: 1) { editing in
+                                if !editing && story.author_id != myID {
+                                    Task {
+                                        if let result = await viewModel.respondToSlider(story, value: Int(sliderValue)) {
+                                            sliderResultAverage = result.average
+                                            sliderResultCount = result.count
+                                        }
+                                        sliderResponded = true
+                                    }
+                                }
+                            }
+                            .disabled(story.author_id == myID)
+                            .tint(.white)
+                            if sliderResponded, let average = sliderResultAverage {
+                                Text("Promedio real: \(Int(average)) (\(sliderResultCount) respuestas)")
+                                    .font(.caption)
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                        .padding(.horizontal, 32)
+                        .padding(.bottom, 32)
                     }
                 }
 
@@ -618,6 +686,10 @@ private struct StoryViewer: View {
             showQuestionResponses = false
             questionAnswerSent = false
             questionAnswerText = ""
+            sliderValue = 50
+            sliderResponded = false
+            sliderResultAverage = nil
+            sliderResultCount = 0
             guard let story = group.stories[safe: index] else { return }
             if story.author_id == myID {
                 viewers = await viewModel.loadViewers(storyID: story.id)

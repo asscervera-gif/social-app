@@ -32,6 +32,13 @@ struct StoryRow: Decodable, Identifiable {
     // Snapchat -- ver 0147_story_countdown.sql.
     var countdown_label: String? = nil
     var countdown_target_at: String? = nil
+    // Sticker de emoji deslizante real ("slider"), comparado con
+    // Instagram (desde 2018)/Facebook Stories -- ver
+    // 0148_story_slider.sql.
+    var slider_emoji: String = "😍"
+    var slider_label: String? = nil
+    var slider_average: Double? = nil
+    var slider_count: Int = 0
 }
 
 // Adhesivo de pregunta real en una historia ("Pregúntame algo"),
@@ -346,6 +353,42 @@ final class StoriesViewModel: ObservableObject {
         }
     }
 
+    /// Responder real al sticker de emoji deslizante ("slider"),
+    /// comparado con Instagram (desde 2018)/Facebook Stories -- ver
+    /// 0148_story_slider.sql. Upsert real (cambiar de valor es un
+    /// UPDATE de la fila propia, no un segundo registro), devuelve el
+    /// promedio agregado real ya actualizado por el trigger del
+    /// servidor. Equivalente de StoriesViewModel.kt.respondToSlider().
+    func respondToSlider(_ story: StoryRow, value: Int) async -> (average: Double, count: Int)? {
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return nil }
+        struct NewSliderResponse: Encodable {
+            let story_id: UUID
+            let user_id: UUID
+            let value: Int
+        }
+        struct SliderAggregateRow: Decodable {
+            let slider_average: Double?
+            let slider_count: Int
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("story_slider_responses")
+                .upsert(NewSliderResponse(story_id: story.id, user_id: userID, value: value), onConflict: "story_id,user_id")
+                .execute()
+            let row: SliderAggregateRow = try await SupabaseManager.shared.client
+                .from("stories")
+                .select("slider_average,slider_count")
+                .eq("id", value: story.id)
+                .single()
+                .execute()
+                .value
+            guard let average = row.slider_average else { return nil }
+            return (average, row.slider_count)
+        } catch {
+            return nil
+        }
+    }
+
     struct StoryViewer: Identifiable {
         let id: UUID
         let displayName: String
@@ -388,7 +431,7 @@ final class StoriesViewModel: ObservableObject {
     /// independiente del adhesivo de pregunta ([questionPrompt]) --
     /// pueden coexistir en la misma historia. Equivalente de
     /// StoriesViewModel.kt.createStory().
-    func createStory(imageData: Data, visibility: String = "everyone", caption: String? = nil, linkURL: String? = nil, countdownLabel: String? = nil, countdownTargetAt: Date? = nil, questionPrompt: String? = nil, pollQuestion: String? = nil, pollOptions: [String] = []) async {
+    func createStory(imageData: Data, visibility: String = "everyone", caption: String? = nil, linkURL: String? = nil, countdownLabel: String? = nil, countdownTargetAt: Date? = nil, sliderEmoji: String? = nil, sliderLabel: String? = nil, questionPrompt: String? = nil, pollQuestion: String? = nil, pollOptions: [String] = []) async {
         guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
         isUploading = true
         defer { isUploading = false }
@@ -410,6 +453,12 @@ final class StoriesViewModel: ObservableObject {
                 // (Countdown)/Snapchat -- ver 0147_story_countdown.sql.
                 let countdown_label: String?
                 let countdown_target_at: String?
+                // Sticker de emoji deslizante real ("slider"), comparado
+                // con Instagram (desde 2018)/Facebook Stories -- ver
+                // 0148_story_slider.sql. `slider_emoji` es NOT NULL en
+                // el esquema real (default '😍'), nunca se manda nil.
+                let slider_emoji: String
+                let slider_label: String?
             }
             // Mismo límite real que posts_caption_length
             // (0023_text_length_limits.sql).
@@ -426,9 +475,16 @@ final class StoriesViewModel: ObservableObject {
             let trimmedCountdownLabel = countdownLabel?.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60)
             let finalCountdownLabel = (countdownTargetAt != nil && !(trimmedCountdownLabel?.isEmpty ?? true)) ? String(trimmedCountdownLabel!) : nil
             let finalCountdownTargetAt = (finalCountdownLabel != nil) ? countdownTargetAt.map { ISO8601DateFormatter().string(from: $0) } : nil
+            // Sticker de emoji deslizante real -- solo se manda si hay
+            // etiqueta real (mismo límite real del CHECK de
+            // stories.slider_label, 60 caracteres); sin etiqueta, la
+            // historia se publica sin sticker de slider, con normalidad.
+            let trimmedSliderLabel = sliderLabel?.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60)
+            let finalSliderLabel = (trimmedSliderLabel?.isEmpty ?? true) ? nil : String(trimmedSliderLabel!)
+            let finalSliderEmoji = (finalSliderLabel != nil) ? (sliderEmoji ?? "😍") : "😍"
             let insertedStory: StoryRow = try await SupabaseManager.shared.client
                 .from("stories")
-                .insert(NewStory(author_id: userID, media_url: url, visibility: visibility, caption: finalCaption, link_url: finalLink, countdown_label: finalCountdownLabel, countdown_target_at: finalCountdownTargetAt))
+                .insert(NewStory(author_id: userID, media_url: url, visibility: visibility, caption: finalCaption, link_url: finalLink, countdown_label: finalCountdownLabel, countdown_target_at: finalCountdownTargetAt, slider_emoji: finalSliderEmoji, slider_label: finalSliderLabel))
                 .select()
                 .single()
                 .execute()

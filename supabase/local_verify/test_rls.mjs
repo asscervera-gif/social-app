@@ -4138,6 +4138,44 @@ async function main() {
   const u3Notif = (await db.query(`select payload from notifications where recipient_id = $1 and kind = 'countdown_due'`, [u3])).rows;
   check('notify_due_story_countdowns: u3 NO recibe ningún aviso ajeno (no tiene recordatorios propios)', u3Notif.length === 0);
 
+  // --- stories.slider_emoji/slider_average + story_slider_responses
+  // (0148_story_slider.sql): sticker de emoji deslizante real, comparado
+  // con Instagram (desde 2018)/Facebook Stories. Mismo patrón real que
+  // story_polls (0100): reparto público, respuesta individual privada. ---
+  await asUser(u1);
+  const sliderStoryId = (await db.query(
+    `insert into stories (author_id, media_url, slider_emoji, slider_label) values ($1, 'https://cdn.example/slider.jpg', '🔥', '¿Qué tal esta ronda?') returning id`,
+    [u1]
+  )).rows[0].id;
+
+  await asUser(storyResponder);
+  await expectFail('story_slider_responses_insert_own: un value real fuera de rango (150) NO se puede guardar (constraint real)', async () => {
+    await db.query(`insert into story_slider_responses (story_id, user_id, value) values ($1, $2, 150)`, [sliderStoryId, storyResponder]);
+  });
+  await expectOk('story_slider_responses_insert_own: storyResponder SÍ puede responder de verdad al slider', async () => {
+    await db.query(`insert into story_slider_responses (story_id, user_id, value) values ($1, $2, 80)`, [sliderStoryId, storyResponder]);
+  });
+
+  await asUser(storyOtherViewer);
+  await expectOk('story_slider_responses_insert_own: storyOtherViewer SÍ puede responder de verdad al slider', async () => {
+    await db.query(`insert into story_slider_responses (story_id, user_id, value) values ($1, $2, 40)`, [sliderStoryId, storyOtherViewer]);
+  });
+  const avgAsOtherViewer = (await db.query(`select slider_average, slider_count from stories where id = $1`, [sliderStoryId])).rows[0];
+  check('sync_story_slider_average: cualquier espectador real (storyOtherViewer) SÍ ve el promedio agregado real (60), sin ver la respuesta de storyResponder', Number(avgAsOtherViewer.slider_average) === 60 && avgAsOtherViewer.slider_count === 2);
+  const otherViewerSeesResponderResponse = (await db.query(`select id from story_slider_responses where story_id = $1 and user_id = $2`, [sliderStoryId, storyResponder])).rows;
+  check('story_slider_responses_select: storyOtherViewer NO ve la respuesta individual real de storyResponder', otherViewerSeesResponderResponse.length === 0);
+
+  await asUser(storyResponder);
+  await expectOk('story_slider_responses_update_own: storyResponder SÍ puede cambiar de valor real (20 en vez de 80)', async () => {
+    await db.query(`update story_slider_responses set value = 20 where story_id = $1 and user_id = $2`, [sliderStoryId, storyResponder]);
+  });
+  const avgAfterChange = (await db.query(`select slider_average from stories where id = $1`, [sliderStoryId])).rows[0];
+  check('sync_story_slider_average: tras cambiar de valor real, el promedio agregado ya refleja (20+40)/2=30', Number(avgAfterChange.slider_average) === 30);
+
+  await asUser(u1);
+  const responsesAsAuthor = (await db.query(`select user_id, value from story_slider_responses where story_id = $1 order by user_id`, [sliderStoryId])).rows;
+  check('story_slider_responses_select: el autor real de la historia (u1) SÍ ve TODAS las respuestas individuales, con quién las mandó', responsesAsAuthor.length === 2);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

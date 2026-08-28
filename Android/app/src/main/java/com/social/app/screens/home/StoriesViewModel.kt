@@ -38,7 +38,14 @@ data class StoryRow(
     // Sticker de cuenta atrás real, comparado con Instagram (Countdown)/
     // Snapchat -- ver 0147_story_countdown.sql.
     @SerialName("countdown_label") val countdownLabel: String? = null,
-    @SerialName("countdown_target_at") val countdownTargetAt: String? = null
+    @SerialName("countdown_target_at") val countdownTargetAt: String? = null,
+    // Sticker de emoji deslizante real ("slider"), comparado con
+    // Instagram (desde 2018)/Facebook Stories -- ver
+    // 0148_story_slider.sql.
+    @SerialName("slider_emoji") val sliderEmoji: String = "😍",
+    @SerialName("slider_label") val sliderLabel: String? = null,
+    @SerialName("slider_average") val sliderAverage: Double? = null,
+    @SerialName("slider_count") val sliderCount: Int = 0
 )
 
 // Adhesivo de pregunta real en una historia ("Pregúntame algo"),
@@ -304,7 +311,13 @@ class StoriesViewModel : ViewModel() {
         // Sticker de cuenta atrás real, comparado con Instagram
         // (Countdown)/Snapchat -- ver 0147_story_countdown.sql.
         @SerialName("countdown_label") val countdownLabel: String? = null,
-        @SerialName("countdown_target_at") val countdownTargetAt: String? = null
+        @SerialName("countdown_target_at") val countdownTargetAt: String? = null,
+        // Sticker de emoji deslizante real ("slider"), comparado con
+        // Instagram (desde 2018)/Facebook Stories -- ver
+        // 0148_story_slider.sql. `slider_emoji` es NOT NULL en el
+        // esquema real (default '😍'), nunca se manda null.
+        @SerialName("slider_emoji") val sliderEmoji: String = "😍",
+        @SerialName("slider_label") val sliderLabel: String? = null
     )
 
     @Serializable
@@ -382,6 +395,39 @@ class StoriesViewModel : ViewModel() {
     }
 
     @Serializable
+    private data class NewSliderResponse(
+        @SerialName("story_id") val storyId: String,
+        @SerialName("user_id") val userId: String,
+        val value: Int
+    )
+
+    @Serializable
+    private data class SliderAggregateRow(
+        @SerialName("slider_average") val sliderAverage: Double?,
+        @SerialName("slider_count") val sliderCount: Int
+    )
+
+    /** Responder real al sticker de emoji deslizante ("slider"),
+     * comparado con Instagram (desde 2018)/Facebook Stories -- ver
+     * 0148_story_slider.sql. Upsert real (mismo criterio que la
+     * encuesta: cambiar de valor es un UPDATE de la fila propia, no un
+     * segundo registro), devuelve el promedio agregado real ya
+     * actualizado por el trigger del servidor para pintarlo al momento. */
+    suspend fun respondToSlider(story: StoryRow, value: Int): Pair<Double, Int>? {
+        val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return null
+        return try {
+            SupabaseManager.client.from("story_slider_responses")
+                .upsert(NewSliderResponse(story.id, userId, value), onConflict = "story_id,user_id")
+            val row = SupabaseManager.client.from("stories")
+                .select(columns = Columns.raw("slider_average,slider_count")) { filter { eq("id", story.id) } }
+                .decodeSingle<SliderAggregateRow>()
+            row.sliderAverage?.let { it to row.sliderCount }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    @Serializable
     data class StoryViewer(val id: String, val displayName: String)
 
     @Serializable
@@ -435,7 +481,7 @@ class StoriesViewModel : ViewModel() {
      * story_polls.options) para llegar a insertarse -- si no las
      * cumple, la encuesta simplemente no se crea (la historia en sí
      * sigue publicándose con normalidad). */
-    fun createStory(context: Context, uri: Uri, visibility: String = "everyone", caption: String? = null, linkUrl: String? = null, countdownLabel: String? = null, countdownTargetAt: String? = null, questionPrompt: String? = null, pollQuestion: String? = null, pollOptions: List<String> = emptyList(), onDone: () -> Unit) {
+    fun createStory(context: Context, uri: Uri, visibility: String = "everyone", caption: String? = null, linkUrl: String? = null, countdownLabel: String? = null, countdownTargetAt: String? = null, sliderEmoji: String? = null, sliderLabel: String? = null, questionPrompt: String? = null, pollQuestion: String? = null, pollOptions: List<String> = emptyList(), onDone: () -> Unit) {
         viewModelScope.launch {
             val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
             _isUploading.value = true
@@ -461,8 +507,16 @@ class StoriesViewModel : ViewModel() {
                 val trimmedCountdownLabel = countdownLabel?.trim()?.take(60)?.ifEmpty { null }
                 val finalCountdownLabel = if (countdownTargetAt != null) trimmedCountdownLabel else null
                 val finalCountdownTargetAt = if (trimmedCountdownLabel != null) countdownTargetAt else null
+                // Sticker de emoji deslizante real ("slider"), comparado
+                // con Instagram (desde 2018)/Facebook Stories -- solo se
+                // manda si hay etiqueta real (mismo límite real del
+                // CHECK de stories.slider_label, 0148_story_slider.sql:
+                // 60 caracteres); sin etiqueta, la historia se publica
+                // sin sticker de slider, con normalidad.
+                val trimmedSliderLabel = sliderLabel?.trim()?.take(60)?.ifEmpty { null }
+                val finalSliderEmoji = if (trimmedSliderLabel != null) (sliderEmoji ?: "😍") else "😍"
                 val insertedStory = SupabaseManager.client.from("stories")
-                    .insert(NewStory(userId, url, visibility, trimmedCaption, trimmedLink, finalCountdownLabel, finalCountdownTargetAt)) { select() }
+                    .insert(NewStory(userId, url, visibility, trimmedCaption, trimmedLink, finalCountdownLabel, finalCountdownTargetAt, finalSliderEmoji, trimmedSliderLabel)) { select() }
                     .decodeSingle<StoryRow>()
                 // Mismo límite real del CHECK de story_questions.prompt
                 // (0099_story_questions.sql): 200 caracteres.
