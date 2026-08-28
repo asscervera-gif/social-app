@@ -184,6 +184,9 @@ fun NotificationEntry.icon(): String = when (kind) {
     // Publicación colaborativa real ("Collab"), comparado con Instagram
     // -- ver 0142_post_collaborators.sql.
     "post_collab_invite" -> "🤝"
+    // Sticker de cuenta atrás real, comparado con Instagram (Countdown)/
+    // Snapchat -- ver 0147_story_countdown.sql.
+    "countdown_due" -> "⏰"
     else -> "🔔"
 }
 
@@ -206,5 +209,6 @@ fun NotificationEntry.title(): String = when (kind) {
     "repost" -> "Reposteó tu publicación"
     "live_start" -> "Está en directo ahora"
     "post_collab_invite" -> "Te invitó a colaborar en una publicación"
+    "countdown_due" -> "¡Cuenta atrás terminada!"
     else -> "Notificación"
 }

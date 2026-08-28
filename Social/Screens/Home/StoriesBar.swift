@@ -40,6 +40,12 @@ struct StoriesBar: View {
     // Stories/TikTok/Snapchat -- opcional. Ver
     // StoriesViewModel.createStory(), 0146_story_link.sql.
     @State private var pendingLinkURL = ""
+    // Sticker de cuenta atrás real, comparado con Instagram (Countdown)/
+    // Snapchat -- opcional. Ver StoriesViewModel.createStory(),
+    // 0147_story_countdown.sql.
+    @State private var pendingCountdownLabel = ""
+    @State private var pendingCountdownTargetAt: Date = Date().addingTimeInterval(3600)
+    @State private var pendingCountdownEnabled = false
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -135,6 +141,15 @@ struct StoriesBar: View {
                             .keyboardType(.URL)
                             .autocapitalization(.none)
                     }
+                    // Sticker de cuenta atrás real, comparado con
+                    // Instagram (Countdown)/Snapchat -- opcional.
+                    Section {
+                        Toggle("Añadir cuenta atrás", isOn: $pendingCountdownEnabled)
+                        if pendingCountdownEnabled {
+                            TextField("Etiqueta (ej. \"Estreno\")", text: $pendingCountdownLabel)
+                            DatePicker("Fecha", selection: $pendingCountdownTargetAt, in: Date()..., displayedComponents: [.date, .hourAndMinute])
+                        }
+                    }
                     // Adhesivo de pregunta real en una historia
                     // ("Pregúntame algo"), comparado con Instagram --
                     // opcional.
@@ -157,6 +172,8 @@ struct StoriesBar: View {
                                 let pollOptions = [pendingPollOptionA, pendingPollOptionB]
                                 let caption = pendingCaption
                                 let linkURL = pendingLinkURL
+                                let countdownLabel = pendingCountdownEnabled ? pendingCountdownLabel : nil
+                                let countdownTargetAt = pendingCountdownEnabled ? pendingCountdownTargetAt : nil
                                 pendingImageData = nil
                                 pendingQuestion = ""
                                 pendingPollQuestion = ""
@@ -164,7 +181,9 @@ struct StoriesBar: View {
                                 pendingPollOptionB = ""
                                 pendingCaption = ""
                                 pendingLinkURL = ""
-                                Task { await viewModel.createStory(imageData: data, visibility: "everyone", caption: caption, linkURL: linkURL, questionPrompt: question, pollQuestion: pollQuestion, pollOptions: pollOptions) }
+                                pendingCountdownLabel = ""
+                                pendingCountdownEnabled = false
+                                Task { await viewModel.createStory(imageData: data, visibility: "everyone", caption: caption, linkURL: linkURL, countdownLabel: countdownLabel, countdownTargetAt: countdownTargetAt, questionPrompt: question, pollQuestion: pollQuestion, pollOptions: pollOptions) }
                             }
                         }
                         Button("Mejores amigos") {
@@ -174,6 +193,8 @@ struct StoriesBar: View {
                                 let pollOptions = [pendingPollOptionA, pendingPollOptionB]
                                 let caption = pendingCaption
                                 let linkURL = pendingLinkURL
+                                let countdownLabel = pendingCountdownEnabled ? pendingCountdownLabel : nil
+                                let countdownTargetAt = pendingCountdownEnabled ? pendingCountdownTargetAt : nil
                                 pendingImageData = nil
                                 pendingQuestion = ""
                                 pendingPollQuestion = ""
@@ -181,7 +202,9 @@ struct StoriesBar: View {
                                 pendingPollOptionB = ""
                                 pendingCaption = ""
                                 pendingLinkURL = ""
-                                Task { await viewModel.createStory(imageData: data, visibility: "close_friends", caption: caption, linkURL: linkURL, questionPrompt: question, pollQuestion: pollQuestion, pollOptions: pollOptions) }
+                                pendingCountdownLabel = ""
+                                pendingCountdownEnabled = false
+                                Task { await viewModel.createStory(imageData: data, visibility: "close_friends", caption: caption, linkURL: linkURL, countdownLabel: countdownLabel, countdownTargetAt: countdownTargetAt, questionPrompt: question, pollQuestion: pollQuestion, pollOptions: pollOptions) }
                             }
                         }
                     }
@@ -293,6 +316,38 @@ private struct StoryViewer: View {
                                 .clipShape(Capsule())
                         }
                         .padding(.bottom, 32)
+                    }
+                }
+
+                // Sticker de cuenta atrás real, comparado con Instagram
+                // (Countdown)/Snapchat -- ver
+                // StoriesViewModel.setCountdownReminder(),
+                // 0147_story_countdown.sql.
+                if let targetAt = story.countdown_target_at {
+                    VStack {
+                        Spacer()
+                        VStack(spacing: 4) {
+                            Text(story.countdown_label ?? "Cuenta atrás")
+                                .font(.headline)
+                                .foregroundStyle(.white)
+                            Text(targetAt)
+                                .font(.caption)
+                                .foregroundStyle(.white)
+                            if story.author_id != myID {
+                                let alreadyReminded = viewModel.remindedStoryIDs.contains(story.id)
+                                Button(alreadyReminded ? "🔔 Te avisaremos" : "🔔 Recordarme") {
+                                    Task { await viewModel.setCountdownReminder(story) }
+                                }
+                                .disabled(alreadyReminded)
+                                .font(.subheadline.bold())
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(Color.black.opacity(0.4))
+                                .clipShape(Capsule())
+                            }
+                        }
+                        .padding(.bottom, story.link_url != nil ? 96 : 32)
                     }
                 }
 

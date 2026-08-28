@@ -208,6 +208,9 @@ extension AvisosViewModel.NotificationEntry {
         // Publicación colaborativa real ("Collab"), comparado con
         // Instagram -- ver 0142_post_collaborators.sql.
         case "post_collab_invite": return "person.2.badge.plus"
+        // Sticker de cuenta atrás real, comparado con Instagram
+        // (Countdown)/Snapchat -- ver 0147_story_countdown.sql.
+        case "countdown_due": return "timer"
         default: return "bell"
         }
     }
@@ -232,6 +235,7 @@ extension AvisosViewModel.NotificationEntry {
         case "repost": return "Reposteó tu publicación"
         case "live_start": return "Está en directo ahora"
         case "post_collab_invite": return "Te invitó a colaborar en una publicación"
+        case "countdown_due": return "¡Cuenta atrás terminada!"
         default: return "Notificación"
         }
     }

@@ -138,6 +138,13 @@ class HomeViewModel : ViewModel() {
                 try {
                     SupabaseManager.client.postgrest.rpc("publish_due_scheduled_posts")
                 } catch (e: Exception) { /* no crítico */ }
+                // Recordatorios reales de cuenta atrás de Historias ya
+                // vencidos, comparado con Instagram (Countdown)/Snapchat
+                // -- mismo patrón "al abrir Home" que arriba (sin
+                // pg_cron, ver 0147_story_countdown.sql).
+                try {
+                    SupabaseManager.client.postgrest.rpc("notify_due_story_countdowns")
+                } catch (e: Exception) { /* no crítico */ }
                 // Hallazgo real: el feed principal nunca filtraba
                 // publicaciones de gente que has bloqueado — a diferencia
                 // de Match/Find/Search (sí lo hacen), bloquear a alguien

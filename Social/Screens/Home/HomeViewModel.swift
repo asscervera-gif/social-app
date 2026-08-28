@@ -79,6 +79,12 @@ final class HomeViewModel: ObservableObject {
             // feed sigue cargando igual. Equivalente de HomeViewModel.kt.
             try? await client.rpc("publish_due_scheduled_posts").execute()
 
+            // Recordatorios reales de cuenta atrás de Historias ya
+            // vencidos, comparado con Instagram (Countdown)/Snapchat --
+            // mismo patrón "al abrir Home" que arriba (sin pg_cron, ver
+            // 0147_story_countdown.sql). Equivalente de HomeViewModel.kt.
+            try? await client.rpc("notify_due_story_countdowns").execute()
+
             // Hallazgo real: el feed principal nunca filtraba
             // publicaciones de gente que has bloqueado — a diferencia de
             // Match/Find/Search (sí lo hacen), bloquear a alguien no le

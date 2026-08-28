@@ -28,6 +28,10 @@ struct StoryRow: Decodable, Identifiable {
     // Sticker de enlace real ("swipe up"), comparado con Instagram
     // Stories/TikTok/Snapchat -- ver 0146_story_link.sql.
     var link_url: String? = nil
+    // Sticker de cuenta atrás real, comparado con Instagram (Countdown)/
+    // Snapchat -- ver 0147_story_countdown.sql.
+    var countdown_label: String? = nil
+    var countdown_target_at: String? = nil
 }
 
 // Adhesivo de pregunta real en una historia ("Pregúntame algo"),
@@ -77,6 +81,9 @@ final class StoriesViewModel: ObservableObject {
     @Published var groups: [StoryGroup] = []
     @Published var errorMessage: String?
     @Published var isUploading = false
+    // "Recordarme" real de un sticker de cuenta atrás, comparado con
+    // Instagram (Countdown)/Snapchat -- ver 0147_story_countdown.sql.
+    @Published var remindedStoryIDs: Set<UUID> = []
     // Silenciar las historias de alguien sin dejar de seguirlo, comparado
     // con Instagram/Snapchat (0085_muted_story_authors.sql).
     @Published var mutedAuthorIDs: Set<UUID> = []
@@ -316,6 +323,29 @@ final class StoriesViewModel: ObservableObject {
             .execute()
     }
 
+    /// "Recordarme" real de un sticker de cuenta atrás, comparado con
+    /// Instagram (Countdown)/Snapchat -- ver 0147_story_countdown.sql.
+    /// Aviso de honestidad: SIN pg_cron, el aviso real solo se genera la
+    /// próxima vez que ESTE usuario abra la app tras vencer el plazo
+    /// (ver HomeViewModel.load()). Equivalente de
+    /// StoriesViewModel.kt.setCountdownReminder().
+    func setCountdownReminder(_ story: StoryRow) async {
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        struct NewCountdownReminder: Encodable {
+            let story_id: UUID
+            let user_id: UUID
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("story_countdown_reminders")
+                .insert(NewCountdownReminder(story_id: story.id, user_id: userID))
+                .execute()
+            remindedStoryIDs.insert(story.id)
+        } catch {
+            // Ya registrado (unique constraint) u otro fallo no crítico.
+        }
+    }
+
     struct StoryViewer: Identifiable {
         let id: UUID
         let displayName: String
@@ -358,7 +388,7 @@ final class StoriesViewModel: ObservableObject {
     /// independiente del adhesivo de pregunta ([questionPrompt]) --
     /// pueden coexistir en la misma historia. Equivalente de
     /// StoriesViewModel.kt.createStory().
-    func createStory(imageData: Data, visibility: String = "everyone", caption: String? = nil, linkURL: String? = nil, questionPrompt: String? = nil, pollQuestion: String? = nil, pollOptions: [String] = []) async {
+    func createStory(imageData: Data, visibility: String = "everyone", caption: String? = nil, linkURL: String? = nil, countdownLabel: String? = nil, countdownTargetAt: Date? = nil, questionPrompt: String? = nil, pollQuestion: String? = nil, pollOptions: [String] = []) async {
         guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
         isUploading = true
         defer { isUploading = false }
@@ -376,6 +406,10 @@ final class StoriesViewModel: ObservableObject {
                 // Instagram Stories/TikTok/Snapchat -- ver
                 // 0146_story_link.sql.
                 let link_url: String?
+                // Sticker de cuenta atrás real, comparado con Instagram
+                // (Countdown)/Snapchat -- ver 0147_story_countdown.sql.
+                let countdown_label: String?
+                let countdown_target_at: String?
             }
             // Mismo límite real que posts_caption_length
             // (0023_text_length_limits.sql).
@@ -386,9 +420,15 @@ final class StoriesViewModel: ObservableObject {
             // lo cumple simplemente se descarta.
             let trimmedLink = linkURL?.trimmingCharacters(in: .whitespacesAndNewlines).prefix(500)
             let finalLink = (trimmedLink != nil && (trimmedLink!.hasPrefix("http://") || trimmedLink!.hasPrefix("https://"))) ? String(trimmedLink!) : nil
+            // Sticker de cuenta atrás real -- solo se manda si hay AMBOS,
+            // etiqueta y fecha real (mismo límite real del CHECK de
+            // stories.countdown_label, 60 caracteres).
+            let trimmedCountdownLabel = countdownLabel?.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60)
+            let finalCountdownLabel = (countdownTargetAt != nil && !(trimmedCountdownLabel?.isEmpty ?? true)) ? String(trimmedCountdownLabel!) : nil
+            let finalCountdownTargetAt = (finalCountdownLabel != nil) ? countdownTargetAt.map { ISO8601DateFormatter().string(from: $0) } : nil
             let insertedStory: StoryRow = try await SupabaseManager.shared.client
                 .from("stories")
-                .insert(NewStory(author_id: userID, media_url: url, visibility: visibility, caption: finalCaption, link_url: finalLink))
+                .insert(NewStory(author_id: userID, media_url: url, visibility: visibility, caption: finalCaption, link_url: finalLink, countdown_label: finalCountdownLabel, countdown_target_at: finalCountdownTargetAt))
                 .select()
                 .single()
                 .execute()

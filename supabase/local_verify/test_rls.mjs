@@ -4101,6 +4101,43 @@ async function main() {
   const u1SeesClicks = (await db.query(`select id from story_link_clicks where story_id = $1`, [linkStoryId])).rows;
   check('story_link_clicks_select_own_story: u1 (autor real de la historia) SÍ ve el clic real registrado', u1SeesClicks.length === 1);
 
+  // --- stories.countdown_target_at + story_countdown_reminders +
+  // notify_due_story_countdowns() (0147_story_countdown.sql): sticker de
+  // cuenta atrás real, comparado con Instagram (Countdown)/Snapchat. SIN
+  // pg_cron -- mismo patrón real que publish_due_scheduled_posts (0141). ---
+  await asUser(u1);
+  const dueCountdownStoryId = (await db.query(
+    `insert into stories (author_id, media_url, countdown_label, countdown_target_at) values ($1, 'https://cdn.example/story.jpg', 'ya vencida', now() - interval '1 minute') returning id`,
+    [u1]
+  )).rows[0].id;
+  const futureCountdownStoryId = (await db.query(
+    `insert into stories (author_id, media_url, countdown_label, countdown_target_at) values ($1, 'https://cdn.example/story2.jpg', 'todavía no', now() + interval '1 day') returning id`,
+    [u1]
+  )).rows[0].id;
+
+  await asUser(u2);
+  await expectOk('story_countdown_reminders_own: u2 SÍ puede apuntarse a un recordatorio real', async () => {
+    await db.query(`insert into story_countdown_reminders (story_id, user_id) values ($1, $2)`, [dueCountdownStoryId, u2]);
+    await db.query(`insert into story_countdown_reminders (story_id, user_id) values ($1, $2)`, [futureCountdownStoryId, u2]);
+  });
+
+  await db.query(`select notify_due_story_countdowns()`);
+  const dueNotif = (await db.query(`select payload from notifications where recipient_id = $1 and kind = 'countdown_due'`, [u2])).rows;
+  check('notify_due_story_countdowns: u2 recibe el aviso real del recordatorio ya vencido', dueNotif.length === 1 && dueNotif[0].payload.story_id === dueCountdownStoryId);
+
+  const stillReminded = (await db.query(`select story_id from story_countdown_reminders where user_id = $1 and story_id = $2`, [u2, futureCountdownStoryId])).rows;
+  check('notify_due_story_countdowns: el recordatorio real FUTURO no se toca todavía', stillReminded.length === 1);
+
+  const goneReminder = (await db.query(`select story_id from story_countdown_reminders where user_id = $1 and story_id = $2`, [u2, dueCountdownStoryId])).rows;
+  check('notify_due_story_countdowns: el recordatorio real vencido ya no está en story_countdown_reminders', goneReminder.length === 0);
+
+  await asUser(u3);
+  const u3SeesU2Reminder = (await db.query(`select story_id from story_countdown_reminders where user_id = $1`, [u2])).rows;
+  check('story_countdown_reminders_own: u3 NO ve los recordatorios reales de u2', u3SeesU2Reminder.length === 0);
+  await db.query(`select notify_due_story_countdowns()`);
+  const u3Notif = (await db.query(`select payload from notifications where recipient_id = $1 and kind = 'countdown_due'`, [u3])).rows;
+  check('notify_due_story_countdowns: u3 NO recibe ningún aviso ajeno (no tiene recordatorios propios)', u3Notif.length === 0);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

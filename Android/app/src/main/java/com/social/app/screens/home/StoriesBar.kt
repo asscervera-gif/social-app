@@ -94,6 +94,11 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
     // Stories/TikTok/Snapchat -- opcional, mismo diálogo real de
     // audiencia. Ver StoriesViewModel.createStory(), 0146_story_link.sql.
     var pendingLinkUrl by remember { mutableStateOf("") }
+    // Sticker de cuenta atrás real, comparado con Instagram (Countdown)/
+    // Snapchat -- opcional, mismo diálogo real de audiencia. Ver
+    // StoriesViewModel.createStory(), 0147_story_countdown.sql.
+    var pendingCountdownLabel by remember { mutableStateOf("") }
+    var pendingCountdownTargetAt by remember { mutableStateOf<Long?>(null) }
 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) pendingUploadUri = uri
@@ -176,6 +181,44 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
                     )
+                    // Sticker de cuenta atrás real, comparado con
+                    // Instagram (Countdown)/Snapchat -- opcional.
+                    androidx.compose.material3.OutlinedTextField(
+                        value = pendingCountdownLabel,
+                        onValueChange = { pendingCountdownLabel = it },
+                        label = { Text("Añadir cuenta atrás (opcional, ej. \"Estreno\")") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                    )
+                    if (pendingCountdownLabel.isNotBlank()) {
+                        val countdownContext = LocalContext.current
+                        androidx.compose.material3.OutlinedButton(
+                            onClick = {
+                                val now = java.util.Calendar.getInstance()
+                                android.app.DatePickerDialog(
+                                    countdownContext,
+                                    { _, year, month, day ->
+                                        android.app.TimePickerDialog(
+                                            countdownContext,
+                                            { _, hour, minute ->
+                                                val picked = java.util.Calendar.getInstance().apply { set(year, month, day, hour, minute, 0) }
+                                                pendingCountdownTargetAt = picked.timeInMillis
+                                            },
+                                            now.get(java.util.Calendar.HOUR_OF_DAY),
+                                            now.get(java.util.Calendar.MINUTE),
+                                            true
+                                        ).show()
+                                    },
+                                    now.get(java.util.Calendar.YEAR),
+                                    now.get(java.util.Calendar.MONTH),
+                                    now.get(java.util.Calendar.DAY_OF_MONTH)
+                                ).apply { datePicker.minDate = now.timeInMillis }.show()
+                            },
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                        ) {
+                            Text(pendingCountdownTargetAt?.let { "Fecha elegida ✓" } ?: "Elegir fecha y hora")
+                        }
+                    }
                     // Adhesivo de pregunta real en una historia
                     // ("Pregúntame algo"), comparado con Instagram --
                     // opcional, ver StoriesViewModel.createStory().
@@ -223,6 +266,8 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
                     val pollOptions = listOf(pendingPollOptionA, pendingPollOptionB)
                     val caption = pendingCaption
                     val linkUrl = pendingLinkUrl
+                    val countdownLabel = pendingCountdownLabel
+                    val countdownTargetAt = pendingCountdownTargetAt?.let { java.time.Instant.ofEpochMilli(it).toString() }
                     pendingUploadUri = null
                     pendingQuestion = ""
                     pendingPollQuestion = ""
@@ -230,7 +275,9 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
                     pendingPollOptionB = ""
                     pendingCaption = ""
                     pendingLinkUrl = ""
-                    viewModel.createStory(context, uri, visibility = "close_friends", caption = caption, linkUrl = linkUrl, questionPrompt = question, pollQuestion = pollQuestion, pollOptions = pollOptions) {}
+                    pendingCountdownLabel = ""
+                    pendingCountdownTargetAt = null
+                    viewModel.createStory(context, uri, visibility = "close_friends", caption = caption, linkUrl = linkUrl, countdownLabel = countdownLabel, countdownTargetAt = countdownTargetAt, questionPrompt = question, pollQuestion = pollQuestion, pollOptions = pollOptions) {}
                 }) { Text("Mejores amigos") }
             },
             dismissButton = {
@@ -240,6 +287,8 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
                     val pollOptions = listOf(pendingPollOptionA, pendingPollOptionB)
                     val caption = pendingCaption
                     val linkUrl = pendingLinkUrl
+                    val countdownLabel = pendingCountdownLabel
+                    val countdownTargetAt = pendingCountdownTargetAt?.let { java.time.Instant.ofEpochMilli(it).toString() }
                     pendingUploadUri = null
                     pendingQuestion = ""
                     pendingPollQuestion = ""
@@ -247,7 +296,9 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
                     pendingPollOptionB = ""
                     pendingCaption = ""
                     pendingLinkUrl = ""
-                    viewModel.createStory(context, uri, visibility = "everyone", caption = caption, linkUrl = linkUrl, questionPrompt = question, pollQuestion = pollQuestion, pollOptions = pollOptions) {}
+                    pendingCountdownLabel = ""
+                    pendingCountdownTargetAt = null
+                    viewModel.createStory(context, uri, visibility = "everyone", caption = caption, linkUrl = linkUrl, countdownLabel = countdownLabel, countdownTargetAt = countdownTargetAt, questionPrompt = question, pollQuestion = pollQuestion, pollOptions = pollOptions) {}
                 }) { Text("Todos") }
             }
         )
@@ -412,6 +463,33 @@ private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewMod
                         }
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 )
+            }
+            // Sticker de cuenta atrás real, comparado con Instagram
+            // (Countdown)/Snapchat -- ver
+            // StoriesViewModel.setCountdownReminder(), 0147_story_countdown.sql.
+            story.countdownTargetAt?.let { targetAt ->
+                val remindedIds by viewModel.remindedStoryIds.collectAsState()
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = if (story.linkUrl != null) 96.dp else 32.dp)
+                ) {
+                    Text(story.countdownLabel ?: "Cuenta atrás", color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.titleMedium)
+                    Text(targetAt, color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.bodySmall)
+                    if (story.authorId != myId) {
+                        Text(
+                            if (story.id in remindedIds) "🔔 Te avisaremos" else "🔔 Recordarme",
+                            color = androidx.compose.ui.graphics.Color.White,
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier
+                                .padding(top = 6.dp)
+                                .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.4f), androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
+                                .clickable(enabled = story.id !in remindedIds) { viewModel.setCountdownReminder(story) }
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                    }
+                }
             }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),

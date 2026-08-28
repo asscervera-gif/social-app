@@ -34,7 +34,11 @@ data class StoryRow(
     val caption: String? = null,
     // Sticker de enlace real ("swipe up"), comparado con Instagram
     // Stories/TikTok/Snapchat -- ver 0146_story_link.sql.
-    @SerialName("link_url") val linkUrl: String? = null
+    @SerialName("link_url") val linkUrl: String? = null,
+    // Sticker de cuenta atrás real, comparado con Instagram (Countdown)/
+    // Snapchat -- ver 0147_story_countdown.sql.
+    @SerialName("countdown_label") val countdownLabel: String? = null,
+    @SerialName("countdown_target_at") val countdownTargetAt: String? = null
 )
 
 // Adhesivo de pregunta real en una historia ("Pregúntame algo"),
@@ -296,7 +300,11 @@ class StoriesViewModel : ViewModel() {
         val caption: String? = null,
         // Sticker de enlace real ("swipe up"), comparado con Instagram
         // Stories/TikTok/Snapchat -- ver 0146_story_link.sql.
-        @SerialName("link_url") val linkUrl: String? = null
+        @SerialName("link_url") val linkUrl: String? = null,
+        // Sticker de cuenta atrás real, comparado con Instagram
+        // (Countdown)/Snapchat -- ver 0147_story_countdown.sql.
+        @SerialName("countdown_label") val countdownLabel: String? = null,
+        @SerialName("countdown_target_at") val countdownTargetAt: String? = null
     )
 
     @Serializable
@@ -343,6 +351,32 @@ class StoriesViewModel : ViewModel() {
             } catch (e: Exception) {
                 // Ya registrado (unique constraint) u otro fallo no
                 // crítico.
+            }
+        }
+    }
+
+    @Serializable
+    private data class NewCountdownReminder(
+        @SerialName("story_id") val storyId: String,
+        @SerialName("user_id") val userId: String
+    )
+
+    private val _remindedStoryIds = MutableStateFlow<Set<String>>(emptySet())
+    val remindedStoryIds: StateFlow<Set<String>> = _remindedStoryIds.asStateFlow()
+
+    /** "Recordarme" real de un sticker de cuenta atrás, comparado con
+     * Instagram (Countdown)/Snapchat -- ver 0147_story_countdown.sql.
+     * Aviso de honestidad: SIN pg_cron, el aviso real solo se genera la
+     * próxima vez que ESTE usuario abra la app tras vencer el plazo
+     * (ver notifyDueCountdowns(), llamada desde HomeViewModel.load()). */
+    fun setCountdownReminder(story: StoryRow) {
+        viewModelScope.launch {
+            val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+            try {
+                SupabaseManager.client.from("story_countdown_reminders").insert(NewCountdownReminder(story.id, userId))
+                _remindedStoryIds.update { it + story.id }
+            } catch (e: Exception) {
+                // Ya registrado (unique constraint) u otro fallo no crítico.
             }
         }
     }
@@ -401,7 +435,7 @@ class StoriesViewModel : ViewModel() {
      * story_polls.options) para llegar a insertarse -- si no las
      * cumple, la encuesta simplemente no se crea (la historia en sí
      * sigue publicándose con normalidad). */
-    fun createStory(context: Context, uri: Uri, visibility: String = "everyone", caption: String? = null, linkUrl: String? = null, questionPrompt: String? = null, pollQuestion: String? = null, pollOptions: List<String> = emptyList(), onDone: () -> Unit) {
+    fun createStory(context: Context, uri: Uri, visibility: String = "everyone", caption: String? = null, linkUrl: String? = null, countdownLabel: String? = null, countdownTargetAt: String? = null, questionPrompt: String? = null, pollQuestion: String? = null, pollOptions: List<String> = emptyList(), onDone: () -> Unit) {
         viewModelScope.launch {
             val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
             _isUploading.value = true
@@ -419,8 +453,16 @@ class StoriesViewModel : ViewModel() {
                 // si no lo cumple simplemente se descarta (la historia
                 // en sí sigue publicándose con normalidad).
                 val trimmedLink = linkUrl?.trim()?.take(500)?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+                // Sticker de cuenta atrás real, comparado con Instagram
+                // (Countdown)/Snapchat -- solo se manda si hay AMBOS,
+                // etiqueta y fecha real (mismo límite real del CHECK de
+                // stories.countdown_label, 0147_story_countdown.sql: 60
+                // caracteres).
+                val trimmedCountdownLabel = countdownLabel?.trim()?.take(60)?.ifEmpty { null }
+                val finalCountdownLabel = if (countdownTargetAt != null) trimmedCountdownLabel else null
+                val finalCountdownTargetAt = if (trimmedCountdownLabel != null) countdownTargetAt else null
                 val insertedStory = SupabaseManager.client.from("stories")
-                    .insert(NewStory(userId, url, visibility, trimmedCaption, trimmedLink)) { select() }
+                    .insert(NewStory(userId, url, visibility, trimmedCaption, trimmedLink, finalCountdownLabel, finalCountdownTargetAt)) { select() }
                     .decodeSingle<StoryRow>()
                 // Mismo límite real del CHECK de story_questions.prompt
                 // (0099_story_questions.sql): 200 caracteres.
