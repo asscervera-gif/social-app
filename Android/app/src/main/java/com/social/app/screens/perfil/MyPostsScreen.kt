@@ -19,6 +19,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,7 +33,9 @@ import com.social.app.backend.SupabaseManager
 import com.social.app.backend.model.Post
 import io.github.jan.supabase.gotrue.auth
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Order
+import io.github.jan.supabase.postgrest.rpc
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -99,6 +102,30 @@ class MyPostsViewModel : ViewModel() {
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudieron cargar tus publicaciones."
             }
+        }
+    }
+
+    // Panel de estadísticas real ("Insights"), comparado con Instagram
+    // ("Ver estadísticas")/TikTok (Analytics)/Facebook -- ver
+    // 0145_post_insights.sql.
+    @Serializable
+    data class PostInsights(
+        @SerialName("view_count") val viewCount: Int,
+        @SerialName("like_count") val likeCount: Int,
+        @SerialName("comment_count") val commentCount: Int,
+        @SerialName("saved_count") val savedCount: Long
+    )
+
+    @Serializable
+    private data class PostInsightsParams(@SerialName("p_post_id") val postId: String)
+
+    suspend fun loadInsights(postId: String): PostInsights? {
+        return try {
+            SupabaseManager.client.postgrest.rpc("get_post_insights", PostInsightsParams(postId))
+                .decodeList<PostInsights>()
+                .firstOrNull()
+        } catch (e: Exception) {
+            null
         }
     }
 
@@ -302,6 +329,12 @@ fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
     // caption de una publicación ya hecha, solo borrarla entera.
     var editingPost by remember { mutableStateOf<Post?>(null) }
     var editedCaption by remember { mutableStateOf("") }
+    // Panel de estadísticas real ("Insights"), comparado con Instagram
+    // ("Ver estadísticas")/TikTok (Analytics)/Facebook -- ver
+    // MyPostsViewModel.loadInsights(), 0145_post_insights.sql.
+    var insightsPost by remember { mutableStateOf<Post?>(null) }
+    var insights by remember { mutableStateOf<MyPostsViewModel.PostInsights?>(null) }
+    val insightsScope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) { viewModel.load() }
 
@@ -479,6 +512,13 @@ fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
                                     )
                                 }
                                 OutlinedButton(onClick = { viewModel.delete(post) }) { Text("Borrar") }
+                                // Panel de estadísticas real ("Insights"),
+                                // comparado con Instagram/TikTok/Facebook.
+                                OutlinedButton(onClick = {
+                                    insightsPost = post
+                                    insights = null
+                                    insightsScope.launch { insights = viewModel.loadInsights(post.id) }
+                                }, modifier = Modifier.padding(start = 8.dp)) { Text("📊 Estadísticas") }
                             }
                         }
                     }
@@ -520,6 +560,31 @@ fun MyPostsScreen(viewModel: MyPostsViewModel = viewModel()) {
             },
             dismissButton = {
                 androidx.compose.material3.TextButton(onClick = { editingPost = null }) { Text("Cancelar") }
+            }
+        )
+    }
+    // Panel de estadísticas real ("Insights"), comparado con Instagram
+    // ("Ver estadísticas")/TikTok (Analytics)/Facebook -- ver
+    // 0145_post_insights.sql.
+    insightsPost?.let {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { insightsPost = null },
+            title = { Text("Estadísticas") },
+            text = {
+                val current = insights
+                if (current == null) {
+                    androidx.compose.material3.CircularProgressIndicator()
+                } else {
+                    Column {
+                        Text("👁 Alcance: ${current.viewCount}")
+                        Text("❤ Me gusta: ${current.likeCount}")
+                        Text("💬 Comentarios: ${current.commentCount}")
+                        Text("🔖 Guardados: ${current.savedCount}")
+                    }
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { insightsPost = null }) { Text("Cerrar") }
             }
         )
     }

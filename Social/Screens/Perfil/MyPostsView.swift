@@ -58,6 +58,26 @@ final class MyPostsViewModel: ObservableObject {
     /// `posts_write_own` (0002_rls.sql) es `for all`, así que borrar la
     /// propia publicación ya estaba permitido a nivel de RLS — solo
     /// faltaba el botón.
+    // Panel de estadísticas real ("Insights"), comparado con Instagram
+    // ("Ver estadísticas")/TikTok (Analytics)/Facebook -- ver
+    // 0145_post_insights.sql. Equivalente de
+    // MyPostsViewModel.kt.PostInsights.
+    struct PostInsights: Decodable {
+        let view_count: Int
+        let like_count: Int
+        let comment_count: Int
+        let saved_count: Int
+    }
+    private struct PostInsightsParams: Encodable { let p_post_id: UUID }
+
+    func loadInsights(postID: UUID) async -> PostInsights? {
+        let rows: [PostInsights]? = try? await SupabaseManager.shared.client
+            .rpc("get_post_insights", params: PostInsightsParams(p_post_id: postID))
+            .execute()
+            .value
+        return rows?.first
+    }
+
     func delete(_ post: Post) async {
         posts.removeAll { $0.id == post.id }
         do {
@@ -267,6 +287,11 @@ struct MyPostsView: View {
     // caption de una publicación ya hecha, solo borrarla entera.
     @State private var editingPost: Post?
     @State private var editedCaption = ""
+    // Panel de estadísticas real ("Insights"), comparado con Instagram
+    // ("Ver estadísticas")/TikTok (Analytics)/Facebook -- ver
+    // MyPostsViewModel.loadInsights(), 0145_post_insights.sql.
+    @State private var insightsPost: Post?
+    @State private var insights: MyPostsViewModel.PostInsights?
 
     // Las dos primeras excluyen las archivadas (mismo criterio que
     // Instagram: el archivo es un sitio aparte, no una publicación más
@@ -341,7 +366,12 @@ struct MyPostsView: View {
                     onToggleCommentsDisabled: { Task { await viewModel.toggleCommentsDisabled(post) } },
                     onToggleHideLikeCount: { Task { await viewModel.toggleHideLikeCount(post) } },
                     onToggleSensitive: { Task { await viewModel.toggleSensitive(post) } },
-                    onCycleReplyAudience: { Task { await viewModel.cycleReplyAudience(post) } }
+                    onCycleReplyAudience: { Task { await viewModel.cycleReplyAudience(post) } },
+                    onShowInsights: {
+                        insightsPost = post
+                        insights = nil
+                        Task { insights = await viewModel.loadInsights(postID: post.id) }
+                    }
                 )
             }
         }
@@ -387,6 +417,32 @@ struct MyPostsView: View {
                 }
             }
         }
+        // Panel de estadísticas real ("Insights"), comparado con
+        // Instagram ("Ver estadísticas")/TikTok (Analytics)/Facebook --
+        // ver 0145_post_insights.sql.
+        .sheet(item: $insightsPost) { _ in
+            NavigationStack {
+                Group {
+                    if let insights {
+                        List {
+                            Text("👁 Alcance: \(insights.view_count)")
+                            Text("❤ Me gusta: \(insights.like_count)")
+                            Text("💬 Comentarios: \(insights.comment_count)")
+                            Text("🔖 Guardados: \(insights.saved_count)")
+                        }
+                    } else {
+                        ProgressView()
+                    }
+                }
+                .navigationTitle("Estadísticas")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cerrar") { insightsPost = nil }
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+        }
     }
 }
 
@@ -415,6 +471,9 @@ private struct MyPostRow: View {
     let onToggleHideLikeCount: () -> Void
     let onToggleSensitive: () -> Void
     let onCycleReplyAudience: () -> Void
+    // Panel de estadísticas real ("Insights"), comparado con Instagram/
+    // TikTok/Facebook -- ver 0145_post_insights.sql.
+    let onShowInsights: () -> Void
 
     // "¿Quién puede comentar?" real, comparado con Twitter/X/TikTok --
     // calculado aparte, mismo motivo real de arriba.
@@ -507,6 +566,10 @@ private struct MyPostRow: View {
             // TikTok -- ver 0097_reply_audience.sql.
             Button("Comentan: \(audienceLabel)", action: onCycleReplyAudience)
                 .tint(.teal)
+            // Panel de estadísticas real ("Insights"), comparado con
+            // Instagram ("Ver estadísticas")/TikTok (Analytics)/Facebook.
+            Button("📊 Estadísticas", action: onShowInsights)
+                .tint(.mint)
             }
         }
     }

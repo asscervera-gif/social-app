@@ -4036,6 +4036,45 @@ async function main() {
   const u1HashtagsAfterUnfollow = (await db.query(`select hashtag from hashtag_follows where user_id = $1`, [u1])).rows;
   check('hashtag_follows_own: el hashtag real ya no aparece tras dejar de seguirlo', u1HashtagsAfterUnfollow.length === 0);
 
+  // --- post_views + get_post_insights() (0145_post_insights.sql): panel
+  // de estadísticas real del post ("Insights"), comparado con Instagram/
+  // TikTok/Facebook. Mismo patrón de profundidad anidada ya usado en
+  // reel_views (0131) para rodear protect_post_counts. ---
+  await asUser(u1);
+  const insightsPostId = (await db.query(
+    `insert into posts (author_id, caption) values ($1, 'post con estadísticas reales') returning id`,
+    [u1]
+  )).rows[0].id;
+
+  await asUser(u2);
+  await expectOk('post_views_insert_own: u2 SÍ puede registrar su propia vista real', async () => {
+    await db.query(`insert into post_views (post_id, viewer_id) values ($1, $2)`, [insightsPostId, u2]);
+  });
+  await expectFail('post_views_insert_own: u2 NO puede registrar una vista real en nombre de otro', async () => {
+    await db.query(`insert into post_views (post_id, viewer_id) values ($1, $2)`, [insightsPostId, u3]);
+  });
+  await asUser(u3);
+  await db.query(`insert into post_views (post_id, viewer_id) values ($1, $2)`, [insightsPostId, u3]);
+
+  await asUser(u1);
+  const viewCountRow = (await db.query(`select view_count from posts where id = $1`, [insightsPostId])).rows[0];
+  check('sync_post_view_count: el alcance real sube con cada vista real distinta', viewCountRow.view_count === 2);
+
+  await db.query(`update posts set view_count = 999999 where id = $1`, [insightsPostId]);
+  const stillProtectedViewCount = (await db.query(`select view_count from posts where id = $1`, [insightsPostId])).rows[0];
+  check('protect_post_counts: el propio autor real NO puede falsear view_count a mano', stillProtectedViewCount.view_count === 2);
+
+  await asUser(u2);
+  await db.query(`insert into saved_posts (post_id, user_id) values ($1, $2)`, [insightsPostId, u2]);
+  await asUser(u1);
+  const insights = (await db.query(`select * from get_post_insights($1)`, [insightsPostId])).rows[0];
+  check('get_post_insights: el autor real ve el alcance/me gusta/comentarios/guardados reales', insights.view_count === 2 && Number(insights.saved_count) === 1);
+
+  await asUser(u2);
+  await expectFail('get_post_insights: u2 (NO autor real) NO puede ver las estadísticas ajenas', async () => {
+    await db.query(`select * from get_post_insights($1)`, [insightsPostId]);
+  });
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado
