@@ -19,7 +19,11 @@ data class PublicLocation(
     @SerialName("display_name") val displayName: String,
     @SerialName("last_lat") val lat: Double,
     @SerialName("last_lng") val lng: Double,
-    @SerialName("avatar_config") val avatarConfig: Map<String, String>? = null
+    @SerialName("avatar_config") val avatarConfig: Map<String, String>? = null,
+    // "Hace X min" real, comparado con Snapchat Map/Find My -- ver
+    // 0137_location_updated_at.sql. null para ubicaciones publicadas
+    // antes de esta ronda (columna nueva, sin backfill real posible).
+    @SerialName("location_updated_at") val locationUpdatedAt: String? = null
 )
 
 /**
@@ -50,7 +54,8 @@ class FindLocationsViewModel : ViewModel() {
         @SerialName("display_name") val displayName: String,
         @SerialName("last_lat") val lat: Double? = null,
         @SerialName("last_lng") val lng: Double? = null,
-        @SerialName("avatar_config") val avatarConfig: Map<String, String>? = null
+        @SerialName("avatar_config") val avatarConfig: Map<String, String>? = null,
+        @SerialName("location_updated_at") val locationUpdatedAt: String? = null
     )
 
     fun load() {
@@ -74,7 +79,7 @@ class FindLocationsViewModel : ViewModel() {
                 // nullable y se filtran en cliente, en vez de asumir que
                 // siempre vienen presentes.
                 val rows = SupabaseManager.client.from("profiles")
-                    .select(columns = Columns.raw("id,display_name,last_lat,last_lng,avatar_config")) {
+                    .select(columns = Columns.raw("id,display_name,last_lat,last_lng,avatar_config,location_updated_at")) {
                         filter {
                             eq("location_public", true)
                             // Mismo hallazgo real ya corregido en
@@ -90,7 +95,7 @@ class FindLocationsViewModel : ViewModel() {
                     }
                     .decodeList<LocationRow>()
                     .filter { it.id !in blockedIds && it.lat != null && it.lng != null }
-                    .map { PublicLocation(it.id, it.displayName, it.lat!!, it.lng!!, it.avatarConfig) }
+                    .map { PublicLocation(it.id, it.displayName, it.lat!!, it.lng!!, it.avatarConfig, it.locationUpdatedAt) }
                 _locations.value = rows
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudieron cargar las ubicaciones."

@@ -272,14 +272,24 @@ final class PrivacySettingsViewModel: ObservableObject {
     private func publishCurrentLocation() async {
         guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
         guard let location = await OneShotLocationFetcher().fetch() else { return }
+        // "Hace X min" real en Find, comparado con Snapchat Map/Find My
+        // -- ver 0137_location_updated_at.sql. Hallazgo real: last_lat/
+        // last_lng se publicaban sin ninguna fecha asociada, así que el
+        // mapa no podía distinguir una ubicación real de ahora mismo de
+        // una de hace semanas.
         struct LocationUpdate: Encodable {
             let last_lat: Double
             let last_lng: Double
+            let location_updated_at: String
         }
         do {
             try await SupabaseManager.shared.client
                 .from("profiles")
-                .update(LocationUpdate(last_lat: location.coordinate.latitude, last_lng: location.coordinate.longitude))
+                .update(LocationUpdate(
+                    last_lat: location.coordinate.latitude,
+                    last_lng: location.coordinate.longitude,
+                    location_updated_at: ISO8601DateFormatter().string(from: Date())
+                ))
                 .eq("id", value: userID)
                 .execute()
         } catch {

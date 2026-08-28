@@ -51,11 +51,22 @@ struct FindMapView: View {
                                 .clipShape(Circle())
                                 .overlay(Circle().stroke(.white, lineWidth: 2))
                                 .shadow(radius: 2)
-                            Text(location.displayName)
-                                .font(.caption2)
-                                .padding(.horizontal, 4)
-                                .background(.thinMaterial)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                            VStack(spacing: 0) {
+                                Text(location.displayName)
+                                    .font(.caption2)
+                                // "Hace X min" real, comparado con
+                                // Snapchat Map ("Active Xh ago")/Find My
+                                // -- ver FindLocationsViewModel.swift,
+                                // 0137_location_updated_at.sql.
+                                if let updatedAt = location.locationUpdatedAt {
+                                    Text(relativeTime(updatedAt))
+                                        .font(.system(size: 8))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(.horizontal, 4)
+                            .background(.thinMaterial)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
                         }
                     }
                     .buttonStyle(.plain)
@@ -89,5 +100,21 @@ struct FindMapView: View {
             }
         }
         .task { await viewModel.load() }
+    }
+}
+
+private func relativeTime(_ isoTimestamp: String) -> String {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    guard let then = formatter.date(from: isoTimestamp) ?? ISO8601DateFormatter().date(from: isoTimestamp) else {
+        return ""
+    }
+    let seconds = Date().timeIntervalSince(then)
+    switch seconds {
+    case ..<60: return "ahora"
+    case ..<3600: return "hace \(Int(seconds / 60))min"
+    case ..<86400: return "hace \(Int(seconds / 3600))h"
+    case ..<604800: return "hace \(Int(seconds / 86400))d"
+    default: return "hace \(Int(seconds / 604800))sem"
     }
 }

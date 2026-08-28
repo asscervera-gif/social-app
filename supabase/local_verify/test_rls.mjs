@@ -3841,6 +3841,17 @@ async function main() {
   const chNotif2 = (await db.query(`select payload from notifications where recipient_id = $1 and kind = 'compat_request'`, [chTarget2])).rows;
   check('notify_new_compat_request: chTarget2 recibe el aviso real con highlighted=false (la segunda, no destacada)', chNotif2.length === 1 && chNotif2[0].payload.highlighted === false);
 
+  // --- profiles.location_updated_at (0137_location_updated_at.sql):
+  // "hace X min" real en Find, comparado con Snapchat Map/Find My. ---
+  const defaultLocationUpdatedAt = (await db.query(`select location_updated_at from profiles where id = $1`, [u1])).rows[0];
+  check('profiles.location_updated_at: arranca en null por defecto', defaultLocationUpdatedAt.location_updated_at === null);
+  await asUser(u1);
+  await expectOk('profiles_update_own: u1 SÍ puede actualizar su propia location_updated_at junto con last_lat/last_lng', async () => {
+    await db.query(`update profiles set last_lat = 40.4, last_lng = -3.7, location_updated_at = now() where id = $1`, [u1]);
+  });
+  const afterLocationUpdate = (await db.query(`select last_lat, location_updated_at from profiles where id = $1`, [u1])).rows[0];
+  check('profiles.location_updated_at: el cambio real queda guardado junto con la ubicación', Number(afterLocationUpdate.last_lat) === 40.4 && afterLocationUpdate.location_updated_at !== null);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

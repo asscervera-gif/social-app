@@ -69,6 +69,15 @@ fun FindMapScreen(viewModel: FindLocationsViewModel = viewModel(), onOpenProfile
                     val marker = Marker(mapView)
                     marker.position = GeoPoint(location.lat, location.lng)
                     marker.title = location.displayName
+                    // "Hace X min" real, comparado con Snapchat Map
+                    // ("Active Xh ago")/Find My ("Ubicación actualizada
+                    // hace X min") -- ver FindLocationsViewModel.kt,
+                    // 0137_location_updated_at.sql. null para ubicaciones
+                    // publicadas antes de esta ronda (columna nueva, sin
+                    // backfill real posible).
+                    location.locationUpdatedAt?.let {
+                        marker.snippet = "Actualizado ${com.social.app.util.relativeTime(it)}"
+                    }
                     // Hallazgo real, comparado con SOCIAL_APP.html (mapa
                     // "Find", `.pinav` -- el busto ilustrado, no un pin
                     // suelto): el marcador era el pin rojo genérico de OSM

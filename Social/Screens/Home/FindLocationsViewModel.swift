@@ -19,6 +19,11 @@ struct PublicLocation: Identifiable {
     let displayName: String
     let coordinate: CLLocationCoordinate2D
     let avatarConfig: [String: String]?
+    // "Hace X min" real, comparado con Snapchat Map/Find My -- ver
+    // 0137_location_updated_at.sql. nil para ubicaciones publicadas
+    // antes de esta ronda (columna nueva, sin backfill real posible).
+    // Equivalente de PublicLocation.kt.locationUpdatedAt.
+    let locationUpdatedAt: String?
 }
 
 @MainActor
@@ -32,6 +37,7 @@ final class FindLocationsViewModel: ObservableObject {
         let last_lat: Double?
         let last_lng: Double?
         let avatar_config: [String: String]?
+        let location_updated_at: String?
     }
 
     private struct BlockRow: Decodable { let blocked_id: UUID }
@@ -65,7 +71,7 @@ final class FindLocationsViewModel: ObservableObject {
                 .filter { !blockedIDs.contains($0.id) }
                 .compactMap { row in
                     guard let lat = row.last_lat, let lng = row.last_lng else { return nil }
-                    return PublicLocation(id: row.id, displayName: row.display_name, coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng), avatarConfig: row.avatar_config)
+                    return PublicLocation(id: row.id, displayName: row.display_name, coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng), avatarConfig: row.avatar_config, locationUpdatedAt: row.location_updated_at)
                 }
         } catch {
             errorMessage = "No se pudieron cargar las ubicaciones."

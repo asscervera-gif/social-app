@@ -245,9 +245,15 @@ class PrivacySettingsViewModel : ViewModel() {
                 ).mapNotNull { runCatching { locationManager.getLastKnownLocation(it) }.getOrNull() }
                     .firstOrNull() ?: return@launch
                 val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                // "Hace X min" real en Find, comparado con Snapchat Map/
+                // Find My -- ver 0137_location_updated_at.sql. Hallazgo
+                // real: last_lat/last_lng se publicaban sin ninguna fecha
+                // asociada, así que el mapa no podía distinguir una
+                // ubicación real de ahora mismo de una de hace semanas.
                 SupabaseManager.client.from("profiles").update({
                     set("last_lat", location.latitude)
                     set("last_lng", location.longitude)
+                    set("location_updated_at", java.time.Instant.now().toString())
                 }) { filter { eq("id", userId) } }
             } catch (e: SecurityException) {
                 // Sin permiso de ubicación concedido todavía — el interruptor
