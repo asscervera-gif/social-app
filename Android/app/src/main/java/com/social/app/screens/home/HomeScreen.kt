@@ -88,6 +88,16 @@ fun HomeScreen(
     // ver HomeViewModel.toggleRepost(), 0127_post_reposts.sql.
     val repostedPostIds by viewModel.repostedPostIds.collectAsState()
     val repostCounts by viewModel.repostCounts.collectAsState()
+    // Compartir a tu Historia con atribución real, comparado con
+    // Instagram/Facebook -- ver HomeViewModel.shareToStory(),
+    // 0129_story_shared_post.sql.
+    val storyShareMessage by viewModel.storyShareMessage.collectAsState()
+    LaunchedEffect(storyShareMessage) {
+        if (storyShareMessage != null) {
+            kotlinx.coroutines.delay(2000)
+            viewModel.clearStoryShareMessage()
+        }
+    }
     var commentsPostId by remember { mutableStateOf<String?>(null) }
     // Hallazgo real: no había ninguna forma de crear una publicación en
     // toda la app (ver NewPostViewModel.kt para el detalle completo).
@@ -166,6 +176,9 @@ fun HomeScreen(
             errorMessage?.let { message ->
                 item { Text(message, color = androidx.compose.material3.MaterialTheme.colorScheme.error) }
             }
+            storyShareMessage?.let { message ->
+                item { Text(message, color = SocialColors.Green) }
+            }
             if (recommended.isNotEmpty()) {
                 item { Text("Recomendados", style = androidx.compose.material3.MaterialTheme.typography.titleMedium) }
                 item {
@@ -202,7 +215,8 @@ fun HomeScreen(
                     onVotePoll = { optionIndex -> poll?.let { viewModel.voteOnPostPoll(it.id, optionIndex) } },
                     isReposted = repostedPostIds.contains(post.id),
                     repostCount = repostCounts[post.id] ?: 0,
-                    onToggleRepost = { viewModel.toggleRepost(post) }
+                    onToggleRepost = { viewModel.toggleRepost(post) },
+                    onShareToStory = { viewModel.shareToStory(post) }
                 )
             }
         }
@@ -302,7 +316,12 @@ private fun PostCard(
     // ver HomeViewModel.toggleRepost(), 0127_post_reposts.sql.
     isReposted: Boolean = false,
     repostCount: Int = 0,
-    onToggleRepost: () -> Unit = {}
+    onToggleRepost: () -> Unit = {},
+    // Compartir a tu Historia con atribución real, comparado con
+    // Instagram/Facebook -- ver HomeViewModel.shareToStory(),
+    // 0129_story_shared_post.sql. Solo posible con foto/vídeo real
+    // (mismo límite que stories.media_url not null).
+    onShareToStory: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -567,6 +586,9 @@ private fun PostCard(
                     modifier = Modifier.clickable { showSendSheet = true }
                 )
                 Text(if (isSaved) "🔖" else "📑", modifier = Modifier.clickable(onClick = onToggleSave))
+                if (post.mediaUrl != null) {
+                    Text("➕📖", modifier = Modifier.clickable(onClick = onShareToStory))
+                }
                 Text("⋯", modifier = Modifier.clickable { showReport = true })
             }
         }

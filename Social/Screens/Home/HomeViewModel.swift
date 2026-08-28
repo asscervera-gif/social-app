@@ -371,6 +371,35 @@ final class HomeViewModel: ObservableObject {
         }
     }
 
+    @Published var storyShareMessage: String?
+
+    /// Compartir una publicación a tu Historia con atribución real al
+    /// autor original, comparado con Instagram/Facebook ("Add post to
+    /// your story") -- ver 0129_story_shared_post.sql. Alcance
+    /// deliberado: reutiliza `post.mediaURL` tal cual, sin pipeline de
+    /// composición nuevo -- solo posible en un post con foto/vídeo real.
+    /// Equivalente de HomeViewModel.kt.shareToStory().
+    func shareToStory(_ post: Post) async {
+        guard let mediaURL = post.mediaURL else { return }
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        struct NewSharedStory: Encodable {
+            let author_id: UUID
+            let media_url: String
+            let shared_post_id: UUID
+            let shared_post_author_id: UUID
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("stories")
+                .insert(NewSharedStory(author_id: userID, media_url: mediaURL, shared_post_id: post.id, shared_post_author_id: post.authorID))
+                .execute()
+            AnalyticsManager.track("post_shared_to_story")
+            storyShareMessage = "Compartido a tu historia"
+        } catch {
+            storyShareMessage = "No se pudo compartir a tu historia."
+        }
+    }
+
     /// Toggle real de repost/unrepost, comparado con Twitter/X/Facebook --
     /// mismo patrón exacto que toggleLike(). El aviso real al autor lo
     /// dispara `private.notify_new_repost()` (0127_post_reposts.sql), no

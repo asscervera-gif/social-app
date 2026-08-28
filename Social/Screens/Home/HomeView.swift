@@ -44,6 +44,21 @@ struct HomeView: View {
                     // StoriesViewModel.swift).
                     StoriesBar()
                         .padding(.horizontal)
+                    // Compartir a tu Historia con atribución real,
+                    // comparado con Instagram/Facebook -- ver
+                    // HomeViewModel.shareToStory(), 0129_story_shared_post.sql.
+                    if let message = viewModel.storyShareMessage {
+                        Text(message)
+                            .font(.footnote)
+                            .foregroundStyle(.green)
+                            .padding(.horizontal)
+                            .onAppear {
+                                Task {
+                                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                                    viewModel.storyShareMessage = nil
+                                }
+                            }
+                    }
                     Divider()
                     recommendedSection
                     Divider()
@@ -192,6 +207,9 @@ struct HomeView: View {
                     onToggleRepost: {
                         Task { await viewModel.toggleRepost(post) }
                     },
+                    onShareToStory: {
+                        Task { await viewModel.shareToStory(post) }
+                    },
                     onCommentAdded: {
                         viewModel.commentAdded(postID: post.id)
                     },
@@ -284,6 +302,10 @@ private struct PostCard: View {
     var isReposted: Bool = false
     var repostCount: Int = 0
     var onToggleRepost: () -> Void = {}
+    // Compartir a tu Historia con atribución real, comparado con
+    // Instagram/Facebook -- ver HomeViewModel.shareToStory(),
+    // 0129_story_shared_post.sql.
+    var onShareToStory: () -> Void = {}
     let onCommentAdded: () -> Void
     var onCommentRemoved: () -> Void = {}
     let onToggleSave: () -> Void
@@ -559,6 +581,16 @@ private struct PostCard: View {
                 }
                 Button(action: onToggleSave) {
                     Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
+                }
+                // Compartir a tu Historia con atribución real, comparado
+                // con Instagram/Facebook -- ver
+                // HomeViewModel.shareToStory(), 0129_story_shared_post.sql.
+                // Solo posible con foto/vídeo real (mismo límite que
+                // stories.media_url not null).
+                if post.mediaURL != nil {
+                    Button(action: onShareToStory) {
+                        Image(systemName: "plus.app")
+                    }
                 }
                 Button {
                     showReport = true

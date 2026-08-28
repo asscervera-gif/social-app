@@ -3520,6 +3520,34 @@ async function main() {
   const pdAfterDelete = (await db.query(`select caption from post_drafts where author_id = $1`, [pdU1])).rows;
   check('post_drafts_delete_own: el borrador real desaparece de verdad', pdAfterDelete.length === 0);
 
+  // --- stories.shared_post_id/shared_post_author_id (0129_story_shared_post.sql):
+  // compartir una publicación a tu Historia con atribución real al autor
+  // original, comparado con Instagram/Facebook.
+  await asSuperuser();
+  const ssU1 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const ssU2 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(`insert into profiles (id, display_name) values ($1,'Ss1'),($2,'Ss2') on conflict (id) do update set display_name=excluded.display_name`, [ssU1, ssU2]);
+  const ssPost = (await db.query(`insert into posts (author_id, caption, media_url) values ($1, 'post con foto', 'https://x/photo.jpg') returning id`, [ssU1])).rows[0];
+
+  await asUser(ssU2);
+  await expectOk('stories_write_own: ssU2 SÍ puede compartir el post real de ssU1 como su propia historia', async () => {
+    await db.query(
+      `insert into stories (author_id, media_url, shared_post_id, shared_post_author_id) values ($1, $2, $3, $4)`,
+      [ssU2, 'https://x/photo.jpg', ssPost.id, ssU1]
+    );
+  });
+  await asUser(ssU1);
+  const ssNotif = (await db.query(`select kind, payload from notifications where recipient_id = $1 and kind = 'story_share'`, [ssU1])).rows;
+  check('notify_story_share: el autor real del post (ssU1) recibe un aviso real al compartirse a una historia', ssNotif.length === 1 && ssNotif[0].payload.post_id === ssPost.id);
+
+  await asUser(ssU2);
+  await expectOk('stories_write_own (control): una historia normal, sin post compartido, SIGUE funcionando sin disparar el trigger', async () => {
+    await db.query(`insert into stories (author_id, media_url) values ($1, 'https://x/normal.jpg')`, [ssU2]);
+  });
+  await asUser(ssU1);
+  const ssNotifAfterNormal = (await db.query(`select kind from notifications where recipient_id = $1 and kind = 'story_share'`, [ssU1])).rows;
+  check('notify_story_share: una historia normal (sin shared_post_id) NO genera un aviso de más', ssNotifAfterNormal.length === 1);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

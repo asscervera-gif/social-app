@@ -433,6 +433,43 @@ class HomeViewModel : ViewModel() {
         }
     }
 
+    private val _storyShareMessage = MutableStateFlow<String?>(null)
+    val storyShareMessage: StateFlow<String?> = _storyShareMessage.asStateFlow()
+
+    @Serializable
+    private data class NewSharedStory(
+        @SerialName("author_id") val authorId: String,
+        @SerialName("media_url") val mediaUrl: String,
+        @SerialName("shared_post_id") val sharedPostId: String,
+        @SerialName("shared_post_author_id") val sharedPostAuthorId: String
+    )
+
+    /** Compartir una publicación a tu Historia con atribución real al autor
+     * original, comparado con Instagram/Facebook ("Add post to your
+     * story") -- ver 0129_story_shared_post.sql. Alcance deliberado:
+     * reutiliza `post.mediaUrl` tal cual, sin pipeline de composición
+     * nuevo -- solo posible en un post con foto/vídeo real (mismo límite
+     * que `stories.media_url not null` siempre exigió). */
+    fun shareToStory(post: Post) {
+        val mediaUrl = post.mediaUrl ?: return
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                SupabaseManager.client.from("stories").insert(
+                    NewSharedStory(userId, mediaUrl, post.id, post.authorId)
+                )
+                com.social.app.backend.AnalyticsManager.track("post_shared_to_story")
+                _storyShareMessage.value = "Compartido a tu historia"
+            } catch (e: Exception) {
+                _storyShareMessage.value = "No se pudo compartir a tu historia."
+            }
+        }
+    }
+
+    fun clearStoryShareMessage() {
+        _storyShareMessage.value = null
+    }
+
     /** Toggle real de like/unlike — antes era solo `like()`, un botón de un
      * solo sentido que incrementaba el contador local para siempre sin
      * saber si ya estaba likeado (ver hallazgo arriba). `posts.like_count`
