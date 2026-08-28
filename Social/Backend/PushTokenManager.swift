@@ -20,6 +20,12 @@ import UserNotifications
 
 enum PushTokenManager {
 
+    // Guardado real del último token de ESTE dispositivo, comparado con
+    // Instagram/Facebook/Snapchat -- ver DevicesView.swift, que lo usa
+    // para marcar "(este dispositivo)" en la lista real de
+    // device_tokens (0040), sin tabla nueva.
+    static private(set) var currentToken: String?
+
     static func requestAuthorizationAndRegister() {
         Task {
             let granted = (try? await UNUserNotificationCenter.current()
@@ -35,6 +41,7 @@ enum PushTokenManager {
     /// con el token binario que entrega APNs.
     static func register(deviceToken: Data) {
         let token = deviceToken.map { String(format: "%02x", $0) }.joined()
+        currentToken = token
         Task {
             guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
             struct DeviceTokenUpsert: Encodable {

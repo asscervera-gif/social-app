@@ -305,6 +305,15 @@ struct AjustesView: View {
             }
             .buttonStyle(.bordered)
 
+            // "Dispositivos conectados" real, comparado con Instagram
+            // ("Actividad de inicio de sesión")/Facebook ("Dónde
+            // iniciaste sesión")/Snapchat ("Dispositivos vinculados") --
+            // ver DevicesView.swift.
+            NavigationLink("Dispositivos conectados") {
+                DevicesView()
+            }
+            .buttonStyle(.bordered)
+
             if isAdmin {
                 NavigationLink("Moderación") {
                     ModerationView()

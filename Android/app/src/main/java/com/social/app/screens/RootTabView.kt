@@ -105,6 +105,9 @@ private const val FIND_ROUTE = "find"
 // PerfilScreen.kt (solo generación en la ronda anterior). Ver
 // QrScannerScreen.kt.
 private const val QR_SCANNER_ROUTE = "qr_scanner"
+// "Dispositivos conectados" real, comparado con Instagram/Facebook/
+// Snapchat -- ver DevicesScreen.kt.
+private const val DEVICES_ROUTE = "devices"
 // Publicación individual real ("permalink"), comparado con Instagram/
 // Twitter/Facebook -- ver PostDetailScreen.kt para el hallazgo completo.
 private const val POST_ROUTE = "post/{postId}"
@@ -531,8 +534,14 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                             onOpenCompatShares = { navController.navigate(COMPAT_SHARES_ROUTE) },
                             onOpenPrivacyPolicy = { navController.navigate(PRIVACY_POLICY_ROUTE) },
                             onOpenModeration = { navController.navigate(MODERATION_ROUTE) },
-                            onOpenCloseFriends = { navController.navigate(CLOSE_FRIENDS_ROUTE) }
+                            onOpenCloseFriends = { navController.navigate(CLOSE_FRIENDS_ROUTE) },
+                            onOpenDevices = { navController.navigate(DEVICES_ROUTE) }
                         )
+                    }
+                }
+                composable(DEVICES_ROUTE) {
+                    com.social.app.ui.theme.BackScaffold(title = "Dispositivos", onBack = { navController.popBackStack() }) {
+                        com.social.app.screens.perfil.DevicesScreen()
                     }
                 }
                 composable(CLOSE_FRIENDS_ROUTE) {

@@ -89,7 +89,10 @@ fun AjustesScreen(
     onOpenModeration: () -> Unit = {},
     // "Mejores amigos" real para historias (0075_close_friends_stories.sql),
     // comparado con Instagram/Snapchat.
-    onOpenCloseFriends: () -> Unit = {}
+    onOpenCloseFriends: () -> Unit = {},
+    // "Dispositivos conectados" real, comparado con Instagram/Facebook/
+    // Snapchat -- ver DevicesScreen.kt.
+    onOpenDevices: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val account = remember { AccountManager() }
@@ -483,6 +486,17 @@ fun AjustesScreen(
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
         ) {
             Text("Mejores amigos")
+        }
+
+        // "Dispositivos conectados" real, comparado con Instagram
+        // ("Actividad de inicio de sesión")/Facebook ("Dónde iniciaste
+        // sesión")/Snapchat ("Dispositivos vinculados") -- ver
+        // DevicesScreen.kt.
+        OutlinedButton(
+            onClick = onOpenDevices,
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+        ) {
+            Text("Dispositivos conectados")
         }
 
         if (isAdmin) {
