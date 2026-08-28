@@ -101,6 +101,16 @@ function iconFor(kind: string): string {
     // Empezar un Directo real, comparado con Instagram/TikTok ("Fulano
     // está en directo ahora") -- ver 0138_live_start_notification.sql.
     case "live_start": return "🔴";
+    // Hallazgo real, mismo patrón exacto ya corregido para live_start
+    // (Ronda 88): estos cuatro kinds ya insertan filas reales de
+    // notificación (0098/0127/0129/0130) pero nunca se mapearon aquí --
+    // el push real caía en el "🔔" genérico aunque BD y la app en sí ya
+    // llevaran el texto correcto.
+    case "new_post": return "📸";
+    case "repost": return "🔁";
+    case "story_share": return "📤";
+    case "screenshot": return "📸";
+    case "story_question_response": return "💬";
     default: return "🔔";
   }
 }
@@ -122,6 +132,11 @@ function titleFor(kind: string): string {
     case "reel_comment": return "Comentó tu reel";
     case "mention": return "Te mencionó";
     case "live_start": return "Está en directo ahora";
+    case "new_post": return "Ha publicado algo nuevo";
+    case "repost": return "Reposteó tu publicación";
+    case "story_share": return "Compartió tu publicación en su historia";
+    case "screenshot": return "Hizo captura de tu conversación";
+    case "story_question_response": return "Respondió tu pregunta";
     default: return "Notificación";
   }
 }
