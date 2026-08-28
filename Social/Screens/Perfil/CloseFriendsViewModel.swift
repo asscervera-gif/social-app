@@ -67,7 +67,7 @@ final class CloseFriendsViewModel: ObservableObject {
                     entries.append(SocialEntry(
                         id: otherID, socialID: row.id,
                         displayName: profile.display_name, avatarConfig: profile.avatar_config,
-                        compatibilityScore: 50
+                        compatibilityScore: 50, chatID: nil
                     ))
                 }
             }
