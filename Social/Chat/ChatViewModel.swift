@@ -21,6 +21,11 @@ final class ChatViewModel: ObservableObject {
     // -- nil = desactivado, en segundos si está activo. Ver
     // 0115_disappearing_messages.sql.
     @Published var disappearingSeconds: Int? = nil
+    // Fondo de chat propio, comparado con WhatsApp/Telegram/Messenger --
+    // ver 0139_chat_wallpaper.sql. Solo mi propia copia (wallpaper_by_a
+    // o wallpaper_by_b según quién soy), nunca la de la otra persona.
+    @Published var wallpaperKey: String? = nil
+    private var iAmUserA = true
     @Published var draft: String = ""
     @Published var suggestedActivity: String?
     @Published var errorMessage: String?
@@ -538,6 +543,8 @@ final class ChatViewModel: ObservableObject {
                 .value
             compatibilityScore = chat.compatibilityScore
             disappearingSeconds = chat.disappearingSeconds
+            iAmUserA = chat.userAID == currentUserID
+            wallpaperKey = iAmUserA ? chat.wallpaperByA : chat.wallpaperByB
             opponentID = chat.userAID == currentUserID ? chat.userBID : (chat.userBID == currentUserID ? chat.userAID : nil)
             await loadReadReceiptsVisibility()
 
@@ -656,6 +663,7 @@ final class ChatViewModel: ObservableObject {
                 if let chat = try? change.decodeRecord(as: Chat.self, decoder: JSONDecoder()) {
                     compatibilityScore = chat.compatibilityScore
                     disappearingSeconds = chat.disappearingSeconds
+                    wallpaperKey = iAmUserA ? chat.wallpaperByA : chat.wallpaperByB
                     await checkActivitySuggestion()
                 }
             }
@@ -1112,6 +1120,25 @@ final class ChatViewModel: ObservableObject {
                 .execute()
         } catch {
             errorMessage = "No se pudo cambiar el modo de mensajes que desaparecen."
+        }
+    }
+
+    /// Cambiar mi propio fondo de chat, comparado con WhatsApp/Telegram/
+    /// Messenger -- solo mi copia (wallpaper_by_a/b según quién soy),
+    /// `key` en nil vuelve al fondo por defecto. Solo fondos
+    /// predefinidos, sin subida de fotos propias (0139_chat_wallpaper.sql).
+    /// Equivalente de ChatViewModel.kt.setWallpaper().
+    func setWallpaper(_ key: String?) async {
+        wallpaperKey = key
+        let column = iAmUserA ? "wallpaper_by_a" : "wallpaper_by_b"
+        do {
+            try await SupabaseManager.shared.client
+                .from("chats")
+                .update([column: key])
+                .eq("id", value: chatID)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo cambiar el fondo del chat."
         }
     }
 }

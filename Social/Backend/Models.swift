@@ -188,6 +188,11 @@ struct Chat: Codable, Identifiable {
     // -- nil = desactivado, en segundos si está activo (86400/604800/
     // 7776000). Ver 0115_disappearing_messages.sql.
     var disappearingSeconds: Int? = nil
+    // Fondo de chat por persona, comparado con WhatsApp/Telegram/
+    // Messenger -- cada quien ve el suyo propio, ver
+    // 0139_chat_wallpaper.sql.
+    var wallpaperByA: String? = nil
+    var wallpaperByB: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -204,6 +209,8 @@ struct Chat: Codable, Identifiable {
         case markedUnreadByA = "marked_unread_by_a"
         case markedUnreadByB = "marked_unread_by_b"
         case disappearingSeconds = "disappearing_seconds"
+        case wallpaperByA = "wallpaper_by_a"
+        case wallpaperByB = "wallpaper_by_b"
     }
 }
 

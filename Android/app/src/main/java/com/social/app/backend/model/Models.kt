@@ -152,7 +152,12 @@ data class Chat(
     // Mensajes que desaparecen real, comparado con WhatsApp/Instagram DM
     // -- null = desactivado, en segundos si está activo (86400/604800/
     // 7776000). Ver 0115_disappearing_messages.sql.
-    @SerialName("disappearing_seconds") val disappearingSeconds: Int? = null
+    @SerialName("disappearing_seconds") val disappearingSeconds: Int? = null,
+    // Fondo de chat por persona, comparado con WhatsApp/Telegram/
+    // Messenger -- cada quien ve el suyo propio, ver
+    // 0139_chat_wallpaper.sql.
+    @SerialName("wallpaper_by_a") val wallpaperByA: String? = null,
+    @SerialName("wallpaper_by_b") val wallpaperByB: String? = null
 )
 
 @Serializable

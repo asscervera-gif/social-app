@@ -3852,6 +3852,32 @@ async function main() {
   const afterLocationUpdate = (await db.query(`select last_lat, location_updated_at from profiles where id = $1`, [u1])).rows[0];
   check('profiles.location_updated_at: el cambio real queda guardado junto con la ubicación', Number(afterLocationUpdate.last_lat) === 40.4 && afterLocationUpdate.location_updated_at !== null);
 
+  // --- chats.wallpaper_by_a/b + group_chat_members.wallpaper_key
+  // (0139_chat_wallpaper.sql): fondo de chat por persona, comparado con
+  // WhatsApp/Telegram/Messenger -- mismo patrón exacto que
+  // protect_chat_pinned_flags/protect_chat_muted_flags. ---
+  await asUser(u2);
+  await db.query(`update chats set wallpaper_by_b = 'ocean' where id = $1`, [chat.id]);
+  const wallpaperByB = (await db.query(`select wallpaper_by_a, wallpaper_by_b from chats where id = $1`, [chat.id])).rows[0];
+  check('protect_chat_wallpaper_flags: u2 (user_b) SÍ pone su propio fondo', wallpaperByB.wallpaper_by_b === 'ocean' && wallpaperByB.wallpaper_by_a === null);
+
+  await db.query(`update chats set wallpaper_by_a = 'sunset' where id = $1`, [chat.id]);
+  const stillNoWallpaperA = (await db.query(`select wallpaper_by_a from chats where id = $1`, [chat.id])).rows[0];
+  check('protect_chat_wallpaper_flags: u2 NO puede poner el fondo de u1 (revertido en silencio, no lanza)', stillNoWallpaperA.wallpaper_by_a === null);
+
+  await asUser(u1);
+  await db.query(`update chats set wallpaper_by_a = 'sunset' where id = $1`, [chat.id]);
+  const wallpaperByA = (await db.query(`select wallpaper_by_a from chats where id = $1`, [chat.id])).rows[0];
+  check('protect_chat_wallpaper_flags: u1 (user_a) SÍ pone su propio fondo', wallpaperByA.wallpaper_by_a === 'sunset');
+
+  const wpGroupId = crypto.randomUUID();
+  await db.query(`insert into group_chats (id, name, created_by) values ($1, $2, $3)`, [wpGroupId, 'Grupo para fondo', u1]);
+  await expectOk('group_chat_members_update_own: u1 SÍ puede fijar el fondo de su propia fila de membresía', async () => {
+    await db.query(`update group_chat_members set wallpaper_key = 'forest' where group_chat_id = $1 and user_id = $2`, [wpGroupId, u1]);
+  });
+  const wallpaperMembership = (await db.query(`select wallpaper_key from group_chat_members where group_chat_id = $1 and user_id = $2`, [wpGroupId, u1])).rows[0];
+  check('group_chat_members.wallpaper_key: la fila real queda con el fondo elegido', wallpaperMembership.wallpaper_key === 'forest');
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

@@ -5,6 +5,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.Orientation
@@ -115,6 +117,10 @@ fun ChatScreen(
     // WhatsApp/Instagram DM -- ver ChatViewModel.setDisappearingSeconds(),
     // 0115_disappearing_messages.sql.
     val disappearingSeconds by viewModel.disappearingSeconds.collectAsState()
+    // Fondo de chat propio, comparado con WhatsApp/Telegram/Messenger --
+    // ver ChatViewModel.setWallpaper(), 0139_chat_wallpaper.sql.
+    val wallpaperKey by viewModel.wallpaperKey.collectAsState()
+    var showWallpaperMenu by remember { mutableStateOf(false) }
     val opponentId by viewModel.opponentId.collectAsState()
     val suggestedActivity by viewModel.suggestedActivity.collectAsState()
     val icebreaker by viewModel.icebreaker.collectAsState()
@@ -260,6 +266,27 @@ fun ChatScreen(
                         })
                     }
                 }
+                // Fondo de chat propio, comparado con WhatsApp/Telegram/
+                // Messenger -- ver ChatViewModel.setWallpaper(),
+                // 0139_chat_wallpaper.sql. Solo fondos predefinidos, sin
+                // subida de fotos propias.
+                Box {
+                    IconButton(onClick = { showWallpaperMenu = true }) {
+                        Text("🎨")
+                    }
+                    DropdownMenu(expanded = showWallpaperMenu, onDismissRequest = { showWallpaperMenu = false }) {
+                        DropdownMenuItem(text = { Text("Por defecto") }, onClick = {
+                            showWallpaperMenu = false
+                            viewModel.setWallpaper(null)
+                        })
+                        chatWallpaperOptions.forEach { (key, label, _) ->
+                            DropdownMenuItem(text = { Text(label) }, onClick = {
+                                showWallpaperMenu = false
+                                viewModel.setWallpaper(key)
+                            })
+                        }
+                    }
+                }
             }
         }
         if (disappearingSeconds != null) {
@@ -373,7 +400,14 @@ fun ChatScreen(
         }
 
         val reactionEmojis = listOf("❤", "😂", "😮", "😢", "👍")
-        LazyColumn(state = listState, modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp)) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .background(wallpaperBrush(wallpaperKey))
+                .padding(horizontal = 16.dp)
+        ) {
             // Hueco real: sin esto, un chat con más de 100 mensajes perdía
             // silenciosamente todo lo anterior a los últimos 100, sin forma
             // de volver a verlo (ver ChatViewModel.loadOlderMessages()).
@@ -1285,4 +1319,19 @@ private fun VoteButton(label: String, onClick: () -> Unit) {
     Button(onClick = onClick, modifier = Modifier) {
         Text(label, style = MaterialTheme.typography.labelSmall)
     }
+}
+
+// Fondo de chat propio, comparado con WhatsApp/Telegram/Messenger --
+// paleta cerrada de degradados predefinidos (sin subida de fotos
+// propias), la `key` guardada en 0139_chat_wallpaper.sql es una de
+// estas tres. Equivalente de ChatView.swift.chatWallpaperOptions.
+private val chatWallpaperOptions = listOf(
+    Triple("sunset", "Atardecer", listOf(Color(0xFFFF7E5F), Color(0xFFFEB47B))),
+    Triple("ocean", "Océano", listOf(Color(0xFF2E3192), Color(0xFF1BFFFF))),
+    Triple("forest", "Bosque", listOf(Color(0xFF134E5E), Color(0xFF71B280)))
+)
+
+private fun wallpaperBrush(key: String?): Brush {
+    val colors = chatWallpaperOptions.firstOrNull { it.first == key }?.third
+    return Brush.verticalGradient(colors ?: listOf(Color.Transparent, Color.Transparent))
 }

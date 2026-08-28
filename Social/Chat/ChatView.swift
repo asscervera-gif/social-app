@@ -301,6 +301,10 @@ struct ChatView: View {
                     }
                     .padding()
                 }
+                // Fondo de chat propio, comparado con WhatsApp/Telegram/
+                // Messenger -- ver ChatViewModel.setWallpaper(),
+                // 0139_chat_wallpaper.sql.
+                .background(chatWallpaperGradient(viewModel.wallpaperKey))
                 // Closure de un parámetro (newValue), no cero: el deployment
                 // target real de este proyecto es iOS 16 (ver project.yml),
                 // y la forma sin parámetros de onChange(of:) es exclusiva de
@@ -489,6 +493,18 @@ struct ChatView: View {
                     Button("90 días") { Task { await viewModel.setDisappearingSeconds(7776000) } }
                 } label: {
                     Text(viewModel.disappearingSeconds != nil ? "🔥" : "🕐")
+                }
+                // Fondo de chat propio, comparado con WhatsApp/Telegram/
+                // Messenger -- ver ChatViewModel.setWallpaper(),
+                // 0139_chat_wallpaper.sql. Solo fondos predefinidos, sin
+                // subida de fotos propias.
+                Menu {
+                    Button("Por defecto") { Task { await viewModel.setWallpaper(nil) } }
+                    ForEach(chatWallpaperOptions, id: \.key) { option in
+                        Button(option.label) { Task { await viewModel.setWallpaper(option.key) } }
+                    }
+                } label: {
+                    Text("🎨")
                 }
             }
 
@@ -1215,4 +1231,25 @@ private struct ActivityBanner: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal)
     }
+}
+
+// Fondo de chat propio, comparado con WhatsApp/Telegram/Messenger --
+// paleta cerrada de degradados predefinidos (sin subida de fotos
+// propias), la `key` guardada en 0139_chat_wallpaper.sql es una de
+// estas tres. Equivalente de ChatScreen.kt.chatWallpaperOptions.
+private struct ChatWallpaperOption {
+    let key: String
+    let label: String
+    let colors: [Color]
+}
+
+private let chatWallpaperOptions: [ChatWallpaperOption] = [
+    ChatWallpaperOption(key: "sunset", label: "Atardecer", colors: [Color(red: 1, green: 0.49, blue: 0.37), Color(red: 1, green: 0.71, blue: 0.48)]),
+    ChatWallpaperOption(key: "ocean", label: "Océano", colors: [Color(red: 0.18, green: 0.19, blue: 0.57), Color(red: 0.11, green: 1, blue: 1)]),
+    ChatWallpaperOption(key: "forest", label: "Bosque", colors: [Color(red: 0.08, green: 0.31, blue: 0.37), Color(red: 0.44, green: 0.7, blue: 0.5)])
+]
+
+private func chatWallpaperGradient(_ key: String?) -> LinearGradient {
+    let colors = chatWallpaperOptions.first { $0.key == key }?.colors ?? [Color.clear, Color.clear]
+    return LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom)
 }

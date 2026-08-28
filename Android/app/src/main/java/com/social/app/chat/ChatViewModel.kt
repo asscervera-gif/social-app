@@ -125,6 +125,13 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
     private val _disappearingSeconds = MutableStateFlow<Int?>(null)
     val disappearingSeconds: StateFlow<Int?> = _disappearingSeconds.asStateFlow()
 
+    // Fondo de chat propio, comparado con WhatsApp/Telegram/Messenger --
+    // ver 0139_chat_wallpaper.sql. Solo mi propia copia (wallpaper_by_a
+    // o wallpaper_by_b según quién soy), nunca la de la otra persona.
+    private val _wallpaperKey = MutableStateFlow<String?>(null)
+    val wallpaperKey: StateFlow<String?> = _wallpaperKey.asStateFlow()
+    private var iAmUserA = true
+
     private val _opponentId = MutableStateFlow<String?>(null)
     val opponentId: StateFlow<String?> = _opponentId.asStateFlow()
 
@@ -562,6 +569,8 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
             _disappearingSeconds.value = chat.disappearingSeconds
 
             val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
+            iAmUserA = myId == chat.userAId
+            _wallpaperKey.value = if (iAmUserA) chat.wallpaperByA else chat.wallpaperByB
             _opponentId.value = when (myId) {
                 chat.userAId -> chat.userBId
                 chat.userBId -> chat.userAId
@@ -725,6 +734,7 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
             val chat = Json.decodeFromJsonElement(Chat.serializer(), update.record)
             _compatibility.value = chat.compatibilityScore
             _disappearingSeconds.value = chat.disappearingSeconds
+            _wallpaperKey.value = if (iAmUserA) chat.wallpaperByA else chat.wallpaperByB
         }.launchIn(viewModelScope)
 
         // Para que el remitente vea "Leído" en vivo cuando la otra persona
@@ -1117,6 +1127,23 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
                     .update({ set("disappearing_seconds", seconds) }) { filter { eq("id", chatId) } }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo cambiar el modo de mensajes que desaparecen."
+            }
+        }
+    }
+
+    /** Cambiar mi propio fondo de chat, comparado con WhatsApp/Telegram/
+     * Messenger -- solo mi copia (wallpaper_by_a/b según quién soy),
+     * `key` en null vuelve al fondo por defecto. Solo fondos
+     * predefinidos, sin subida de fotos propias (0139_chat_wallpaper.sql). */
+    fun setWallpaper(key: String?) {
+        _wallpaperKey.value = key
+        val column = if (iAmUserA) "wallpaper_by_a" else "wallpaper_by_b"
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("chats")
+                    .update({ set(column, key) }) { filter { eq("id", chatId) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo cambiar el fondo del chat."
             }
         }
     }
