@@ -27,6 +27,53 @@ final class NewPostViewModel: ObservableObject {
     /// (0055_post_media.sql) -- la primera va en `posts.media_url` como
     /// siempre, el resto en `post_media`. [taggedProfileID] es opcional --
     /// "con quién" (0051_post_social_tags.sql), comparado con SOCIAL_APP.html.
+    // Borrador de publicación no enviada, comparado con Instagram/Twitter/
+    // X -- ver 0128_post_drafts.sql. Alcance deliberado: solo texto
+    // (caption/location_name/is_sensitive), sin fotos elegidas (Data local
+    // que no sobrevive a un reinicio real de la app). Equivalente de
+    // NewPostViewModel.kt.PostDraft/loadDraft/saveDraft/discardDraft.
+    struct PostDraft: Decodable {
+        let caption: String
+        let location_name: String?
+        let is_sensitive: Bool
+    }
+
+    func loadDraft() async -> PostDraft? {
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return nil }
+        return try? await SupabaseManager.shared.client
+            .from("post_drafts")
+            .select()
+            .eq("author_id", value: userID)
+            .single()
+            .execute()
+            .value
+    }
+
+    func saveDraft(caption: String, locationName: String?, isSensitive: Bool) async {
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id, !caption.isEmpty else { return }
+        struct UpsertDraft: Encodable {
+            let author_id: UUID
+            let caption: String
+            let location_name: String?
+            let is_sensitive: Bool
+        }
+        let trimmedLocation = locationName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalLocation = (trimmedLocation?.isEmpty ?? true) ? nil : trimmedLocation
+        try? await SupabaseManager.shared.client
+            .from("post_drafts")
+            .upsert(UpsertDraft(author_id: userID, caption: caption, location_name: finalLocation, is_sensitive: isSensitive), onConflict: "author_id")
+            .execute()
+    }
+
+    func discardDraft() async {
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        try? await SupabaseManager.shared.client
+            .from("post_drafts")
+            .delete()
+            .eq("author_id", value: userID)
+            .execute()
+    }
+
     func post(caption: String, isSocialOnly: Bool, imageDataList: [Data], taggedProfileID: UUID? = nil, locationName: String? = nil, isSensitive: Bool = false, replyAudience: String = "everyone", pollQuestion: String = "", pollOptions: [String] = []) async -> Bool {
         guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return false }
         // Mismo límite real que posts_caption_length
@@ -107,6 +154,7 @@ final class NewPostViewModel: ObservableObject {
             // Kotlin equivalente: publicar es la acción de activación más
             // importante del feed y no se registraba.
             AnalyticsManager.track("post_created")
+            await discardDraft()
             return true
         } catch {
             errorMessage = "No se pudo publicar."

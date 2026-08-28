@@ -3491,6 +3491,35 @@ async function main() {
   const rpNotif = (await db.query(`select kind, payload from notifications where recipient_id = $1 and kind = 'repost'`, [rpU1])).rows;
   check('notify_new_repost: el autor real de la publicación (rpU1) recibe un aviso real por cada repost (2: el primero + el de después de quitar y repostear)', rpNotif.length === 2 && rpNotif.every(n => n.payload.post_id === rpPost.id));
 
+  // --- post_drafts (0128_post_drafts.sql): borrador de publicación no
+  // enviada, comparado con Instagram/Twitter/X -- un borrador por usuario
+  // (author_id PRIMARY KEY, upsert).
+  await asSuperuser();
+  const pdU1 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const pdU2 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(`insert into profiles (id, display_name) values ($1,'Pd1'),($2,'Pd2') on conflict (id) do update set display_name=excluded.display_name`, [pdU1, pdU2]);
+
+  await asUser(pdU1);
+  await expectOk('post_drafts_insert_own: pdU1 SÍ puede guardar su propio borrador', async () => {
+    await db.query(`insert into post_drafts (author_id, caption, location_name, is_sensitive) values ($1, 'a medio escribir...', 'Madrid', false)`, [pdU1]);
+  });
+  await asUser(pdU2);
+  const pdSeenByOther = (await db.query(`select caption from post_drafts where author_id = $1`, [pdU1])).rows;
+  check('post_drafts_select_own: pdU2 NO ve el borrador de pdU1 (0 filas)', pdSeenByOther.length === 0);
+
+  await asUser(pdU1);
+  await expectOk('post_drafts_update_own (upsert): pdU1 SÍ puede actualizar su propio borrador', async () => {
+    await db.query(`update post_drafts set caption = 'texto final del borrador' where author_id = $1`, [pdU1]);
+  });
+  const pdUpdated = (await db.query(`select caption from post_drafts where author_id = $1`, [pdU1])).rows[0];
+  check('post_drafts_update_own: el cambio real se guardó', pdUpdated.caption === 'texto final del borrador');
+
+  await expectOk('post_drafts_delete_own: pdU1 SÍ puede descartar su propio borrador (p. ej. al publicar)', async () => {
+    await db.query(`delete from post_drafts where author_id = $1`, [pdU1]);
+  });
+  const pdAfterDelete = (await db.query(`select caption from post_drafts where author_id = $1`, [pdU1])).rows;
+  check('post_drafts_delete_own: el borrador real desaparece de verdad', pdAfterDelete.length === 0);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

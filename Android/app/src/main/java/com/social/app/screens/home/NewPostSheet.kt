@@ -96,6 +96,22 @@ fun NewPostSheet(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
+    // Borrador de publicación no enviada, comparado con Instagram/
+    // Twitter/X -- ver NewPostViewModel.loadDraft(), 0128_post_drafts.sql.
+    LaunchedEffect(Unit) {
+        viewModel.loadDraft()?.let { draft ->
+            caption = draft.caption
+            locationName = draft.locationName ?: ""
+            isSensitive = draft.isSensitive
+        }
+    }
+    val handleDismiss: () -> Unit = {
+        if (caption.isNotBlank()) {
+            scope.launch { viewModel.saveDraft(caption, locationName, isSensitive) }
+        }
+        onDismiss()
+    }
+
     // Hallazgo real: no había ninguna integración de Storage en el
     // proyecto — confirmado que sí hay red real en este entorno, así que
     // ya no es un bloqueo (ver StorageUploader.kt). Selector de imagen del
@@ -105,7 +121,7 @@ fun NewPostSheet(
         imageUris = uris
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+    ModalBottomSheet(onDismissRequest = handleDismiss, sheetState = sheetState) {
         Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
             Text("Nueva publicación", style = MaterialTheme.typography.titleLarge)
 

@@ -50,6 +50,56 @@ class NewPostViewModel : ViewModel() {
         @SerialName("reply_audience") val replyAudience: String = "everyone"
     )
 
+    // Borrador de publicación no enviada, comparado con Instagram/Twitter/
+    // X -- ver 0128_post_drafts.sql. Alcance deliberado: solo texto
+    // (caption/location_name/is_sensitive), sin fotos elegidas (Uri
+    // locales que no sobreviven a un reinicio real de la app).
+    @Serializable
+    data class PostDraft(
+        val caption: String,
+        @SerialName("location_name") val locationName: String? = null,
+        @SerialName("is_sensitive") val isSensitive: Boolean = false
+    )
+
+    @Serializable
+    private data class UpsertDraft(
+        @SerialName("author_id") val authorId: String,
+        val caption: String,
+        @SerialName("location_name") val locationName: String?,
+        @SerialName("is_sensitive") val isSensitive: Boolean
+    )
+
+    suspend fun loadDraft(): PostDraft? {
+        val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return null
+        return try {
+            SupabaseManager.client.from("post_drafts")
+                .select { filter { eq("author_id", userId) } }
+                .decodeSingleOrNull<PostDraft>()
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    suspend fun saveDraft(caption: String, locationName: String?, isSensitive: Boolean) {
+        val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return
+        if (caption.isBlank()) return
+        try {
+            SupabaseManager.client.from("post_drafts")
+                .upsert(UpsertDraft(userId, caption, locationName?.trim()?.ifEmpty { null }, isSensitive), onConflict = "author_id")
+        } catch (e: Exception) {
+            // Sin bloqueo real: perder un borrador no es tan grave como
+            // perder una publicación real ya enviada.
+        }
+    }
+
+    suspend fun discardDraft() {
+        val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return
+        try {
+            SupabaseManager.client.from("post_drafts").delete { filter { eq("author_id", userId) } }
+        } catch (e: Exception) {
+        }
+    }
+
     @Serializable
     private data class NewPostMedia(
         @SerialName("post_id") val postId: String,
@@ -119,6 +169,7 @@ class NewPostViewModel : ViewModel() {
             // social_sent, event_joined...), este hueco dejaba a
             // cualquier análisis de embudo sin el paso más básico.
             com.social.app.backend.AnalyticsManager.track("post_created")
+            discardDraft()
             _isPosting.value = false
             true
         } catch (e: Exception) {

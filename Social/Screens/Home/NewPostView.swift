@@ -45,6 +45,11 @@ struct NewPostView: View {
     @State private var pollOptionB = ""
     let onDismiss: () -> Void
     let onPosted: () -> Void
+    // Borrador de publicación no enviada, comparado con Instagram/Twitter/
+    // X -- ver NewPostViewModel.saveDraft(), 0128_post_drafts.sql. Evita
+    // re-guardar el borrador ya descartado si la vista desaparece justo
+    // después de publicar con éxito.
+    @State private var didPost = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -151,6 +156,7 @@ struct NewPostView: View {
             Button {
                 Task {
                     if await viewModel.post(caption: caption, isSocialOnly: isSocialOnly, imageDataList: imageDataList, taggedProfileID: taggedProfileID, locationName: locationName, isSensitive: isSensitive, replyAudience: replyAudience, pollQuestion: pollQuestion, pollOptions: [pollOptionA, pollOptionB]) {
+                        didPost = true
                         onPosted()
                         onDismiss()
                     }
@@ -168,6 +174,20 @@ struct NewPostView: View {
             Spacer()
         }
         .padding()
-        .task { await socialsViewModel.load() }
+        .task {
+            await socialsViewModel.load()
+            if let draft = await viewModel.loadDraft() {
+                caption = draft.caption
+                locationName = draft.location_name ?? ""
+                isSensitive = draft.is_sensitive
+            }
+        }
+        .onDisappear {
+            guard !didPost, !caption.isEmpty else { return }
+            let capturedCaption = caption
+            let capturedLocation = locationName
+            let capturedSensitive = isSensitive
+            Task { await viewModel.saveDraft(caption: capturedCaption, locationName: capturedLocation, isSensitive: capturedSensitive) }
+        }
     }
 }
