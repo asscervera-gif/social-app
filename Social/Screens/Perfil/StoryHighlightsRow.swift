@@ -36,6 +36,13 @@ struct StoryHighlightsRow: View {
     @State private var highlights: [HighlightSummary] = []
     @State private var covers: [UUID: String] = [:]
     @State private var openHighlight: HighlightSummary?
+    // Borrar un destacado completo real, comparado con Instagram
+    // (mantener pulsado el círculo -> "Eliminar destacado") -- hallazgo
+    // real: un destacado creado quedaba para siempre sin salida real.
+    // Solo tiene sentido sobre el propio perfil. Equivalente de
+    // StoryHighlightsRow.kt (Android).
+    @State private var myID: UUID?
+    @State private var deletingHighlight: HighlightSummary?
 
     var body: some View {
         Group {
@@ -71,10 +78,41 @@ struct StoryHighlightsRow: View {
                                 }
                             }
                             .buttonStyle(.plain)
+                            .contextMenu {
+                                if profileID == myID {
+                                    Button(role: .destructive) {
+                                        deletingHighlight = highlight
+                                    } label: {
+                                        Label("Eliminar destacado", systemImage: "trash")
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
+        }
+        .task { myID = try? await SupabaseManager.shared.client.auth.session.user.id }
+        .alert("¿Borrar \"\(deletingHighlight?.title ?? "")\"?", isPresented: Binding(
+            get: { deletingHighlight != nil },
+            set: { isPresented in if !isPresented { deletingHighlight = nil } }
+        )) {
+            Button("Borrar", role: .destructive) {
+                if let highlight = deletingHighlight {
+                    highlights.removeAll { $0.id == highlight.id }
+                    deletingHighlight = nil
+                    Task {
+                        try? await SupabaseManager.shared.client
+                            .from("story_highlights")
+                            .delete()
+                            .eq("id", value: highlight.id)
+                            .execute()
+                    }
+                }
+            }
+            Button("Cancelar", role: .cancel) { deletingHighlight = nil }
+        } message: {
+            Text("Esto borra el destacado completo. Las historias en sí no se ven afectadas.")
         }
         .task(id: profileID) {
             guard let rows: [HighlightSummary] = try? await SupabaseManager.shared.client

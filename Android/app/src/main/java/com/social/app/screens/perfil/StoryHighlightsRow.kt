@@ -1,8 +1,10 @@
 package com.social.app.screens.perfil
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,8 +39,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.rememberAsyncImagePainter
 import com.social.app.backend.SupabaseManager
+import io.github.jan.supabase.gotrue.auth
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Columns
+import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -65,11 +69,23 @@ private data class StoryMediaRow(val id: String, @SerialName("media_url") val me
  * No se muestra ninguna fila si la persona no tiene ningún destacado
  * todavía -- nunca un hueco vacío ni un texto de "sin destacados".
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun StoryHighlightsRow(profileId: String) {
     var highlights by remember(profileId) { mutableStateOf<List<HighlightRow>>(emptyList()) }
     var covers by remember(profileId) { mutableStateOf<Map<String, String>>(emptyMap()) }
     var openHighlight by remember { mutableStateOf<HighlightRow?>(null) }
+    // Borrar un destacado completo real, comparado con Instagram
+    // (mantener pulsado el círculo -> "Eliminar destacado") -- hallazgo
+    // real: un destacado creado quedaba para siempre sin salida real.
+    // Solo tiene sentido sobre el propio perfil.
+    var myId by remember { mutableStateOf<String?>(null) }
+    var deletingHighlight by remember { mutableStateOf<HighlightRow?>(null) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        myId = SupabaseManager.client.auth.currentUserOrNull()?.id
+    }
 
     LaunchedEffect(profileId) {
         val rows = try {
@@ -100,7 +116,10 @@ fun StoryHighlightsRow(profileId: String) {
         items(highlights) { highlight ->
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.clickable { openHighlight = highlight }
+                modifier = Modifier.combinedClickable(
+                    onClick = { openHighlight = highlight },
+                    onLongClick = { if (profileId == myId) deletingHighlight = highlight }
+                )
             ) {
                 val coverUrl = highlight.coverStoryId?.let { covers[it] }
                 Box(
@@ -133,6 +152,29 @@ fun StoryHighlightsRow(profileId: String) {
 
     openHighlight?.let { highlight ->
         HighlightViewer(highlight = highlight, onDismiss = { openHighlight = null })
+    }
+
+    deletingHighlight?.let { highlight ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { deletingHighlight = null },
+            title = { Text("¿Borrar \"${highlight.title}\"?") },
+            text = { Text("Esto borra el destacado completo. Las historias en sí no se ven afectadas.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    highlights = highlights.filter { it.id != highlight.id }
+                    deletingHighlight = null
+                    scope.launch {
+                        try {
+                            SupabaseManager.client.from("story_highlights").delete { filter { eq("id", highlight.id) } }
+                        } catch (e: Exception) {
+                        }
+                    }
+                }) { Text("Borrar") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { deletingHighlight = null }) { Text("Cancelar") }
+            }
+        )
     }
 }
 
