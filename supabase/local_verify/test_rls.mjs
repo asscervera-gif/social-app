@@ -3921,6 +3921,38 @@ async function main() {
   const birthdayNoDate = (await db.query(`select is_birthday_today($1) as v`, [u2])).rows[0];
   check('is_birthday_today: sin fecha de nacimiento real, nunca cuenta como cumpleaños', birthdayNoDate.v === false);
 
+  // --- scheduled_posts + publish_due_scheduled_posts() (0141_scheduled_posts.sql):
+  // programar la publicación de un post real, comparado con Instagram/
+  // Twitter-X/TikTok. SIN pg_cron -- publicado al llamar la función,
+  // mismo criterio "catch up" ya explicado en la propia migración. ---
+  await asUser(u1);
+  const duePostId = (await db.query(
+    `insert into scheduled_posts (author_id, caption, scheduled_for) values ($1, 'ya vencido', now() - interval '1 minute') returning id`,
+    [u1]
+  )).rows[0].id;
+  const futurePostId = (await db.query(
+    `insert into scheduled_posts (author_id, caption, scheduled_for) values ($1, 'todavía no', now() + interval '1 day') returning id`,
+    [u1]
+  )).rows[0].id;
+
+  const published = (await db.query(`select * from publish_due_scheduled_posts()`)).rows;
+  check('publish_due_scheduled_posts: publica el post real ya vencido', published.length === 1 && published[0].caption === 'ya vencido');
+
+  const stillScheduled = (await db.query(`select id from scheduled_posts where id = $1`, [futurePostId])).rows;
+  check('publish_due_scheduled_posts: el post real FUTURO no se toca todavía', stillScheduled.length === 1);
+
+  const goneFromScheduled = (await db.query(`select id from scheduled_posts where id = $1`, [duePostId])).rows;
+  check('publish_due_scheduled_posts: el post real vencido ya no está en scheduled_posts', goneFromScheduled.length === 0);
+
+  const nowInPosts = (await db.query(`select caption from posts where author_id = $1 and caption = 'ya vencido'`, [u1])).rows;
+  check('publish_due_scheduled_posts: el post real vencido SÍ aparece en posts', nowInPosts.length === 1);
+
+  await asUser(u2);
+  const u2SeesU1Scheduled = (await db.query(`select id from scheduled_posts where id = $1`, [futurePostId])).rows;
+  check('scheduled_posts_own: u2 NO puede leer los posts programados reales de u1', u2SeesU1Scheduled.length === 0);
+  const u2Published = (await db.query(`select * from publish_due_scheduled_posts()`)).rows;
+  check('publish_due_scheduled_posts: u2 NO publica nada ajeno (no tiene posts programados propios)', u2Published.length === 0);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

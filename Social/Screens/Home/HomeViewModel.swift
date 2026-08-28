@@ -72,6 +72,13 @@ final class HomeViewModel: ObservableObject {
         do {
             let client = SupabaseManager.shared.client
 
+            // Publicaciones programadas reales que ya vencieron,
+            // comparado con Instagram/Twitter-X/TikTok -- publicadas "al
+            // abrir Home" (sin pg_cron, ver 0141_scheduled_posts.sql para
+            // el porqué explícito). No crítico si falla: el resto del
+            // feed sigue cargando igual. Equivalente de HomeViewModel.kt.
+            try? await client.rpc("publish_due_scheduled_posts").execute()
+
             // Hallazgo real: el feed principal nunca filtraba
             // publicaciones de gente que has bloqueado — a diferencia de
             // Match/Find/Search (sí lo hacen), bloquear a alguien no le

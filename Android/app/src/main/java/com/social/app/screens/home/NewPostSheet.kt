@@ -279,6 +279,46 @@ fun NewPostSheet(
             ) {
                 Text(if (isPosting) "Publicando…" else "Publicar")
             }
+            // Programar la publicación de un post real para más tarde,
+            // comparado con Instagram/Twitter-X/TikTok -- ver
+            // NewPostViewModel.schedulePost(), 0141_scheduled_posts.sql.
+            // Alcance acotado (mismo criterio que el borrador): solo
+            // texto + una imagen, sin encuesta/varias fotos.
+            OutlinedButton(
+                onClick = {
+                    val now = java.util.Calendar.getInstance()
+                    android.app.DatePickerDialog(
+                        context,
+                        { _, year, month, day ->
+                            android.app.TimePickerDialog(
+                                context,
+                                { _, hour, minute ->
+                                    val picked = java.util.Calendar.getInstance().apply {
+                                        set(year, month, day, hour, minute, 0)
+                                    }
+                                    scope.launch {
+                                        val scheduledForIso = java.time.Instant.ofEpochMilli(picked.timeInMillis).toString()
+                                        if (viewModel.schedulePost(context, caption, isSocialOnly, imageUris.firstOrNull(), scheduledForIso)) {
+                                            onPosted()
+                                            onDismiss()
+                                        }
+                                    }
+                                },
+                                now.get(java.util.Calendar.HOUR_OF_DAY),
+                                now.get(java.util.Calendar.MINUTE),
+                                true
+                            ).show()
+                        },
+                        now.get(java.util.Calendar.YEAR),
+                        now.get(java.util.Calendar.MONTH),
+                        now.get(java.util.Calendar.DAY_OF_MONTH)
+                    ).apply { datePicker.minDate = now.timeInMillis }.show()
+                },
+                enabled = caption.isNotBlank() && !isPosting,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+            ) {
+                Text("Programar publicación")
+            }
         }
     }
 }

@@ -178,4 +178,38 @@ class NewPostViewModel : ViewModel() {
             false
         }
     }
+
+    // Programar la publicación de un post real para más tarde, comparado
+    // con Instagram/Twitter-X/TikTok -- ver 0141_scheduled_posts.sql.
+    // Alcance acotado (mismo criterio que post_drafts): solo texto + una
+    // imagen ya subida, sin encuesta/varias fotos/etiqueta de perfil.
+    @Serializable
+    private data class NewScheduledPost(
+        @SerialName("author_id") val authorId: String,
+        val caption: String,
+        @SerialName("is_social_only") val isSocialOnly: Boolean,
+        @SerialName("media_url") val mediaUrl: String? = null,
+        @SerialName("scheduled_for") val scheduledFor: String
+    )
+
+    suspend fun schedulePost(context: Context, caption: String, isSocialOnly: Boolean, imageUri: Uri?, scheduledForIso: String): Boolean {
+        val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return false
+        if (caption.length > 2200) {
+            _errorMessage.value = "El texto no puede tener más de 2200 caracteres."
+            return false
+        }
+        _isPosting.value = true
+        return try {
+            val mediaUrl = imageUri?.let { StorageUploader.uploadImage(context, it, userId) }
+            SupabaseManager.client.from("scheduled_posts")
+                .insert(NewScheduledPost(userId, caption, isSocialOnly, mediaUrl, scheduledForIso))
+            discardDraft()
+            _isPosting.value = false
+            true
+        } catch (e: Exception) {
+            _errorMessage.value = "No se pudo programar la publicación."
+            _isPosting.value = false
+            false
+        }
+    }
 }

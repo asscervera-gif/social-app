@@ -161,4 +161,47 @@ final class NewPostViewModel: ObservableObject {
             return false
         }
     }
+
+    /// Programar la publicación de un post real para más tarde, comparado
+    /// con Instagram/Twitter-X/TikTok -- ver 0141_scheduled_posts.sql.
+    /// Alcance acotado (mismo criterio que el borrador): solo texto + una
+    /// imagen, sin encuesta/varias fotos. Equivalente de
+    /// NewPostViewModel.kt.schedulePost().
+    func schedulePost(caption: String, isSocialOnly: Bool, imageData: Data?, scheduledFor: Date) async -> Bool {
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return false }
+        guard caption.count <= 2200 else {
+            errorMessage = "El texto no puede tener más de 2200 caracteres."
+            return false
+        }
+        struct NewScheduledPost: Encodable {
+            let author_id: UUID
+            let caption: String
+            let is_social_only: Bool
+            let media_url: String?
+            let scheduled_for: String
+        }
+        isPosting = true
+        defer { isPosting = false }
+        do {
+            var mediaURL: String?
+            if let imageData {
+                mediaURL = try? await StorageUploader.uploadImage(data: imageData, fileExtension: "jpg", userID: userID)
+            }
+            try await SupabaseManager.shared.client
+                .from("scheduled_posts")
+                .insert(NewScheduledPost(
+                    author_id: userID,
+                    caption: caption,
+                    is_social_only: isSocialOnly,
+                    media_url: mediaURL,
+                    scheduled_for: ISO8601DateFormatter().string(from: scheduledFor)
+                ))
+                .execute()
+            await discardDraft()
+            return true
+        } catch {
+            errorMessage = "No se pudo programar la publicación."
+            return false
+        }
+    }
 }

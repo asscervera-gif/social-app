@@ -50,6 +50,10 @@ struct NewPostView: View {
     // re-guardar el borrador ya descartado si la vista desaparece justo
     // después de publicar con éxito.
     @State private var didPost = false
+    // Programar la publicación de un post real para más tarde, comparado
+    // con Instagram/Twitter-X/TikTok -- ver 0141_scheduled_posts.sql.
+    @State private var showSchedulePicker = false
+    @State private var scheduledFor = Date().addingTimeInterval(3600)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -171,9 +175,42 @@ struct NewPostView: View {
             .buttonStyle(.borderedProminent)
             .disabled(caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isPosting)
 
+            // Programar la publicación de un post real para más tarde,
+            // comparado con Instagram/Twitter-X/TikTok -- ver
+            // NewPostViewModel.schedulePost(), 0141_scheduled_posts.sql.
+            // Alcance acotado: solo texto + una imagen, sin encuesta.
+            Button("Programar publicación") {
+                showSchedulePicker = true
+            }
+            .buttonStyle(.bordered)
+            .disabled(caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isPosting)
+
             Spacer()
         }
         .padding()
+        .sheet(isPresented: $showSchedulePicker) {
+            NavigationStack {
+                VStack {
+                    DatePicker("Publicar el", selection: $scheduledFor, in: Date()..., displayedComponents: [.date, .hourAndMinute])
+                        .datePickerStyle(.graphical)
+                    Button("Programar") {
+                        Task {
+                            if await viewModel.schedulePost(caption: caption, isSocialOnly: isSocialOnly, imageData: imageDataList.first, scheduledFor: scheduledFor) {
+                                showSchedulePicker = false
+                                didPost = true
+                                onPosted()
+                                onDismiss()
+                            }
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(viewModel.isPosting)
+                }
+                .padding()
+                .navigationTitle("Programar")
+            }
+            .presentationDetents([.medium])
+        }
         .task {
             await socialsViewModel.load()
             if let draft = await viewModel.loadDraft() {

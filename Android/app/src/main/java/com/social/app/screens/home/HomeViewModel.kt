@@ -7,8 +7,10 @@ import com.social.app.backend.model.Post
 import com.social.app.backend.model.Profile
 import io.github.jan.supabase.gotrue.auth
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
+import io.github.jan.supabase.postgrest.rpc
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -128,6 +130,14 @@ class HomeViewModel : ViewModel() {
         viewModelScope.launch {
             _isLoading.value = true
             try {
+                // Publicaciones programadas reales que ya vencieron,
+                // comparado con Instagram/Twitter-X/TikTok -- publicadas
+                // "al abrir Home" (sin pg_cron, ver 0141_scheduled_posts.sql
+                // para el porqué explícito). No crítico si falla: el
+                // resto del feed sigue cargando igual.
+                try {
+                    SupabaseManager.client.postgrest.rpc("publish_due_scheduled_posts")
+                } catch (e: Exception) { /* no crítico */ }
                 // Hallazgo real: el feed principal nunca filtraba
                 // publicaciones de gente que has bloqueado — a diferencia
                 // de Match/Find/Search (sí lo hacen), bloquear a alguien
