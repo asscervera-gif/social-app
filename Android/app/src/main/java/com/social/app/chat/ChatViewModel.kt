@@ -933,6 +933,21 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
         return mediaUrl
     }
 
+    /** Aviso real de captura de pantalla, comparado con Snapchat -- ver
+     * 0130_message_screenshot_alert.sql. Solo tiene efecto real sobre un
+     * mensaje ajeno (protect_message_columns ya exige que sea el propio
+     * destinatario, nunca el remitente); irreversible del lado del
+     * servidor, mismo criterio que openedAt. */
+    fun markScreenshotTaken(messageId: String) {
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("messages")
+                    .update({ set("screenshot_taken_at", java.time.Instant.now().toString()) }) { filter { eq("id", messageId) } }
+            } catch (e: Exception) {
+            }
+        }
+    }
+
     /** Última pieza real de "chat funcional con fotos, voz, reacciones,
      * read receipts" — mensaje de voz nativo (ver VoiceRecorder.kt,
      * MediaRecorder sin SDK de terceros, y 0019_message_audio.sql). */

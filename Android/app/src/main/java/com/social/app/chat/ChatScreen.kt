@@ -123,6 +123,12 @@ fun ChatScreen(
     // forma de tocar una foto del chat para verla a tamaño completo,
     // solo la miniatura recortada de 200dp.
     var fullScreenImageUrl by remember { mutableStateOf<String?>(null) }
+    // Aviso real de captura de pantalla, comparado con Snapchat -- ver
+    // ChatViewModel.markScreenshotTaken(), 0130_message_screenshot_alert.sql.
+    // Solo se vigila mientras el destinatario tiene abierta una foto real
+    // "para ver una vez" del otro, mismo alcance exacto que Snapchat
+    // (aviso ligado al contenido efímero, no a cualquier pantalla del chat).
+    var openViewOnceMessageId by remember { mutableStateOf<String?>(null) }
     val isLoadingOlder by viewModel.isLoadingOlder.collectAsState()
     var draft by remember { mutableStateOf("") }
     // Hallazgo real, comparado con Instagram/Twitter/WhatsApp: no había
@@ -549,7 +555,10 @@ fun ChatScreen(
                                     .combinedClickable(
                                         onClick = {
                                             if (!isMine) {
-                                                viewModel.openViewOnceMessage(message.id)?.let { url -> fullScreenImageUrl = url }
+                                                viewModel.openViewOnceMessage(message.id)?.let { url ->
+                                                    fullScreenImageUrl = url
+                                                    openViewOnceMessageId = message.id
+                                                }
                                             }
                                         },
                                         onLongClick = { managingMessage = message }
@@ -834,7 +843,28 @@ fun ChatScreen(
         }
     }
     fullScreenImageUrl?.let { url ->
-        com.social.app.util.FullScreenImageViewer(url = url, onDismiss = { fullScreenImageUrl = null })
+        com.social.app.util.FullScreenImageViewer(url = url, onDismiss = { fullScreenImageUrl = null; openViewOnceMessageId = null })
+    }
+    // Aviso real de captura de pantalla, comparado con Snapchat -- ver
+    // ChatViewModel.markScreenshotTaken(), 0130_message_screenshot_alert.sql.
+    // `registerScreenCaptureCallback` es real pero solo existe desde
+    // Android 14 (API 34) -- el minSdk real de este proyecto es 26
+    // (build.gradle.kts), así que por debajo de 34 no hay forma nativa
+    // real de detectar la captura sin permisos adicionales; se deja sin
+    // aviso en vez de simular una detección no verificada, mismo criterio
+    // de honestidad ya aplicado varias veces esta sesión.
+    if (android.os.Build.VERSION.SDK_INT >= 34) {
+        val activity = LocalContext.current as? android.app.Activity
+        DisposableEffect(openViewOnceMessageId, activity) {
+            val messageId = openViewOnceMessageId
+            if (activity == null || messageId == null) {
+                onDispose {}
+            } else {
+                val callback = android.app.Activity.ScreenCaptureCallback { viewModel.markScreenshotTaken(messageId) }
+                activity.registerScreenCaptureCallback(activity.mainExecutor, callback)
+                onDispose { activity.unregisterScreenCaptureCallback(callback) }
+            }
+        }
     }
     // Foto para ver una vez, comparado con WhatsApp/Instagram DM/
     // Snapchat -- ver ChatViewModel.sendPhoto(), 0105_view_once_messages.sql.

@@ -3548,6 +3548,46 @@ async function main() {
   const ssNotifAfterNormal = (await db.query(`select kind from notifications where recipient_id = $1 and kind = 'story_share'`, [ssU1])).rows;
   check('notify_story_share: una historia normal (sin shared_post_id) NO genera un aviso de más', ssNotifAfterNormal.length === 1);
 
+  // --- messages.screenshot_taken_at (0130_message_screenshot_alert.sql):
+  // aviso real de captura de pantalla, comparado con Snapchat. Usuarios
+  // NUEVOS a propósito, mismo motivo ya documentado varias veces esta
+  // sesión. ---
+  await asSuperuser();
+  const scSender = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const scRecipient = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name) values ($1, 'ScSender'), ($2, 'ScRecipient')
+     on conflict (id) do update set display_name = excluded.display_name`,
+    [scSender, scRecipient]
+  );
+  const scChat = (await db.query(`insert into chats (user_a_id, user_b_id) values ($1, $2) returning id`, [scSender, scRecipient])).rows[0];
+  const scMessage = (await db.query(
+    `insert into messages (chat_id, sender_id, media_url, view_once) values ($1, $2, 'snap.jpg', true) returning id`, [scChat.id, scSender]
+  )).rows[0];
+
+  await asUser(scSender);
+  await expectOk('messages_update_own: la sentencia del propio remitente no lanza ninguna excepción real (RLS la deja pasar)', async () => {
+    await db.query(`update messages set screenshot_taken_at = now() where id = $1`, [scMessage.id]);
+  });
+  const scAfterSenderAttempt = (await db.query(`select screenshot_taken_at from messages where id = $1`, [scMessage.id])).rows[0];
+  check('protect_message_columns: el propio remitente real (scSender) NO puede marcar su propio mensaje como capturado (revertido de verdad)', scAfterSenderAttempt.screenshot_taken_at === null);
+
+  await asUser(scRecipient);
+  await expectOk('messages_update_read: el destinatario real (scRecipient) SÍ puede marcar que hizo una captura real', async () => {
+    await db.query(`update messages set screenshot_taken_at = now() where id = $1`, [scMessage.id]);
+  });
+  const scAfterRecipient = (await db.query(`select screenshot_taken_at from messages where id = $1`, [scMessage.id])).rows[0];
+  check('protect_message_columns: screenshot_taken_at real queda fijado por el destinatario', scAfterRecipient.screenshot_taken_at !== null);
+
+  await asUser(scSender);
+  const scNotif = (await db.query(`select kind, payload from notifications where recipient_id = $1 and kind = 'screenshot'`, [scSender])).rows;
+  check('notify_message_screenshot: el remitente real (scSender) recibe un aviso real de la captura', scNotif.length === 1 && scNotif[0].payload.chat_id === scChat.id);
+
+  await asUser(scRecipient);
+  await db.query(`update messages set screenshot_taken_at = null where id = $1`, [scMessage.id]);
+  const scAfterUnmarkAttempt = (await db.query(`select screenshot_taken_at from messages where id = $1`, [scMessage.id])).rows[0];
+  check('protect_message_columns: intentar "desmarcar" una captura real ya registrada no lo consigue (irreversible de verdad)', scAfterUnmarkAttempt.screenshot_taken_at !== null);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

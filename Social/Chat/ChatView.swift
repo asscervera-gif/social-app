@@ -291,6 +291,9 @@ struct ChatView: View {
                                 onOpenViewOnce: {
                                     await viewModel.openViewOnceMessage(message.id)
                                 },
+                                onScreenshotDetected: {
+                                    Task { await viewModel.markScreenshotTaken(message.id) }
+                                },
                                 showReadReceipts: viewModel.showReadReceipts
                             )
                             .id(message.id)
@@ -726,6 +729,9 @@ private struct MessageBubble: View {
     // Snapchat -- devuelve la URL real ya resuelta (o nil si falla), ver
     // ChatViewModel.openViewOnceMessage(), 0105_view_once_messages.sql.
     var onOpenViewOnce: () async -> String? = { nil }
+    // Aviso real de captura de pantalla, comparado con Snapchat -- ver
+    // ChatViewModel.markScreenshotTaken(), 0130_message_screenshot_alert.sql.
+    var onScreenshotDetected: () -> Void = {}
     // Recibo de lectura real ("Leído ✓✓"), comparado con WhatsApp/
     // Instagram/Messenger -- ya es false si CUALQUIERA de los dos
     // desactivó el suyo, ver ChatViewModel.loadReadReceiptsVisibility(),
@@ -1029,6 +1035,13 @@ private struct MessageBubble: View {
         )) {
             if let fullScreenURL {
                 FullScreenImageView(url: fullScreenURL, onDismiss: { self.fullScreenURL = nil })
+                    // Aviso real de captura de pantalla, comparado con
+                    // Snapchat -- solo mientras la foto real "para ver una
+                    // vez" está abierta a pantalla completa, mismo alcance
+                    // exacto que Snapchat (ligado al contenido efímero).
+                    .onReceive(NotificationCenter.default.publisher(for: UIApplication.userDidTakeScreenshotNotification)) { _ in
+                        if message.viewOnce { onScreenshotDetected() }
+                    }
             }
         }
         .fullScreenCover(isPresented: Binding(

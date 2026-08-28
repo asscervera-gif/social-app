@@ -879,6 +879,20 @@ final class ChatViewModel: ObservableObject {
         return mediaURL
     }
 
+    /// Aviso real de captura de pantalla, comparado con Snapchat -- ver
+    /// 0130_message_screenshot_alert.sql. Solo tiene efecto real sobre un
+    /// mensaje ajeno (protect_message_columns ya exige que sea el propio
+    /// destinatario, nunca el remitente); irreversible del lado del
+    /// servidor, mismo criterio que openedAt. Equivalente de
+    /// ChatViewModel.kt.markScreenshotTaken().
+    func markScreenshotTaken(_ messageID: UUID) async {
+        try? await SupabaseManager.shared.client
+            .from("messages")
+            .update(["screenshot_taken_at": ISO8601DateFormatter().string(from: Date())])
+            .eq("id", value: messageID)
+            .execute()
+    }
+
     /// Última pieza real de "chat funcional con fotos, voz, reacciones,
     /// read receipts" — nota de voz nativa (ver VoiceRecorder.swift).
     /// Equivalente de ChatViewModel.kt.sendVoiceNote().
