@@ -40,7 +40,7 @@ final class DuelViewModel: ObservableObject {
     // correctIndex === answers[i] -- -1 nunca coincide con un índice
     // real, cuenta como fallo real sin necesitar ningún cambio de
     // servidor. Equivalente de DuelViewModel.kt.timeLeft.
-    @Published var timeLeft = Self.timerSeconds
+    @Published var timeLeft = DuelViewModel.timerSeconds
     private static let timerSeconds = 10
     private var timerTask: Task<Void, Never>?
 
