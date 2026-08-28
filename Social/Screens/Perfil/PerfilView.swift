@@ -16,6 +16,11 @@ struct PerfilView: View {
     @State private var showFullProfile = false
     @State private var showClothingStore = false
     @State private var showAjustes = false
+    // Código QR de perfil real, comparado con Snapchat (Snapcode)/
+    // Instagram (Nametag)/WhatsApp -- ver renderProfileQr(), equivalente
+    // de PerfilScreen.kt. Solo generación esta ronda, sin escáner
+    // todavía (hueco futuro documentado, no fingido aquí).
+    @State private var showQr = false
     @State private var showDuelHistory = false
     // Hallazgo real: no había ningún punto de entrada a la lista de chats
     // en ninguna plataforma (ver ChatListViewModel.swift).
@@ -114,12 +119,26 @@ struct PerfilView: View {
                         ShareLink(item: "Añádeme en SOCIAL: @\(username)")
                     }
                 }
+                if viewModel.profile?.id != nil {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            showQr = true
+                        } label: {
+                            Image(systemName: "qrcode")
+                        }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showAjustes = true
                     } label: {
                         Image(systemName: "gearshape")
                     }
+                }
+            }
+            .sheet(isPresented: $showQr) {
+                if let myID = viewModel.profile?.id {
+                    ProfileQrView(profileID: myID)
                 }
             }
             .task {

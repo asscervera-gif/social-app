@@ -41,6 +41,7 @@ import android.net.Uri
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -198,6 +199,40 @@ fun PerfilScreen(
                         context.startActivity(android.content.Intent.createChooser(intent, "Compartir perfil"))
                     }) {
                         Text("📤")
+                    }
+                }
+                // Código QR de perfil real, comparado con Snapchat
+                // (Snapcode)/Instagram (Nametag)/WhatsApp -- hueco real,
+                // el botón de arriba solo comparte texto plano. Alcance
+                // acotado: solo generar esta ronda (mostrar mi propio
+                // QR), sin escáner todavía -- documentado como hueco
+                // futuro, no fingido aquí. El QR codifica
+                // "social://user/{id}", sin necesitar ninguna migración.
+                profile?.id?.let { myProfileId ->
+                    var showQr by remember { mutableStateOf(false) }
+                    IconButton(onClick = { showQr = true }) {
+                        Text("▦")
+                    }
+                    if (showQr) {
+                        androidx.compose.material3.AlertDialog(
+                            onDismissRequest = { showQr = false },
+                            title = { Text("Mi código QR") },
+                            text = {
+                                val qrBitmap = remember(myProfileId) { renderProfileQr("social://user/$myProfileId") }
+                                if (qrBitmap != null) {
+                                    androidx.compose.foundation.Image(
+                                        bitmap = qrBitmap.asImageBitmap(),
+                                        contentDescription = "Código QR de mi perfil",
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                } else {
+                                    Text("No se pudo generar el código QR.")
+                                }
+                            },
+                            confirmButton = {
+                                androidx.compose.material3.TextButton(onClick = { showQr = false }) { Text("Cerrar") }
+                            }
+                        )
                     }
                 }
                 IconButton(onClick = onOpenAjustes) {
@@ -525,5 +560,27 @@ private fun SectionEditSheet(existing: ProfileSection?, onSave: (String, Boolean
                 Text("Guardar")
             }
         }
+    }
+}
+
+// Código QR de perfil real, comparado con Snapchat (Snapcode)/Instagram
+// (Nametag)/WhatsApp -- ZXing core (Java puro, sin dependencia de UI
+// Android) codifica el texto real en una matriz de bits, pintada aquí a
+// mano en un Bitmap ARGB_8888, mismo patrón nativo ya usado en
+// AvatarBitmap.kt.renderAvatarBitmap() (Canvas real, sin librerías de
+// captura de vista). Sin escáner todavía -- solo generación esta ronda.
+private fun renderProfileQr(content: String, sizePx: Int = 512): android.graphics.Bitmap? {
+    return try {
+        val writer = com.google.zxing.qrcode.QRCodeWriter()
+        val matrix = writer.encode(content, com.google.zxing.BarcodeFormat.QR_CODE, sizePx, sizePx)
+        val bitmap = android.graphics.Bitmap.createBitmap(sizePx, sizePx, android.graphics.Bitmap.Config.ARGB_8888)
+        for (x in 0 until sizePx) {
+            for (y in 0 until sizePx) {
+                bitmap.setPixel(x, y, if (matrix.get(x, y)) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+            }
+        }
+        bitmap
+    } catch (e: Exception) {
+        null
     }
 }

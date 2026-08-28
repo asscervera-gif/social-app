@@ -148,6 +148,14 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:34.18.0"))
     implementation("com.google.firebase:firebase-messaging")
 
+    // Código QR de perfil real, comparado con Snapchat (Snapcode)/
+    // Instagram (Nametag)/WhatsApp -- ZXing core es Java puro (sin
+    // dependencias de UI Android), MIT/Apache 2.0, gratis, mismo criterio
+    // de herramientas open-source explícito del usuario ya usado con
+    // osmdroid más arriba (frente a alternativas de pago). Solo el
+    // generador esta ronda -- ver PerfilScreen.kt.
+    implementation("com.google.zxing:core:3.5.3")
+
     // Supabase (mismo backend que iOS)
     implementation(platform("io.github.jan-tennert.supabase:bom:2.5.4"))
     implementation("io.github.jan-tennert.supabase:postgrest-kt")
