@@ -43,6 +43,10 @@ struct ChatView: View {
     // encontrar un mensaje antiguo salvo desplazarse a mano. Alcance
     // deliberado: busca solo entre los mensajes ya cargados en memoria.
     @State private var showSearch = false
+    // "Vaciar conversación" real, comparado con WhatsApp/Telegram/
+    // Instagram DM/Facebook Messenger -- ver
+    // 0153_clear_chat_history.sql.
+    @State private var showClearConfirm = false
     @State private var searchQuery = ""
     @State private var scrollToMessageID: UUID?
     // Hallazgo real, comparado con Instagram/WhatsApp/Messenger: no había
@@ -505,6 +509,28 @@ struct ChatView: View {
                     }
                 } label: {
                     Text("🎨")
+                }
+                // "Vaciar conversación" real, comparado con WhatsApp/
+                // Telegram/Instagram DM/Facebook Messenger -- ver
+                // ChatViewModel.clearConversation(),
+                // 0153_clear_chat_history.sql. Solo afecta a MI vista,
+                // nunca a la del otro participante.
+                Button {
+                    showClearConfirm = true
+                } label: {
+                    Text("🧹")
+                }
+                .confirmationDialog(
+                    "¿Vaciar conversación?",
+                    isPresented: $showClearConfirm,
+                    titleVisibility: .visible
+                ) {
+                    Button("Vaciar", role: .destructive) {
+                        Task { await viewModel.clearConversation() }
+                    }
+                    Button("Cancelar", role: .cancel) {}
+                } message: {
+                    Text("Solo se borra de tu vista. La otra persona seguirá viendo el historial con normalidad.")
                 }
             }
 

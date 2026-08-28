@@ -513,6 +513,19 @@ final class ChatViewModel: ObservableObject {
     private func loadHistory() async {
         do {
             let client = SupabaseManager.shared.client
+            // "Vaciar conversación" real, comparado con WhatsApp/
+            // Telegram/Instagram DM/Facebook Messenger -- fecha de corte
+            // real solo-propia, ver clearConversation() más abajo,
+            // 0153_clear_chat_history.sql.
+            struct ClearedBeforeRow: Decodable { let cleared_before: String }
+            let clearedBefore: String? = (try? await client
+                .from("chat_cleared_at")
+                .select("cleared_before")
+                .eq("user_id", value: currentUserID)
+                .eq("chat_id", value: chatID)
+                .single()
+                .execute()
+                .value as ClearedBeforeRow?)?.cleared_before
             // Hallazgo real de escalabilidad: sin límite, abrir un chat
             // largo traía el historial ENTERO cada vez — mismo patrón de
             // `.limit()` ya usado en el resto del proyecto. Se piden los
@@ -521,10 +534,11 @@ final class ChatViewModel: ObservableObject {
             // construido -- ver loadOlderMessages() más abajo, cableado
             // desde ChatView.swift. Equivalente de
             // ChatViewModel.kt.loadHistory().
-            let recent: [ChatMessage] = try await client
-                .from("messages")
-                .select()
-                .eq("chat_id", value: chatID)
+            var messagesQuery = client.from("messages").select().eq("chat_id", value: chatID)
+            if let clearedBefore {
+                messagesQuery = client.from("messages").select().eq("chat_id", value: chatID).gte("created_at", value: clearedBefore)
+            }
+            let recent: [ChatMessage] = try await messagesQuery
                 .order("created_at", ascending: false)
                 .limit(100)
                 .execute()
@@ -948,6 +962,29 @@ final class ChatViewModel: ObservableObject {
 
     /// "Borrar para todos", no solo-para-mí. Equivalente de
     /// ChatViewModel.kt.deleteMessage().
+    /// "Vaciar conversación" real, comparado con WhatsApp/Telegram/
+    /// Instagram DM/Facebook Messenger -- borra el historial solo de MI
+    /// vista (fecha de corte real), la otra persona sigue viendo todo
+    /// con normalidad, y los mensajes NUEVOS que lleguen después sí se
+    /// ven. Ver 0153_clear_chat_history.sql. Equivalente de
+    /// ChatViewModel.kt.clearConversation().
+    func clearConversation() async {
+        struct ClearChatUpsert: Encodable {
+            let user_id: UUID
+            let chat_id: UUID
+            let cleared_before: String
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("chat_cleared_at")
+                .upsert(ClearChatUpsert(user_id: currentUserID, chat_id: chatID, cleared_before: ISO8601DateFormatter().string(from: Date())), onConflict: "user_id,chat_id")
+                .execute()
+            messages = []
+        } catch {
+            errorMessage = "No se pudo vaciar la conversación."
+        }
+    }
+
     func deleteMessage(_ messageID: UUID) async {
         messages.removeAll { $0.id == messageID }
         do {

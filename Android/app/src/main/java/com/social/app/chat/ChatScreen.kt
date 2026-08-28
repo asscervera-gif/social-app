@@ -292,6 +292,31 @@ fun ChatScreen(
                         }
                     }
                 }
+                // "Vaciar conversación" real, comparado con WhatsApp/
+                // Telegram/Instagram DM/Facebook Messenger -- ver
+                // ChatViewModel.clearConversation(),
+                // 0153_clear_chat_history.sql. Solo afecta a MI vista,
+                // nunca a la del otro participante.
+                var showClearConfirm by remember { mutableStateOf(false) }
+                IconButton(onClick = { showClearConfirm = true }) {
+                    Text("🧹")
+                }
+                if (showClearConfirm) {
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { showClearConfirm = false },
+                        title = { Text("¿Vaciar conversación?") },
+                        text = { Text("Solo se borra de tu vista. La otra persona seguirá viendo el historial con normalidad.") },
+                        confirmButton = {
+                            androidx.compose.material3.TextButton(onClick = {
+                                showClearConfirm = false
+                                viewModel.clearConversation()
+                            }) { Text("Vaciar") }
+                        },
+                        dismissButton = {
+                            androidx.compose.material3.TextButton(onClick = { showClearConfirm = false }) { Text("Cancelar") }
+                        }
+                    )
+                }
             }
         }
         if (disappearingSeconds != null) {

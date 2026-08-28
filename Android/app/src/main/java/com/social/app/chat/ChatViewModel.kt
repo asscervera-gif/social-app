@@ -541,6 +541,21 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
 
     private suspend fun loadHistory() {
         try {
+            // "Vaciar conversación" real, comparado con WhatsApp/
+            // Telegram/Instagram DM/Facebook Messenger -- fecha de corte
+            // real solo-propia, ver clearConversation() más abajo,
+            // 0153_clear_chat_history.sql. Los mensajes anteriores a
+            // esta fecha simplemente no se piden, mismo criterio de
+            // "preferencia de qué no pintar" ya usado para deleted_for.
+            val myIdForClear = SupabaseManager.client.auth.currentUserOrNull()?.id
+            val clearedBefore = if (myIdForClear == null) null else try {
+                SupabaseManager.client.from("chat_cleared_at")
+                    .select(columns = Columns.raw("cleared_before")) { filter { eq("user_id", myIdForClear); eq("chat_id", chatId) } }
+                    .decodeSingleOrNull<ClearedBeforeRow>()
+                    ?.clearedBefore
+            } catch (e: Exception) {
+                null
+            }
             // Hallazgo real de escalabilidad: sin límite, abrir un chat
             // largo traía el historial ENTERO cada vez — mismo patrón de
             // `.limit()` ya usado en el resto del proyecto (Home/Match/
@@ -552,7 +567,10 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
             // loadOlderMessages() más abajo, cableado desde ChatScreen.kt.
             val recent = SupabaseManager.client.from("messages")
                 .select {
-                    filter { eq("chat_id", chatId) }
+                    filter {
+                        eq("chat_id", chatId)
+                        if (clearedBefore != null) gte("created_at", clearedBefore)
+                    }
                     order("created_at", Order.DESCENDING)
                     limit(100)
                 }
@@ -997,6 +1015,35 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo eliminar el mensaje para ti."
+            }
+        }
+    }
+
+    @Serializable
+    private data class ClearedBeforeRow(@SerialName("cleared_before") val clearedBefore: String)
+
+    @Serializable
+    private data class ClearChatUpsert(
+        @SerialName("user_id") val userId: String,
+        @SerialName("chat_id") val chatId: String,
+        @SerialName("cleared_before") val clearedBefore: String
+    )
+
+    /** "Vaciar conversación" real, comparado con WhatsApp/Telegram/
+     * Instagram DM/Facebook Messenger -- borra el historial solo de MI
+     * vista (fecha de corte real), la otra persona sigue viendo todo
+     * con normalidad, y los mensajes NUEVOS que lleguen después sí se
+     * ven. Ver 0153_clear_chat_history.sql. */
+    fun clearConversation() {
+        viewModelScope.launch {
+            val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+            val now = java.time.Instant.now().toString()
+            try {
+                SupabaseManager.client.from("chat_cleared_at")
+                    .upsert(ClearChatUpsert(userId, chatId, now), onConflict = "user_id,chat_id")
+                _messages.value = emptyList()
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo vaciar la conversación."
             }
         }
     }

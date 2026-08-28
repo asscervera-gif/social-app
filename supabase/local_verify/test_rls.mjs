@@ -4277,6 +4277,32 @@ async function main() {
   const mediaAltText = (await db.query(`select alt_text from post_media where post_id = $1`, [altTextPostId])).rows[0];
   check('post_media.alt_text: la foto adicional real tiene su propio texto alternativo distinto', mediaAltText.alt_text === 'Segunda foto real: barco de vela');
 
+  // --- chat_cleared_at (0153_clear_chat_history.sql): "Vaciar
+  // conversación" real, comparado con WhatsApp/Telegram/Instagram DM/
+  // Facebook Messenger -- fecha de corte real solo-propia, nunca afecta
+  // a la copia del otro participante. ---
+  await asUser(u1);
+  await expectOk('chat_cleared_at_own: u1 SÍ puede vaciar su propia vista real del chat', async () => {
+    await db.query(`insert into chat_cleared_at (user_id, chat_id) values ($1, $2)`, [u1, chat.id]);
+  });
+  await expectFail('chat_cleared_at_own: u1 NO puede vaciar la vista real de u2 en su nombre', async () => {
+    await db.query(`insert into chat_cleared_at (user_id, chat_id) values ($1, $2)`, [u2, chat.id]);
+  });
+
+  await asUser(u2);
+  const u2SeesU1Cleared = (await db.query(`select chat_id from chat_cleared_at where user_id = $1`, [u1])).rows;
+  check('chat_cleared_at_own: u2 NO ve la fecha de corte real de u1', u2SeesU1Cleared.length === 0);
+  await expectOk('chat_cleared_at_own: u2 SÍ puede vaciar su propia vista real, sin afectar a la de u1', async () => {
+    await db.query(`insert into chat_cleared_at (user_id, chat_id) values ($1, $2)`, [u2, chat.id]);
+  });
+
+  await asUser(u1);
+  const u1OwnCleared = (await db.query(`select chat_id from chat_cleared_at where user_id = $1 and chat_id = $2`, [u1, chat.id])).rows;
+  check('chat_cleared_at_own: la fecha de corte real de u1 sigue existiendo tal cual, sin verse afectada por la de u2', u1OwnCleared.length === 1);
+  await expectOk('chat_cleared_at_own: u1 SÍ puede volver a vaciar (actualizar su propia fecha de corte real)', async () => {
+    await db.query(`insert into chat_cleared_at (user_id, chat_id, cleared_before) values ($1, $2, now()) on conflict (user_id, chat_id) do update set cleared_before = excluded.cleared_before`, [u1, chat.id]);
+  });
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado
