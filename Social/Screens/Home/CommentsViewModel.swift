@@ -52,6 +52,11 @@ final class CommentsViewModel: ObservableObject {
     // concreto (0054_comment_likes.sql) -- mismo patrón que
     // HomeViewModel.likedPostIDs, aquí a nivel de comentario individual.
     @Published var likedCommentIDs: Set<UUID> = []
+    // Reacciones con emoji variado a un comentario, comparado con
+    // Facebook -- ver 0134_comment_reactions.sql. Alcance deliberado: una
+    // reacción por persona (no varias apiladas como message_reactions).
+    // Equivalente de CommentsViewModel.kt.myReactionEmoji.
+    @Published var myReactionEmoji: [UUID: String] = [:]
     // Fijar un comentario, comparado con Instagram/Twitter -- solo el
     // autor real de la publicación puede fijar/desfijar
     // (0084_pin_comments.sql), la propia hoja necesita saber quién es para
@@ -123,17 +128,18 @@ final class CommentsViewModel: ObservableObject {
             }
 
             if let userID = try? await SupabaseManager.shared.client.auth.session.user.id {
-                struct LikedCommentRow: Decodable { let comment_id: UUID }
+                struct LikedCommentRow: Decodable { let comment_id: UUID; var emoji: String = "❤️" }
                 let commentIDs = loaded.map { $0.id }
                 if !commentIDs.isEmpty,
                    let likedRows: [LikedCommentRow] = try? await SupabaseManager.shared.client
                        .from("comment_likes")
-                       .select("comment_id")
+                       .select("comment_id,emoji")
                        .eq("user_id", value: userID)
                        .in("comment_id", values: commentIDs)
                        .execute()
                        .value {
                     likedCommentIDs = Set(likedRows.map { $0.comment_id })
+                    myReactionEmoji = Dictionary(uniqueKeysWithValues: likedRows.map { ($0.comment_id, $0.emoji) })
                 }
             }
         } catch {
@@ -179,6 +185,61 @@ final class CommentsViewModel: ObservableObject {
             // Restricción unique(comment_id, user_id): si ya existía el
             // like, Postgrest devuelve un 409 — mismo criterio que
             // HomeViewModel.toggleLike(), el estado deseado ya se cumple.
+        }
+    }
+
+    /// Reacciones con emoji variado a un comentario, comparado con
+    /// Facebook -- ver 0134_comment_reactions.sql. Tocar el mismo emoji
+    /// ya activo quita la reacción; tocar uno distinto la cambia con un
+    /// UPDATE real, sin borrar e insertar de nuevo (0134 añadió
+    /// `comment_likes_update_own` justo para esto). Equivalente de
+    /// CommentsViewModel.kt.setCommentReaction().
+    func setCommentReaction(_ comment: Comment, emoji: String) async {
+        let currentEmoji = myReactionEmoji[comment.id]
+        let removing = currentEmoji == emoji
+        let wasLiked = likedCommentIDs.contains(comment.id)
+        if removing {
+            likedCommentIDs.remove(comment.id)
+            myReactionEmoji.removeValue(forKey: comment.id)
+        } else {
+            likedCommentIDs.insert(comment.id)
+            myReactionEmoji[comment.id] = emoji
+        }
+        if let index = comments.firstIndex(where: { $0.id == comment.id }) {
+            let delta = removing ? -1 : (wasLiked ? 0 : 1)
+            comments[index].like_count = max(0, comments[index].like_count + delta)
+        }
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        struct NewCommentReaction: Encodable {
+            let comment_id: UUID
+            let user_id: UUID
+            let emoji: String
+        }
+        do {
+            if removing {
+                try await SupabaseManager.shared.client
+                    .from("comment_likes")
+                    .delete()
+                    .eq("comment_id", value: comment.id)
+                    .eq("user_id", value: userID)
+                    .execute()
+            } else if wasLiked {
+                try await SupabaseManager.shared.client
+                    .from("comment_likes")
+                    .update(["emoji": emoji])
+                    .eq("comment_id", value: comment.id)
+                    .eq("user_id", value: userID)
+                    .execute()
+            } else {
+                try await SupabaseManager.shared.client
+                    .from("comment_likes")
+                    .insert(NewCommentReaction(comment_id: comment.id, user_id: userID, emoji: emoji))
+                    .execute()
+                AnalyticsManager.track("comment_liked")
+            }
+        } catch {
+            errorMessage = "No se pudo registrar la reacción."
+            await load()
         }
     }
 

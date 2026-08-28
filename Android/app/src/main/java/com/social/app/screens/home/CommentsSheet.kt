@@ -1,6 +1,8 @@
 package com.social.app.screens.home
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -41,7 +43,7 @@ import kotlinx.coroutines.launch
  * faltaba (ver 0008_comments.sql). Lista + campo para publicar uno nuevo,
  * mismo patrón visual que ReportSheet.kt/SendSocialSheet.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun CommentsSheet(
     postId: String,
@@ -56,6 +58,7 @@ fun CommentsSheet(
     val errorMessage by viewModel.errorMessage.collectAsState()
     val authorProfiles by viewModel.authorProfiles.collectAsState()
     val likedCommentIds by viewModel.likedCommentIds.collectAsState()
+    val myReactionEmoji by viewModel.myReactionEmoji.collectAsState()
     val postAuthorId by viewModel.postAuthorId.collectAsState()
     val commentsDisabled by viewModel.commentsDisabled.collectAsState()
     var draft by remember { mutableStateOf("") }
@@ -167,12 +170,23 @@ fun CommentsSheet(
                             // Comparado con Instagram/Twitter/Facebook: dar
                             // like a un comentario concreto, no solo a la
                             // publicación entera (0054_comment_likes.sql).
+                            // Reacciones con emoji variado, comparado con
+                            // Facebook -- mantener pulsado abre el
+                            // selector real, tocar alterna el emoji ya
+                            // activo (o ❤️ por defecto). Ver
+                            // CommentsViewModel.setCommentReaction(),
+                            // 0134_comment_reactions.sql.
                             val liked = likedCommentIds.contains(comment.id)
+                            val myEmoji = myReactionEmoji[comment.id] ?: "❤️"
+                            var showReactionPicker by remember { mutableStateOf(false) }
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.clickable { viewModel.toggleCommentLike(comment) }
+                                modifier = Modifier.combinedClickable(
+                                    onClick = { viewModel.setCommentReaction(comment, myEmoji) },
+                                    onLongClick = { showReactionPicker = true }
+                                )
                             ) {
-                                Text(if (liked) "❤" else "🤍", style = MaterialTheme.typography.labelMedium)
+                                Text(if (liked) myEmoji else "🤍", style = MaterialTheme.typography.labelMedium)
                                 if (comment.likeCount > 0) {
                                     Text(
                                         "${comment.likeCount}",
@@ -180,6 +194,30 @@ fun CommentsSheet(
                                         modifier = Modifier.padding(start = 2.dp)
                                     )
                                 }
+                            }
+                            if (showReactionPicker) {
+                                androidx.compose.material3.AlertDialog(
+                                    onDismissRequest = { showReactionPicker = false },
+                                    title = { Text("Reaccionar") },
+                                    text = {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                            listOf("❤️", "😂", "😮", "😢", "😡", "👍").forEach { emoji ->
+                                                Text(
+                                                    emoji,
+                                                    style = MaterialTheme.typography.headlineSmall,
+                                                    modifier = Modifier.clickable {
+                                                        viewModel.setCommentReaction(comment, emoji)
+                                                        showReactionPicker = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    },
+                                    confirmButton = {},
+                                    dismissButton = {
+                                        TextButton(onClick = { showReactionPicker = false }) { Text("Cerrar") }
+                                    }
+                                )
                             }
                             // Responder a un comentario concreto (hilo de
                             // un nivel), comparado con Instagram/Facebook/

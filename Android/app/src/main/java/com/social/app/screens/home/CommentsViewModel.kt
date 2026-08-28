@@ -50,6 +50,12 @@ class CommentsViewModel(private val postId: String) : ViewModel() {
     private val _likedCommentIds = MutableStateFlow<Set<String>>(emptySet())
     val likedCommentIds: StateFlow<Set<String>> = _likedCommentIds.asStateFlow()
 
+    // Reacciones con emoji variado a un comentario, comparado con
+    // Facebook -- ver 0134_comment_reactions.sql. Alcance deliberado: una
+    // reacción por persona (no varias apiladas como message_reactions).
+    private val _myReactionEmoji = MutableStateFlow<Map<String, String>>(emptyMap())
+    val myReactionEmoji: StateFlow<Map<String, String>> = _myReactionEmoji.asStateFlow()
+
     // Fijar un comentario, comparado con Instagram/Twitter -- solo el
     // autor real de la publicación puede fijar/desfijar
     // (0084_pin_comments.sql), la propia hoja necesita saber quién es para
@@ -109,13 +115,13 @@ class CommentsViewModel(private val postId: String) : ViewModel() {
                 val commentIds = loaded.map { it.id }
                 if (myId != null && commentIds.isNotEmpty()) {
                     try {
-                        _likedCommentIds.value = SupabaseManager.client.from("comment_likes")
-                            .select(columns = Columns.raw("comment_id")) {
+                        val rows = SupabaseManager.client.from("comment_likes")
+                            .select(columns = Columns.raw("comment_id,emoji")) {
                                 filter { eq("user_id", myId); isIn("comment_id", commentIds) }
                             }
                             .decodeList<LikedCommentRow>()
-                            .map { it.commentId }
-                            .toSet()
+                        _likedCommentIds.value = rows.map { it.commentId }.toSet()
+                        _myReactionEmoji.value = rows.associate { it.commentId to it.emoji }
                     } catch (e: Exception) {
                         // No bloquea el resto de la hoja si falla.
                     }
@@ -188,13 +194,67 @@ class CommentsViewModel(private val postId: String) : ViewModel() {
     }
 
     @Serializable
-    private data class LikedCommentRow(@SerialName("comment_id") val commentId: String)
+    private data class LikedCommentRow(
+        @SerialName("comment_id") val commentId: String,
+        val emoji: String = "❤️"
+    )
 
     @Serializable
     private data class NewCommentLike(
         @SerialName("comment_id") val commentId: String,
         @SerialName("user_id") val userId: String
     )
+
+    @Serializable
+    private data class NewCommentReaction(
+        @SerialName("comment_id") val commentId: String,
+        @SerialName("user_id") val userId: String,
+        val emoji: String
+    )
+
+    /** Reacciones con emoji variado a un comentario, comparado con
+     * Facebook -- ver 0134_comment_reactions.sql. Tocar el mismo emoji ya
+     * activo quita la reacción (mismo criterio real que toggleCommentLike());
+     * tocar uno distinto la cambia con un UPDATE real, sin borrar e
+     * insertar de nuevo (0134 añadió `comment_likes_update_own` justo
+     * para esto). */
+    fun setCommentReaction(comment: Comment, emoji: String) {
+        val currentEmoji = _myReactionEmoji.value[comment.id]
+        val removing = currentEmoji == emoji
+        val wasLiked = _likedCommentIds.value.contains(comment.id)
+        if (removing) {
+            _likedCommentIds.update { it - comment.id }
+            _myReactionEmoji.update { it - comment.id }
+        } else {
+            _likedCommentIds.update { it + comment.id }
+            _myReactionEmoji.update { it + (comment.id to emoji) }
+        }
+        _comments.update { list ->
+            list.map {
+                if (it.id == comment.id) it.copy(likeCount = (it.likeCount + if (removing) -1 else if (wasLiked) 0 else 1).coerceAtLeast(0))
+                else it
+            }
+        }
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                if (removing) {
+                    SupabaseManager.client.from("comment_likes").delete {
+                        filter { eq("comment_id", comment.id); eq("user_id", userId) }
+                    }
+                } else if (wasLiked) {
+                    SupabaseManager.client.from("comment_likes")
+                        .update({ set("emoji", emoji) }) { filter { eq("comment_id", comment.id); eq("user_id", userId) } }
+                } else {
+                    SupabaseManager.client.from("comment_likes").insert(NewCommentReaction(comment.id, userId, emoji))
+                    com.social.app.backend.AnalyticsManager.track("comment_liked")
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo registrar la reacción."
+                load()
+            }
+        }
+    }
 
     /** Toggle real de like/unlike de un comentario -- mismo patrón exacto
      * que HomeViewModel.toggleLike() para posts. `comments.like_count` lo

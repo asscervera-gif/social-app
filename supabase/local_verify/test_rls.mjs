@@ -3716,6 +3716,51 @@ async function main() {
   const gpCountsAfterChange = (await db.query(`select vote_counts from group_message_polls where id = $1`, [gpPoll.id])).rows[0];
   check('sync_group_message_poll_counts: vote_counts real se recalcula tras cambiar de opción (0 -> ahora la opción 0)', JSON.stringify(gpCountsAfterChange.vote_counts) === JSON.stringify([1, 0]));
 
+  // --- comment_likes.emoji/reel_comment_likes.emoji (0134_comment_reactions.sql):
+  // reacciones con emoji variado a un comentario, comparado con Facebook.
+  // Usuarios NUEVOS a propósito. ---
+  await asSuperuser();
+  const cxAuthor = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const cxReactor = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const cxStranger = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name) values ($1,'CrAuthor'),($2,'CrReactor'),($3,'CrStranger') on conflict (id) do update set display_name=excluded.display_name`,
+    [cxAuthor, cxReactor, cxStranger]
+  );
+  const cxPost = (await db.query(`insert into posts (author_id, caption) values ($1, 'post con comentario') returning id`, [cxAuthor])).rows[0];
+  await asUser(cxAuthor);
+  const cxComment = (await db.query(`insert into comments (post_id, author_id, body) values ($1, $2, 'comentario real') returning id`, [cxPost.id, cxAuthor])).rows[0];
+
+  await asUser(cxReactor);
+  await expectOk('comment_likes_insert_own: cxReactor SÍ puede reaccionar con el emoji real por defecto', async () => {
+    await db.query(`insert into comment_likes (comment_id, user_id) values ($1, $2)`, [cxComment.id, cxReactor]);
+  });
+  const cxDefaultEmoji = (await db.query(`select emoji from comment_likes where comment_id = $1 and user_id = $2`, [cxComment.id, cxReactor])).rows[0];
+  check('comment_likes.emoji: arranca en el emoji real por defecto (❤️)', cxDefaultEmoji.emoji === '❤️');
+
+  await expectOk('comment_likes_update_own: cxReactor SÍ puede cambiar de reacción real (❤️ -> 😂)', async () => {
+    await db.query(`update comment_likes set emoji = '😂' where comment_id = $1 and user_id = $2`, [cxComment.id, cxReactor]);
+  });
+  const cxChangedEmoji = (await db.query(`select emoji from comment_likes where comment_id = $1 and user_id = $2`, [cxComment.id, cxReactor])).rows[0];
+  check('comment_likes.emoji: el cambio real de reacción queda guardado', cxChangedEmoji.emoji === '😂');
+
+  await expectFail('comment_likes: un emoji real fuera de la lista permitida NO se puede guardar', async () => {
+    await db.query(`update comment_likes set emoji = '🍕' where comment_id = $1 and user_id = $2`, [cxComment.id, cxReactor]);
+  });
+
+  await asUser(cxStranger);
+  await db.query(`insert into comment_likes (comment_id, user_id) values ($1, $2)`, [cxComment.id, cxStranger]);
+  await expectOk('protect_comment_like_identity: la sentencia de cxStranger no lanza ninguna excepción real (RLS la deja pasar sobre su propia fila)', async () => {
+    await db.query(`update comment_likes set comment_id = $1, user_id = $2 where comment_id = $1 and user_id = $2`, [cxComment.id, cxStranger]);
+  });
+  // Intento real de robar la fila de cxReactor reasignándola a sí mismo -- RLS
+  // ya lo bloquea (0 filas, la condición USING no encuentra la fila ajena),
+  // así que ni siquiera llega al trigger; se confirma con el conteo final.
+  await db.query(`update comment_likes set user_id = $1 where comment_id = $2 and user_id = $3`, [cxStranger, cxComment.id, cxReactor]);
+  const cxReactionsAfterHijackAttempt = (await db.query(`select user_id, emoji from comment_likes where comment_id = $1`, [cxComment.id])).rows;
+  check('protect_comment_like_identity: cxReactor sigue siendo dueño real de su propia reacción (no robada)', cxReactionsAfterHijackAttempt.some(r => r.user_id === cxReactor && r.emoji === '😂'));
+  check('comment_likes: cxStranger también conserva su propia reacción real, sin duplicarse', cxReactionsAfterHijackAttempt.filter(r => r.user_id === cxStranger).length === 1);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado
