@@ -179,14 +179,27 @@ fun ChatListScreen(
                     // de conversaciones.
                     com.social.app.avatar.AvatarView(config = entry.otherAvatarConfig ?: emptyMap(), size = 44.dp)
                     Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
-                        Text(
-                            entry.otherName,
-                            style = if (entry.hasUnread) {
-                                MaterialTheme.typography.titleSmall.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                            } else {
-                                MaterialTheme.typography.titleSmall
+                        androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                entry.otherName,
+                                style = if (entry.hasUnread) {
+                                    MaterialTheme.typography.titleSmall.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                } else {
+                                    MaterialTheme.typography.titleSmall
+                                }
+                            )
+                            // Racha real de días consecutivos hablando,
+                            // comparado con Snapchat (Snapstreaks) -- ver
+                            // ChatListViewModel.streakDays,
+                            // 0135_chat_streak.sql.
+                            entry.streakDays?.let { days ->
+                                Text(
+                                    "🔥$days",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.padding(start = 6.dp)
+                                )
                             }
-                        )
+                        }
                         // Nota efímera real de la otra persona, comparado
                         // con Instagram/Facebook Messenger -- ya filtrada
                         // por caducidad de 24h en ChatListViewModel.

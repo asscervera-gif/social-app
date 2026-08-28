@@ -3761,6 +3761,56 @@ async function main() {
   check('protect_comment_like_identity: cxReactor sigue siendo dueño real de su propia reacción (no robada)', cxReactionsAfterHijackAttempt.some(r => r.user_id === cxReactor && r.emoji === '😂'));
   check('comment_likes: cxStranger también conserva su propia reacción real, sin duplicarse', cxReactionsAfterHijackAttempt.filter(r => r.user_id === cxStranger).length === 1);
 
+  // --- get_chat_streak (0135_chat_streak.sql): racha real de días
+  // consecutivos hablando en un chat 1:1, comparado con Snapchat
+  // (Snapstreaks). Usuarios NUEVOS a propósito. ---
+  await asSuperuser();
+  const csU1 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const csU2 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const csStranger = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name) values ($1,'Cs1'),($2,'Cs2'),($3,'CsStranger') on conflict (id) do update set display_name=excluded.display_name`,
+    [csU1, csU2, csStranger]
+  );
+  await asUser(csU1);
+  const csChat = (await db.query(`insert into chats (user_a_id, user_b_id) values ($1, $2) returning id`, [csU1, csU2])).rows[0];
+
+  // 3 días anteriores reales (hoy-3, hoy-2, hoy-1) con mensaje real de
+  // AMBOS -- racha real de 3, sin tocar el día de hoy todavía.
+  for (const daysAgo of [3, 2, 1]) {
+    await asUser(csU1);
+    await db.query(
+      `insert into messages (chat_id, sender_id, body, created_at) values ($1, $2, 'real', current_date - $3::int)`,
+      [csChat.id, csU1, daysAgo]
+    );
+    await asUser(csU2);
+    await db.query(
+      `insert into messages (chat_id, sender_id, body, created_at) values ($1, $2, 'real', current_date - $3::int)`,
+      [csChat.id, csU2, daysAgo]
+    );
+  }
+  await asUser(csU1);
+  const csStreakBeforeToday = (await db.query(`select get_chat_streak($1) as streak`, [csChat.id])).rows[0];
+  check('get_chat_streak: racha real de 3 días anteriores, sin depender de que hoy ya se haya escrito', csStreakBeforeToday.streak === 3);
+
+  // Hoy solo escribe csU1 -- la racha real NO sube todavía (hace falta
+  // que las DOS partes escriban hoy), pero tampoco se pierde.
+  await db.query(`insert into messages (chat_id, sender_id, body) values ($1, $2, 'solo yo hoy')`, [csChat.id, csU1]);
+  const csStreakOneSidedToday = (await db.query(`select get_chat_streak($1) as streak`, [csChat.id])).rows[0];
+  check('get_chat_streak: un solo lado real escribiendo hoy no sube la racha todavía (sigue en 3)', csStreakOneSidedToday.streak === 3);
+
+  // csU2 también escribe hoy -- AHORA sí sube a 4.
+  await asUser(csU2);
+  await db.query(`insert into messages (chat_id, sender_id, body) values ($1, $2, 'yo también hoy')`, [csChat.id, csU2]);
+  const csStreakBothToday = (await db.query(`select get_chat_streak($1) as streak`, [csChat.id])).rows[0];
+  check('get_chat_streak: racha real sube a 4 en cuanto las DOS partes escriben hoy', csStreakBothToday.streak === 4);
+
+  // Un tercero real (csStranger, no participante del chat) obtiene 0 --
+  // la propia función no encuentra su chat_id real entre user_a_id/user_b_id.
+  await asUser(csStranger);
+  const csStreakAsStranger = (await db.query(`select get_chat_streak($1) as streak`, [csChat.id])).rows[0];
+  check('get_chat_streak: un tercero real que no participa en el chat obtiene 0', csStreakAsStranger.streak === 0);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

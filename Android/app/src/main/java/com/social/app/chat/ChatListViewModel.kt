@@ -6,9 +6,11 @@ import com.social.app.backend.SupabaseManager
 import com.social.app.backend.model.Chat
 import io.github.jan.supabase.gotrue.auth
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
 import io.github.jan.supabase.postgrest.query.filter.FilterOperator
+import io.github.jan.supabase.postgrest.rpc
 import io.github.jan.supabase.realtime.PostgresAction
 import io.github.jan.supabase.realtime.RealtimeChannel
 import io.github.jan.supabase.realtime.channel
@@ -58,7 +60,12 @@ data class ChatListEntry(
     // filtrada por caducidad real de 24h antes de llegar aquí (mismo
     // criterio que `stories`: la caducidad es responsabilidad del
     // cliente, no del servidor, documentado también en la migración).
-    val otherNoteText: String?
+    val otherNoteText: String?,
+    // Racha real de días consecutivos hablando, comparado con Snapchat
+    // (Snapstreaks) -- ver 0135_chat_streak.sql/get_chat_streak(). null
+    // mientras no se ha resuelto todavía (0 real y "sin racha" se tratan
+    // igual en la UI: no mostrar nada).
+    val streakDays: Int? = null
 )
 
 // Hallazgo real, comparado con WhatsApp/Instagram/Messenger: la lista de
@@ -74,6 +81,14 @@ private data class NameRow(
 
 @Serializable
 private data class BlockRow(@SerialName("blocked_id") val blockedId: String)
+
+// Racha real de días consecutivos hablando, comparado con Snapchat
+// (Snapstreaks) -- ver 0135_chat_streak.sql. Firma verificada contra el
+// mismo patrón real ya usado en EventModeViewModel.kt.loadDensity()
+// (primera llamada RPC real de todo el proyecto, bytecode de
+// postgrest-kt decompilado, no documentación).
+@Serializable
+private data class ChatStreakParams(@SerialName("p_chat_id") val chatId: String)
 
 @Serializable
 private data class MyNoteRow(
@@ -321,6 +336,11 @@ class ChatListViewModel : ViewModel() {
                     }
 
                     val markedUnreadForMe = if (row.userAId == userId) row.markedUnreadByA else row.markedUnreadByB
+                    val streakDays = try {
+                        SupabaseManager.client.postgrest.rpc("get_chat_streak", ChatStreakParams(chat.id)).decodeAs<Int>()
+                    } catch (e: Exception) {
+                        null
+                    }
                     ChatListEntry(
                         chat = chat,
                         otherName = otherProfile?.displayName ?: "Perfil",
@@ -336,7 +356,8 @@ class ChatListViewModel : ViewModel() {
                         hasUnread = (lastMessage != null && lastMessage.senderId != userId && lastMessage.readAt == null) || markedUnreadForMe,
                         isPinnedForMe = if (row.userAId == userId) row.pinnedByA else row.pinnedByB,
                         markedUnreadForMe = markedUnreadForMe,
-                        otherNoteText = freshNote
+                        otherNoteText = freshNote,
+                        streakDays = streakDays?.takeIf { it > 0 }
                     )
         }
     }

@@ -56,6 +56,12 @@ struct ChatListEntry: Identifiable {
     // servidor, documentado también en la migración). Equivalente de
     // ChatListEntry.otherNoteText (Kotlin).
     let otherNoteText: String?
+    // Racha real de días consecutivos hablando, comparado con Snapchat
+    // (Snapstreaks) -- ver 0135_chat_streak.sql/get_chat_streak(). nil
+    // mientras no se ha resuelto todavía (0 real y "sin racha" se tratan
+    // igual en la UI: no mostrar nada). Equivalente de
+    // ChatListEntry.kt.streakDays.
+    var streakDays: Int? = nil
 }
 
 /// Nota efímera real (0110_profile_notes.sql): caduca a las 24h -- misma
@@ -216,6 +222,7 @@ final class ChatListViewModel: ObservableObject {
             // (0088_mark_chat_unread.sql).
             let markedUnreadForMe = chat.userAID == userID ? chat.markedUnreadByA : chat.markedUnreadByB
             let freshNote = isNoteFresh(otherProfile?.note_updated_at) ? otherProfile?.note_text : nil
+            let streakDays = await chatStreak(chatID: chat.id)
             entries.append(ChatListEntry(
                 id: chat.id, chat: chat,
                 otherName: otherProfile?.display_name ?? "Perfil",
@@ -226,7 +233,8 @@ final class ChatListViewModel: ObservableObject {
                 hasUnread: (last != nil && last!.sender_id != userID && last!.read_at == nil) || markedUnreadForMe,
                 isPinnedForMe: chat.userAID == userID ? chat.pinnedByA : chat.pinnedByB,
                 markedUnreadForMe: markedUnreadForMe,
-                otherNoteText: freshNote
+                otherNoteText: freshNote,
+                streakDays: (streakDays ?? 0) > 0 ? streakDays : nil
             ))
         }
         return entries
@@ -237,6 +245,21 @@ final class ChatListViewModel: ObservableObject {
         let avatar_config: [String: String]?
         let note_text: String?
         let note_updated_at: String?
+    }
+
+    // Racha real de días consecutivos hablando, comparado con Snapchat
+    // (Snapstreaks) -- ver 0135_chat_streak.sql/get_chat_streak().
+    // Equivalente de ChatListViewModel.kt.streakDays (RPC vía
+    // ChatStreakParams). Mismo patrón `.rpc(name, params:).execute().value`
+    // ya usado en ModerationView.swift, aquí decodificando el entero real
+    // que devuelve la función SQL en vez de descartar el resultado.
+    private struct StreakParams: Encodable { let p_chat_id: UUID }
+
+    private func chatStreak(chatID: UUID) async -> Int? {
+        try? await SupabaseManager.shared.client
+            .rpc("get_chat_streak", params: StreakParams(p_chat_id: chatID))
+            .execute()
+            .value
     }
 
     private func otherProfileInfo(id: UUID) async -> NameRow? {

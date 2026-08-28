@@ -96,6 +96,14 @@ struct ChatListView: View {
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
+                                // Racha real de días consecutivos hablando,
+                                // comparado con Snapchat (Snapstreaks) --
+                                // ver ChatListViewModel.streakDays,
+                                // 0135_chat_streak.sql.
+                                if let streakDays = entry.streakDays {
+                                    Text("🔥\(streakDays)")
+                                        .font(.caption)
+                                }
                                 Spacer()
                                 // Hallazgo real, comparado con WhatsApp/
                                 // Instagram/Messenger: "Tus chats" no
