@@ -117,24 +117,36 @@ class MatchViewModel : ViewModel() {
     @Serializable
     private data class NewCompatRequest(
         @SerialName("requester_id") val requesterId: String,
-        @SerialName("target_id") val targetId: String
+        @SerialName("target_id") val targetId: String,
+        val highlighted: Boolean = false
     )
 
-    /** Crea una fila en compat_requests (misma tabla y RLS que iOS, regla 4). */
-    fun requestCompatibility(entry: Entry) {
+    /** Crea una fila en compat_requests (misma tabla y RLS que iOS, regla 4).
+     * [highlighted] real, comparado con Tinder/Bumble (Super Like) -- ver
+     * 0136_compat_request_highlight.sql. Límite real de una destacada al
+     * día reforzado por un índice único parcial en el propio servidor
+     * (`idx_compat_requests_highlighted_daily`); un segundo intento el
+     * mismo día real revierte el estado optimista y muestra el error real
+     * en vez de fingir que se destacó. */
+    fun requestCompatibility(entry: Entry, highlighted: Boolean = false) {
         _entries.update { list -> list.map { if (it.profile.id == entry.profile.id) it.copy(requestSent = true) else it } }
         viewModelScope.launch {
             try {
                 val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
                 SupabaseManager.client.from("compat_requests").insert(
-                    NewCompatRequest(requesterId = userId, targetId = entry.profile.id)
+                    NewCompatRequest(requesterId = userId, targetId = entry.profile.id, highlighted = highlighted)
                 )
                 // Hallazgo real, misma auditoría de AnalyticsManager de
                 // las últimas pasadas: pedir ver la compatibilidad de
                 // alguien tampoco se registraba.
-                com.social.app.backend.AnalyticsManager.track("compat_request_sent")
+                com.social.app.backend.AnalyticsManager.track(if (highlighted) "compat_request_highlighted" else "compat_request_sent")
             } catch (e: Exception) {
-                _errorMessage.value = "No se pudo enviar la solicitud de compatibilidad."
+                if (highlighted) {
+                    _entries.update { list -> list.map { if (it.profile.id == entry.profile.id) it.copy(requestSent = false) else it } }
+                    _errorMessage.value = "Ya has destacado una solicitud hoy."
+                } else {
+                    _errorMessage.value = "No se pudo enviar la solicitud de compatibilidad."
+                }
             }
         }
     }

@@ -3811,6 +3811,36 @@ async function main() {
   const csStreakAsStranger = (await db.query(`select get_chat_streak($1) as streak`, [csChat.id])).rows[0];
   check('get_chat_streak: un tercero real que no participa en el chat obtiene 0', csStreakAsStranger.streak === 0);
 
+  // --- compat_requests.highlighted (0136_compat_request_highlight.sql):
+  // "Interés destacado" real al pedir ver compatibilidad, comparado con
+  // Tinder/Bumble (Super Like). Usuarios NUEVOS a propósito. ---
+  await asSuperuser();
+  const chU1 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const chTarget1 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const chTarget2 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name) values ($1,'Ch1'),($2,'ChTarget1'),($3,'ChTarget2') on conflict (id) do update set display_name=excluded.display_name`,
+    [chU1, chTarget1, chTarget2]
+  );
+  await asUser(chU1);
+  await expectOk('compat_requests_insert: chU1 SÍ puede destacar su primera solicitud real del día', async () => {
+    await db.query(`insert into compat_requests (requester_id, target_id, highlighted) values ($1, $2, true)`, [chU1, chTarget1]);
+  });
+  await expectFail('idx_compat_requests_highlighted_daily: chU1 NO puede destacar una segunda solicitud real el mismo día', async () => {
+    await db.query(`insert into compat_requests (requester_id, target_id, highlighted) values ($1, $2, true)`, [chU1, chTarget2]);
+  });
+  await expectOk('compat_requests_insert: chU1 SÍ puede enviar una segunda solicitud real SIN destacar el mismo día', async () => {
+    await db.query(`insert into compat_requests (requester_id, target_id, highlighted) values ($1, $2, false)`, [chU1, chTarget2]);
+  });
+
+  await asUser(chTarget1);
+  const chNotif = (await db.query(`select payload from notifications where recipient_id = $1 and kind = 'compat_request'`, [chTarget1])).rows;
+  check('notify_new_compat_request: chTarget1 recibe el aviso real con highlighted=true en el payload', chNotif.length === 1 && chNotif[0].payload.highlighted === true);
+
+  await asUser(chTarget2);
+  const chNotif2 = (await db.query(`select payload from notifications where recipient_id = $1 and kind = 'compat_request'`, [chTarget2])).rows;
+  check('notify_new_compat_request: chTarget2 recibe el aviso real con highlighted=false (la segunda, no destacada)', chNotif2.length === 1 && chNotif2[0].payload.highlighted === false);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

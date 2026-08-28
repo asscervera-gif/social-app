@@ -140,28 +140,41 @@ final class MatchViewModel: ObservableObject {
         return Int((Double(intersection) / Double(union)) * 100)
     }
 
-    /// Crea una fila en compat_requests (Fase 2) para pedir ver el % de un perfil no público.
-    func requestCompatibility(for entry: Entry) async {
+    /// Crea una fila en compat_requests (Fase 2) para pedir ver el % de un
+    /// perfil no público. [highlighted] real, comparado con Tinder/Bumble
+    /// (Super Like) -- ver 0136_compat_request_highlight.sql. Límite real
+    /// de una destacada al día reforzado por un índice único parcial en
+    /// el propio servidor (`idx_compat_requests_highlighted_daily`); un
+    /// segundo intento el mismo día real revierte el estado optimista y
+    /// muestra el error real en vez de fingir que se destacó. Equivalente
+    /// de MatchViewModel.kt.requestCompatibility(highlighted:).
+    func requestCompatibility(for entry: Entry, highlighted: Bool = false) async {
         guard let index = entries.firstIndex(where: { $0.id == entry.id }) else { return }
         entries[index].requestSent = true
 
         struct NewRequest: Encodable {
             let requester_id: UUID
             let target_id: UUID
+            let highlighted: Bool
         }
 
         do {
             guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
             try await SupabaseManager.shared.client
                 .from("compat_requests")
-                .insert(NewRequest(requester_id: userID, target_id: entry.profile.id))
+                .insert(NewRequest(requester_id: userID, target_id: entry.profile.id, highlighted: highlighted))
                 .execute()
             // Hallazgo real, mismo criterio ya aplicado en la versión
             // Kotlin equivalente: pedir ver la compatibilidad de alguien
             // tampoco se registraba.
-            AnalyticsManager.track("compat_request_sent")
+            AnalyticsManager.track(highlighted ? "compat_request_highlighted" : "compat_request_sent")
         } catch {
-            errorMessage = "No se pudo enviar la solicitud de compatibilidad."
+            if highlighted {
+                entries[index].requestSent = false
+                errorMessage = "Ya has destacado una solicitud hoy."
+            } else {
+                errorMessage = "No se pudo enviar la solicitud de compatibilidad."
+            }
         }
     }
 }

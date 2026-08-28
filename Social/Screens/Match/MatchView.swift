@@ -137,9 +137,16 @@ struct MatchView: View {
                             NavigationLink {
                                 ProfileViewerView(profileID: entry.profile.id)
                             } label: {
-                                MatchCard(entry: entry, gradient: cardGradients[index % cardGradients.count]) {
-                                    Task { await viewModel.requestCompatibility(for: entry) }
-                                }
+                                MatchCard(
+                                    entry: entry,
+                                    gradient: cardGradients[index % cardGradients.count],
+                                    onRequestCompat: {
+                                        Task { await viewModel.requestCompatibility(for: entry) }
+                                    },
+                                    onRequestHighlighted: {
+                                        Task { await viewModel.requestCompatibility(for: entry, highlighted: true) }
+                                    }
+                                )
                             }
                             .buttonStyle(.plain)
                         }
@@ -167,6 +174,10 @@ private struct MatchCard: View {
     let entry: MatchViewModel.Entry
     let gradient: [Color]
     let onRequestCompat: () -> Void
+    // "Interés destacado" real, comparado con Tinder/Bumble (Super Like)
+    // -- ver MatchViewModel.requestCompatibility(highlighted:),
+    // 0136_compat_request_highlight.sql.
+    var onRequestHighlighted: () -> Void = {}
 
     var body: some View {
         ZStack {
@@ -190,6 +201,18 @@ private struct MatchCard: View {
                         .shadow(color: .black.opacity(0.5), radius: 4)
                         .lineLimit(1)
                     Spacer()
+                    // "Interés destacado" real, comparado con Tinder/
+                    // Bumble (Super Like) -- solo tiene sentido mientras
+                    // la compatibilidad real todavía no se sabe ni ya se
+                    // pidió, mismo criterio que el badge "?% · Pedir".
+                    if entry.compatibility == nil && !entry.requestSent {
+                        Button(action: onRequestHighlighted) {
+                            Text("⭐")
+                                .padding(6)
+                                .background(Circle().fill(.white))
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
             .padding(10)

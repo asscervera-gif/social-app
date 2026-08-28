@@ -184,7 +184,8 @@ fun MatchScreen(viewModel: MatchViewModel = viewModel(), onOpenProfile: (String)
                         entry = entry,
                         gradient = cardGradients[index % cardGradients.size],
                         onOpen = { onOpenProfile(entry.profile.id) },
-                        onRequest = { viewModel.requestCompatibility(entry) }
+                        onRequest = { viewModel.requestCompatibility(entry) },
+                        onRequestHighlighted = { viewModel.requestCompatibility(entry, highlighted = true) }
                     )
                 }
             }
@@ -198,7 +199,11 @@ private fun MatchCard(
     entry: MatchViewModel.Entry,
     gradient: List<Color>,
     onOpen: () -> Unit,
-    onRequest: () -> Unit
+    onRequest: () -> Unit,
+    // "Interés destacado" real, comparado con Tinder/Bumble (Super Like)
+    // -- ver MatchViewModel.requestCompatibility(highlighted=true),
+    // 0136_compat_request_highlight.sql.
+    onRequestHighlighted: () -> Unit = {}
 ) {
     Box(
         modifier = Modifier
@@ -243,6 +248,23 @@ private fun MatchCard(
                 .let { if (badge.clickable) it.clickable(onClick = onRequest) else it }
                 .padding(horizontal = 8.dp, vertical = 4.dp)
         )
+        // "Interés destacado" real, comparado con Tinder/Bumble (Super
+        // Like) -- solo tiene sentido mientras la compatibilidad real
+        // todavía no se sabe ni ya se pidió (mismo criterio que el badge
+        // "?% · Pedir" de arriba).
+        if (badge.clickable) {
+            Text(
+                "⭐",
+                fontSize = 14.sp,
+                modifier = Modifier
+                    .padding(10.dp)
+                    .align(Alignment.BottomEnd)
+                    .clip(CircleShape)
+                    .background(Color.White)
+                    .clickable(onClick = onRequestHighlighted)
+                    .padding(6.dp)
+            )
+        }
         Text(
             entry.profile.displayName,
             color = Color.White,
