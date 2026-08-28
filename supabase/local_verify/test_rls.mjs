@@ -549,6 +549,23 @@ async function main() {
   const u3TokenGone = (await db.query(`select 1 from device_tokens where profile_id = $1`, [u3])).rows;
   check('device_tokens_delete_own: borrar el propio token SÍ borra la fila de verdad', u3TokenGone.length === 0);
 
+  // --- notify_new_device_login (0152_new_device_alert.sql): aviso real
+  // de nuevo inicio de sesión, comparado con Instagram/Facebook/
+  // Snapchat -- disparado por un INSERT real en device_tokens (nunca un
+  // UPDATE del mismo upsert), nunca el de otra persona. ---
+  await asUser(u2);
+  const newDeviceNotif = (await db.query(`select payload from notifications where recipient_id = $1 and kind = 'new_device_login'`, [u2])).rows;
+  check('notify_new_device_login: u2 recibe el aviso real al registrar su token real la primera vez', newDeviceNotif.length === 1 && newDeviceNotif[0].payload.platform === 'ios');
+
+  await expectOk('device_tokens: u2 SÍ puede re-registrar el MISMO token real (upsert, no un INSERT nuevo)', async () => {
+    await db.query(
+      `insert into device_tokens (profile_id, platform, token) values ($1, 'ios', 'tok-u2-real') on conflict (profile_id, platform, token) do update set updated_at = now()`,
+      [u2]
+    );
+  });
+  const newDeviceNotifAfterUpsert = (await db.query(`select payload from notifications where recipient_id = $1 and kind = 'new_device_login'`, [u2])).rows;
+  check('notify_new_device_login: re-registrar el MISMO dispositivo real (upsert) NO genera un segundo aviso', newDeviceNotifAfterUpsert.length === 1);
+
   // --- chats_hide (0044): ocultar una conversación de "Tus chats" solo
   // afecta a la copia de quien la oculta, nunca a la de la otra persona
   // (RLS por fila no lo impediría por sí sola -- hace falta el trigger),

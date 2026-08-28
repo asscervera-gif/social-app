@@ -187,6 +187,9 @@ fun NotificationEntry.icon(): String = when (kind) {
     // Sticker de cuenta atrás real, comparado con Instagram (Countdown)/
     // Snapchat -- ver 0147_story_countdown.sql.
     "countdown_due" -> "⏰"
+    // Aviso real de nuevo inicio de sesión, comparado con Instagram/
+    // Facebook/Snapchat -- ver 0152_new_device_alert.sql.
+    "new_device_login" -> "🔐"
     else -> "🔔"
 }
 
@@ -210,5 +213,6 @@ fun NotificationEntry.title(): String = when (kind) {
     "live_start" -> "Está en directo ahora"
     "post_collab_invite" -> "Te invitó a colaborar en una publicación"
     "countdown_due" -> "¡Cuenta atrás terminada!"
+    "new_device_login" -> "Nuevo inicio de sesión detectado"
     else -> "Notificación"
 }

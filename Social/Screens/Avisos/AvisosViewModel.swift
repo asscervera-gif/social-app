@@ -211,6 +211,9 @@ extension AvisosViewModel.NotificationEntry {
         // Sticker de cuenta atrás real, comparado con Instagram
         // (Countdown)/Snapchat -- ver 0147_story_countdown.sql.
         case "countdown_due": return "timer"
+        // Aviso real de nuevo inicio de sesión, comparado con
+        // Instagram/Facebook/Snapchat -- ver 0152_new_device_alert.sql.
+        case "new_device_login": return "lock.shield"
         default: return "bell"
         }
     }
@@ -236,6 +239,7 @@ extension AvisosViewModel.NotificationEntry {
         case "live_start": return "Está en directo ahora"
         case "post_collab_invite": return "Te invitó a colaborar en una publicación"
         case "countdown_due": return "¡Cuenta atrás terminada!"
+        case "new_device_login": return "Nuevo inicio de sesión detectado"
         default: return "Notificación"
         }
     }

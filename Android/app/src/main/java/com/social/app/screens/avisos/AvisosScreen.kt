@@ -231,6 +231,7 @@ private fun contextFor(kind: String): String = when (kind) {
     "compat_accepted" -> "Compartió su compatibilidad contigo."
     "new_post" -> "Ha publicado algo nuevo."
     "post_collab_invite" -> "Te ha invitado a aparecer como coautor de una publicación."
+    "new_device_login" -> "Tu cuenta se usó desde un dispositivo nuevo. Si no fuiste tú, revisa Dispositivos conectados en Ajustes."
     else -> "Nueva notificación."
 }
 

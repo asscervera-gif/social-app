@@ -254,6 +254,7 @@ private func contextFor(_ kind: String) -> String {
     case "compat_accepted": return "Compartió su compatibilidad contigo."
     case "new_post": return "Ha publicado algo nuevo."
     case "post_collab_invite": return "Te ha invitado a aparecer como coautor de una publicación."
+    case "new_device_login": return "Tu cuenta se usó desde un dispositivo nuevo. Si no fuiste tú, revisa Dispositivos conectados en Ajustes."
     default: return "Nueva notificación."
     }
 }
