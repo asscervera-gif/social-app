@@ -214,6 +214,37 @@ final class ReelsViewModel: ObservableObject {
         }
     }
 
+    private var viewedReelIDsThisSession = Set<UUID>()
+
+    /// Contador real de vistas, comparado con TikTok/Instagram Reels --
+    /// hallazgo real: `viewCount` existía desde 0050_reels.sql y ya se
+    /// mostraba en pantalla, pero ningún sitio del código lo incrementaba
+    /// jamás (RLS bloqueaba un UPDATE directo). Ver
+    /// 0131_reel_view_count.sql -- `reel_views` (unique por espectador) +
+    /// trigger real que incrementa `reels.view_count`. Equivalente de
+    /// ReelsViewModel.kt.trackView().
+    func trackView(_ reel: Reel) async {
+        guard viewedReelIDsThisSession.insert(reel.id).inserted else { return }
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        struct NewReelView: Encodable {
+            let reel_id: UUID
+            let viewer_id: UUID
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("reel_views")
+                .insert(NewReelView(reel_id: reel.id, viewer_id: userID))
+                .execute()
+            if let index = reels.firstIndex(where: { $0.id == reel.id }) {
+                reels[index].viewCount += 1
+            }
+        } catch {
+            // Restricción unique(reel_id, viewer_id): si ya existía la
+            // vista (de una sesión anterior), el estado deseado ya se
+            // cumple -- mismo criterio que toggleLike().
+        }
+    }
+
     /// Desactivar los comentarios de un reel propio real, comparado con
     /// Instagram/TikTok -- los comentarios que ya existían se quedan tal
     /// cual, solo se cierra la puerta a comentarios NUEVOS

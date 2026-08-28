@@ -133,6 +133,13 @@ fun ReelsScreen(
                     exoPlayer.setMediaItem(MediaItem.fromUri(current.videoUrl))
                     exoPlayer.prepare()
                     exoPlayer.playWhenReady = true
+                    // Contador real de vistas, comparado con TikTok/
+                    // Instagram Reels -- ver ReelsViewModel.trackView(),
+                    // 0131_reel_view_count.sql. No cuenta las vistas del
+                    // propio autor sobre su propio reel.
+                    if (current.authorId != myId) {
+                        viewModel.trackView(current)
+                    }
                 }
                 VerticalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
                     val reel = reels[page]
@@ -339,6 +346,13 @@ private fun ReelPage(
                 Text(
                     if (showLikeCount) " ${reel.likeCount}   💬 ${reel.commentCount}" else "💬 ${reel.commentCount}",
                     modifier = Modifier.clickable(onClick = onOpenComments),
+                    color = androidx.compose.ui.graphics.Color.White
+                )
+                // Contador real de vistas, comparado con TikTok/Instagram
+                // Reels -- ver ReelsViewModel.trackView(),
+                // 0131_reel_view_count.sql.
+                Text(
+                    "   👁 ${reel.viewCount}",
                     color = androidx.compose.ui.graphics.Color.White
                 )
                 // Desactivar los comentarios de este reel propio,

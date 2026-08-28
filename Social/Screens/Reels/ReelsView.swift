@@ -129,7 +129,8 @@ struct ReelsView: View {
             onToggleCommentsDisabled: { Task { await viewModel.toggleCommentsDisabled(reel) } },
             onToggleHideLikeCount: { Task { await viewModel.toggleHideLikeCount(reel) } },
             onToggleSensitive: { Task { await viewModel.toggleSensitive(reel) } },
-            onCycleReplyAudience: { Task { await viewModel.cycleReplyAudience(reel) } }
+            onCycleReplyAudience: { Task { await viewModel.cycleReplyAudience(reel) } },
+            onTrackView: { Task { await viewModel.trackView(reel) } }
         )
     }
 }
@@ -157,6 +158,10 @@ private struct ReelRow: View {
     // el control solo tiene sentido sobre el reel propio
     // (0097_reply_audience.sql).
     let onCycleReplyAudience: () -> Void
+    // Contador real de vistas, comparado con TikTok/Instagram Reels --
+    // ver ReelsViewModel.trackView(), 0131_reel_view_count.sql. No cuenta
+    // las vistas del propio autor sobre su propio reel (isMine).
+    var onTrackView: () -> Void = {}
     private var replyAudienceIcon: String {
         switch reel.replyAudience {
         case "followers": return "💬🧑‍🤝‍🧑"
@@ -205,7 +210,10 @@ private struct ReelRow: View {
                     .onTapGesture { sensitiveRevealed = true }
                 } else if let url = URL(string: reel.videoURL) {
                     VideoPlayer(player: player ?? AVPlayer(url: url))
-                        .onAppear { if player == nil { player = AVPlayer(url: url) } }
+                        .onAppear {
+                            if player == nil { player = AVPlayer(url: url) }
+                            if !isMine { onTrackView() }
+                        }
                         .onDisappear { player?.pause() }
                         .onTapGesture(count: 2) { likeViaDoubleTap() }
                     if showDoubleTapHeart {
@@ -252,6 +260,11 @@ private struct ReelRow: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
+                // Contador real de vistas, comparado con TikTok/Instagram
+                // Reels -- ver ReelsViewModel.trackView(),
+                // 0131_reel_view_count.sql.
+                Text("👁 \(reel.viewCount)")
+                    .foregroundStyle(.secondary)
                 // Desactivar los comentarios de este reel propio, comparado
                 // con Instagram/TikTok -- los comentarios previos se
                 // quedan, solo se cierra la puerta a comentarios nuevos

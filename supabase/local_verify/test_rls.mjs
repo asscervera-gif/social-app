@@ -766,6 +766,38 @@ async function main() {
   check('protect_reel_counts: like_count NO se puede fijar a mano (sigue siendo 1, el real)', reelAfterFakeCount.like_count === 1);
   check('protect_reel_counts: el resto de la fila (caption) sí se actualiza con normalidad', reelAfterFakeCount.caption === 'editado de verdad');
 
+  // reel_views (0131_reel_view_count.sql): contador real de vistas,
+  // comparado con TikTok/Instagram Reels -- ver hallazgo real en la
+  // propia migración (view_count llevaba desde 0050 sin forma real de
+  // incrementarse, RLS lo bloqueaba).
+  await asUser(u2);
+  await expectOk('reel_views_insert_own: un espectador real (u2, no autor) SÍ puede registrar su propia vista', async () => {
+    await db.query(`insert into reel_views (reel_id, viewer_id) values ($1, $2)`, [publicReel.id, u2]);
+  });
+  await asSuperuser();
+  const reelAfterView = (await db.query(`select view_count from reels where id = $1`, [publicReel.id])).rows[0];
+  check('sync_reel_view_count: view_count real sube a 1 tras la vista real', reelAfterView.view_count === 1);
+
+  await asUser(u3);
+  await db.query(`insert into reel_views (reel_id, viewer_id) values ($1, $2)`, [publicReel.id, u3]);
+  await asSuperuser();
+  const reelAfterAuthorView = (await db.query(`select view_count from reels where id = $1`, [publicReel.id])).rows[0];
+  check('sync_reel_view_count: el propio autor real (u3) viendo su propio reel NO infla el contador (sigue en 1)', reelAfterAuthorView.view_count === 1);
+
+  await asUser(u2);
+  await expectFail('reel_views_insert_own: unique(reel_id, viewer_id) -- u2 NO puede registrar dos vistas del mismo reel', async () => {
+    await db.query(`insert into reel_views (reel_id, viewer_id) values ($1, $2)`, [publicReel.id, u2]);
+  });
+  await asSuperuser();
+  const reelAfterDuplicateView = (await db.query(`select view_count from reels where id = $1`, [publicReel.id])).rows[0];
+  check('sync_reel_view_count: una segunda vista real del mismo espectador NO infla el contador (sigue en 1)', reelAfterDuplicateView.view_count === 1);
+
+  await asUser(u3);
+  await db.query(`update reels set view_count = 999 where id = $1`, [publicReel.id]);
+  await asSuperuser();
+  const reelAfterDirectAttempt = (await db.query(`select view_count from reels where id = $1`, [publicReel.id])).rows[0];
+  check('protect_reel_counts: el propio autor real (u3) con un UPDATE directo (sin pasar por reel_views) sigue revertido -- view_count sigue en 1', reelAfterDirectAttempt.view_count === 1);
+
   // reel_likes_insert_own con bloqueo: u1 bloquea a u3, u1 ya NO puede dar
   // like al reel de u3 (mismo criterio real que likes_insert_own/0012).
   await asUser(u1);

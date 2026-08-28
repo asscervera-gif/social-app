@@ -236,6 +236,37 @@ class ReelsViewModel : ViewModel() {
         }
     }
 
+    @Serializable
+    private data class NewReelView(
+        @SerialName("reel_id") val reelId: String,
+        @SerialName("viewer_id") val viewerId: String
+    )
+
+    private val viewedReelIdsThisSession = mutableSetOf<String>()
+
+    /** Contador real de vistas, comparado con TikTok/Instagram Reels --
+     * hallazgo real: `view_count` existía desde 0050_reels.sql y ya se
+     * mostraba en pantalla, pero ningún sitio del código lo incrementaba
+     * jamás (RLS bloqueaba un UPDATE directo). Ver 0131_reel_view_count.sql
+     * -- `reel_views` (unique por espectador) + trigger real que
+     * incrementa `reels.view_count`. `viewedReelIdsThisSession` evita
+     * repetir el insert (y el 409 esperado de la unique constraint) cada
+     * vez que el usuario vuelve a pasar por el mismo reel en la sesión. */
+    fun trackView(reel: Reel) {
+        if (!viewedReelIdsThisSession.add(reel.id)) return
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                SupabaseManager.client.from("reel_views").insert(NewReelView(reel.id, userId))
+                _reels.update { list -> list.map { if (it.id == reel.id) it.copy(viewCount = it.viewCount + 1) else it } }
+            } catch (e: Exception) {
+                // Restricción unique(reel_id, viewer_id): si ya existía la
+                // vista (de una sesión anterior), el estado deseado ya se
+                // cumple -- mismo criterio que toggleLike().
+            }
+        }
+    }
+
     /** Desactivar los comentarios de un reel propio real, comparado con
      * Instagram/TikTok -- los comentarios que ya existían se quedan tal
      * cual, solo se cierra la puerta a comentarios NUEVOS
