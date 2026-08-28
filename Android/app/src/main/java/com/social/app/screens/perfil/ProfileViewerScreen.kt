@@ -30,6 +30,21 @@ import io.github.jan.supabase.gotrue.auth
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Columns
 import kotlinx.coroutines.launch
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
+// "Quién visitó tu perfil" real, comparado con LinkedIn/Twitter-X
+// (Premium) -- ver 0132_profile_visits.sql. visited_at se manda
+// explícito en cada visita (no solo en el insert) para que una segunda
+// visita real actualice de verdad "hace cuánto" fue la última, no solo
+// la primera -- el upsert reescribe exactamente las columnas presentes
+// en el payload.
+@Serializable
+private data class NewProfileVisit(
+    @SerialName("visitor_id") val visitorId: String,
+    @SerialName("visited_id") val visitedId: String,
+    @SerialName("visited_at") val visitedAt: String
+)
 
 /**
  * Visor de perfil de solo lectura para OTRA persona — equivalente Compose
@@ -90,6 +105,16 @@ fun ProfileViewerScreen(profileId: String) {
             if (uid != profileId) {
                 isFollowing = followManager.isFollowing(uid, profileId)
                 isSubscribedToPosts = postNotificationManager.isSubscribed(uid, profileId)
+                // "Quién visitó tu perfil" real, comparado con LinkedIn/
+                // Twitter-X (Premium) -- ver ProfileVisitsScreen.kt,
+                // 0132_profile_visits.sql. Se registra en segundo plano,
+                // sin bloquear la carga del perfil ni avisar aquí de un
+                // fallo (no es una acción crítica para el visitante).
+                try {
+                    SupabaseManager.client.from("profile_visits")
+                        .upsert(NewProfileVisit(uid, profileId, java.time.Instant.now().toString()), onConflict = "visitor_id,visited_id")
+                } catch (e: Exception) {
+                }
             }
         }
     }

@@ -173,6 +173,23 @@ struct ProfileViewerView: View {
             if let myID, myID != profileID {
                 isFollowing = await followManager.isFollowing(followerID: myID, followeeID: profileID)
                 isSubscribedToPosts = await postNotificationManager.isSubscribed(subscriberID: myID, creatorID: profileID)
+                // "Quién visitó tu perfil" real, comparado con LinkedIn/
+                // Twitter-X (Premium) -- ver ProfileVisitsView.swift,
+                // 0132_profile_visits.sql. Se registra en segundo plano,
+                // sin bloquear la carga del perfil ni avisar de un fallo
+                // (no es una acción crítica para el visitante).
+                struct NewProfileVisit: Encodable {
+                    let visitor_id: UUID
+                    let visited_id: UUID
+                    let visited_at: String
+                }
+                try? await client
+                    .from("profile_visits")
+                    .upsert(
+                        NewProfileVisit(visitor_id: myID, visited_id: profileID, visited_at: ISO8601DateFormatter().string(from: Date())),
+                        onConflict: "visitor_id,visited_id"
+                    )
+                    .execute()
             }
         }
     }

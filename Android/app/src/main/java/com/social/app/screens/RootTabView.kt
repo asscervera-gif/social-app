@@ -87,6 +87,9 @@ private const val ARCHIVED_CHATS_ROUTE = "archived_chats"
 private const val CALL_HISTORY_ROUTE = "call_history"
 private const val MY_POSTS_ROUTE = "my_posts"
 private const val SAVED_POSTS_ROUTE = "saved_posts"
+// "Quién visitó tu perfil" real, comparado con LinkedIn/Twitter-X
+// (Premium) -- ver ProfileVisitsScreen.kt, 0132_profile_visits.sql.
+private const val PROFILE_VISITS_ROUTE = "profile_visits"
 private const val STARRED_MESSAGES_ROUTE = "starred_messages"
 private const val BROADCAST_LISTS_ROUTE = "broadcast_lists"
 private const val SOCIALS_LIST_ROUTE = "socials_list"
@@ -321,7 +324,8 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                         onOpenLive = { navController.navigate(LIVE_STREAMS_ROUTE) },
                         onOpenGroupChats = { navController.navigate(GROUP_CHATS_LIST_ROUTE) },
                         onOpenStarredMessages = { navController.navigate(STARRED_MESSAGES_ROUTE) },
-                        onOpenBroadcastLists = { navController.navigate(BROADCAST_LISTS_ROUTE) }
+                        onOpenBroadcastLists = { navController.navigate(BROADCAST_LISTS_ROUTE) },
+                        onOpenProfileVisits = { navController.navigate(PROFILE_VISITS_ROUTE) }
                     )
                 }
                 // Reels (0050_reels.sql) -- primera UI de cliente real
@@ -431,6 +435,13 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                 composable(SAVED_POSTS_ROUTE) {
                     com.social.app.ui.theme.BackScaffold(title = "Guardados", onBack = { navController.popBackStack() }) {
                         com.social.app.screens.perfil.SavedPostsScreen(
+                            onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
+                        )
+                    }
+                }
+                composable(PROFILE_VISITS_ROUTE) {
+                    com.social.app.ui.theme.BackScaffold(title = "Visitas a tu perfil", onBack = { navController.popBackStack() }) {
+                        com.social.app.screens.perfil.ProfileVisitsScreen(
                             onOpenProfile = { profileId -> navController.navigate("profile/$profileId") }
                         )
                     }

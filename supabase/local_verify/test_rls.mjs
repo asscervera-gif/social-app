@@ -3620,6 +3620,49 @@ async function main() {
   const scAfterUnmarkAttempt = (await db.query(`select screenshot_taken_at from messages where id = $1`, [scMessage.id])).rows[0];
   check('protect_message_columns: intentar "desmarcar" una captura real ya registrada no lo consigue (irreversible de verdad)', scAfterUnmarkAttempt.screenshot_taken_at !== null);
 
+  // --- profile_visits (0132_profile_visits.sql): "quién visitó tu
+  // perfil", comparado con LinkedIn/Twitter-X (Premium). Usuarios NUEVOS
+  // a propósito, mismo motivo ya documentado varias veces esta sesión. ---
+  await asSuperuser();
+  const pvVisitor = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const pvVisited = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const pvStranger = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name) values ($1, 'PvVisitor'), ($2, 'PvVisited'), ($3, 'PvStranger')
+     on conflict (id) do update set display_name = excluded.display_name`,
+    [pvVisitor, pvVisited, pvStranger]
+  );
+
+  await asUser(pvVisitor);
+  await expectFail('profile_visits: check visitor_id <> visited_id -- no se puede registrar una autovisita', async () => {
+    await db.query(`insert into profile_visits (visitor_id, visited_id) values ($1, $1)`, [pvVisitor]);
+  });
+  await expectOk('profile_visits_insert_own: pvVisitor SÍ puede registrar su propia visita real al perfil de pvVisited', async () => {
+    await db.query(`insert into profile_visits (visitor_id, visited_id) values ($1, $2)`, [pvVisitor, pvVisited]);
+  });
+  const pvSeenByVisitor = (await db.query(`select id from profile_visits where visitor_id = $1`, [pvVisitor])).rows;
+  check('profile_visits_select_own: pvVisitor (el visitante) SÍ ve su propia fila (necesario para el upsert, sin UI real que lo muestre)', pvSeenByVisitor.length === 1);
+
+  await asUser(pvVisited);
+  const pvSeenByVisited = (await db.query(`select visitor_id from profile_visits where visited_id = $1`, [pvVisited])).rows;
+  check('profile_visits_select_own: el visitado real (pvVisited) SÍ ve quién visitó su perfil', pvSeenByVisited.length === 1 && pvSeenByVisited[0].visitor_id === pvVisitor);
+
+  await asUser(pvStranger);
+  const pvSeenByStranger = (await db.query(`select visitor_id from profile_visits where visited_id = $1`, [pvVisited])).rows;
+  check('profile_visits_select_own: un tercero real (pvStranger) NO ve la lista de visitas ajena', pvSeenByStranger.length === 0);
+
+  await asUser(pvVisitor);
+  await expectOk('profile_visits_update_own (upsert): una segunda visita real actualiza visited_at en vez de duplicar fila', async () => {
+    await db.query(
+      `insert into profile_visits (visitor_id, visited_id) values ($1, $2)
+       on conflict (visitor_id, visited_id) do update set visited_at = now()`,
+      [pvVisitor, pvVisited]
+    );
+  });
+  await asUser(pvVisited);
+  const pvAfterSecondVisit = (await db.query(`select visitor_id from profile_visits where visited_id = $1`, [pvVisited])).rows;
+  check('profile_visits: una segunda visita real del mismo visitante NO duplica la fila (sigue habiendo 1)', pvAfterSecondVisit.length === 1);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

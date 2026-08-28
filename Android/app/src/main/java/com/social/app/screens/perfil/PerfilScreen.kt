@@ -96,7 +96,10 @@ fun PerfilScreen(
     onOpenLive: () -> Unit = {},
     onOpenGroupChats: () -> Unit = {},
     onOpenStarredMessages: () -> Unit = {},
-    onOpenBroadcastLists: () -> Unit = {}
+    onOpenBroadcastLists: () -> Unit = {},
+    // "Quién visitó tu perfil" real, comparado con LinkedIn/Twitter-X
+    // (Premium) -- ver ProfileVisitsScreen.kt, 0132_profile_visits.sql.
+    onOpenProfileVisits: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val profile by viewModel.profile.collectAsState()
@@ -141,7 +144,11 @@ fun PerfilScreen(
         // Listas de difusión reales, comparado con WhatsApp
         // (0103_broadcast_lists.sql) -- mismo criterio que el resto:
         // se añade sin quitar ninguno de los ya reales.
-        ProfileNavItem("📢", "Difusión", onOpenBroadcastLists)
+        ProfileNavItem("📢", "Difusión", onOpenBroadcastLists),
+        // "Quién visitó tu perfil" real, comparado con LinkedIn/Twitter-X
+        // (Premium) -- 0132_profile_visits.sql, mismo criterio que el
+        // resto: se añade sin quitar ninguno de los ya reales.
+        ProfileNavItem("👣", "Visitas", onOpenProfileVisits)
     )
     val filledSections = sections.count { it.content["texto"]?.isNotBlank() == true }
     val completion = (filledSections * 100) / PerfilViewModel.SECTION_KEYS.size.coerceAtLeast(1)

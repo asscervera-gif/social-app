@@ -43,6 +43,9 @@ struct PerfilView: View {
     // criterio que showSavedPosts de arriba (0087_starred_messages.sql).
     @State private var showStarredMessages = false
     @State private var showBroadcastLists = false
+    // "Quién visitó tu perfil" real, comparado con LinkedIn/Twitter-X
+    // (Premium) -- ver ProfileVisitsView.swift, 0132_profile_visits.sql.
+    @State private var showProfileVisits = false
     // Hallazgo real, comparado con Instagram/Twitter/TikTok: los
     // contadores "Siguiendo"/"Seguidores" ya eran reales, pero tocarlos no
     // hacía nada -- ver FollowListViewModel.swift.
@@ -177,6 +180,11 @@ struct PerfilView: View {
                     BroadcastListsView()
                 }
             }
+            .sheet(isPresented: $showProfileVisits) {
+                NavigationStack {
+                    ProfileVisitsView()
+                }
+            }
             .sheet(isPresented: $showSocialsList) {
                 NavigationStack {
                     SocialsListView()
@@ -308,7 +316,12 @@ struct PerfilView: View {
             // Listas de difusión reales, comparado con WhatsApp
             // (0103_broadcast_lists.sql) -- mismo criterio que el resto de
             // esta rejilla: se añade sin quitar ninguno de los ya reales.
-            ("Difusión", "megaphone.fill", { showBroadcastLists = true })
+            ("Difusión", "megaphone.fill", { showBroadcastLists = true }),
+            // "Quién visitó tu perfil" real, comparado con LinkedIn/
+            // Twitter-X (Premium) -- 0132_profile_visits.sql, mismo
+            // criterio que el resto: se añade sin quitar ninguno de los
+            // ya reales.
+            ("Visitas", "figure.walk", { showProfileVisits = true })
         ]
     }
 
