@@ -178,6 +178,9 @@ fun NotificationEntry.icon(): String = when (kind) {
     // Repostear una publicación real, comparado con Twitter/X/Facebook
     // -- ver HomeViewModel.toggleRepost(), 0127_post_reposts.sql.
     "repost" -> "🔁"
+    // Empezar un Directo real, comparado con Instagram/TikTok ("Fulano
+    // está en directo ahora") -- ver 0138_live_start_notification.sql.
+    "live_start" -> "🔴"
     else -> "🔔"
 }
 
@@ -198,5 +201,6 @@ fun NotificationEntry.title(): String = when (kind) {
     "group_message" -> "Nuevo mensaje de grupo"
     "mention" -> "Te mencionó"
     "repost" -> "Reposteó tu publicación"
+    "live_start" -> "Está en directo ahora"
     else -> "Notificación"
 }

@@ -201,6 +201,10 @@ extension AvisosViewModel.NotificationEntry {
         // Repostear una publicación real, comparado con Twitter/X/
         // Facebook -- ver HomeViewModel.toggleRepost(), 0127_post_reposts.sql.
         case "repost": return "arrow.2.squarepath"
+        // Empezar un Directo real, comparado con Instagram/TikTok
+        // ("Fulano está en directo ahora") -- ver
+        // 0138_live_start_notification.sql.
+        case "live_start": return "dot.radiowaves.left.and.right"
         default: return "bell"
         }
     }
@@ -223,6 +227,7 @@ extension AvisosViewModel.NotificationEntry {
         case "group_message": return "Nuevo mensaje de grupo"
         case "mention": return "Te mencionó"
         case "repost": return "Reposteó tu publicación"
+        case "live_start": return "Está en directo ahora"
         default: return "Notificación"
         }
     }

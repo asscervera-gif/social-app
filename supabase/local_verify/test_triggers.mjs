@@ -254,6 +254,36 @@ async function main() {
   )).rows;
   check('notify_story_question_response: u10 real, autor de la historia, SÍ recibe el aviso real de la respuesta', storyQuestionNotif.length === 1);
 
+  // --- notify_live_start (0138_live_start_notification.sql): aviso real
+  // a tus seguidores al empezar un Directo, comparado con
+  // Instagram/TikTok. Usuarios NUEVOS a propósito. ---
+  const u12 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const u13 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const u14 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name) values ($1, 'Doce'), ($2, 'Trece'), ($3, 'Catorce')
+     on conflict (id) do update set display_name = excluded.display_name`,
+    [u12, u13, u14]
+  );
+  // u13 sigue a u12 (host real); u14 no lo sigue.
+  await db.query(`insert into follows (follower_id, followee_id) values ($1, $2)`, [u13, u12]);
+  const realStream = (await db.query(`insert into live_streams (host_id) values ($1) returning id`, [u12])).rows[0];
+  const liveStartNotifFollower = (await db.query(
+    `select id from notifications where kind = 'live_start' and recipient_id = $1 and payload->>'stream_id' = $2`,
+    [u13, realStream.id]
+  )).rows;
+  check('notify_live_start: u13 real, que sigue a u12, SÍ recibe el aviso real al empezar el Directo', liveStartNotifFollower.length === 1);
+  const liveStartNotifNonFollower = (await db.query(`select id from notifications where kind = 'live_start' and recipient_id = $1`, [u14])).rows;
+  check('notify_live_start: u14 real, que NO sigue a u12, NO recibe ningún aviso', liveStartNotifNonFollower.length === 0);
+
+  await db.query(`insert into blocks (blocker_id, blocked_id) values ($1, $2)`, [u13, u12]);
+  const secondStream = (await db.query(`insert into live_streams (host_id) values ($1) returning id`, [u12])).rows[0];
+  const liveStartNotifAfterBlock = (await db.query(
+    `select id from notifications where kind = 'live_start' and recipient_id = $1 and payload->>'stream_id' = $2`,
+    [u13, secondStream.id]
+  )).rows;
+  check('notify_live_start: tras bloquear real al host, u13 NO recibe aviso de su nuevo Directo aunque le siga', liveStartNotifAfterBlock.length === 0);
+
   console.log('\n--- fin de las pruebas funcionales ---');
   if (!allPassed) process.exitCode = 1;
 }

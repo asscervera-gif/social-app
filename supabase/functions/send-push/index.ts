@@ -98,6 +98,9 @@ function iconFor(kind: string): string {
     // @menciones reales (0074_mentions.sql), comparado con
     // Instagram/Twitter/TikTok.
     case "mention": return "@";
+    // Empezar un Directo real, comparado con Instagram/TikTok ("Fulano
+    // está en directo ahora") -- ver 0138_live_start_notification.sql.
+    case "live_start": return "🔴";
     default: return "🔔";
   }
 }
@@ -118,6 +121,7 @@ function titleFor(kind: string): string {
     case "group_message": return "Nuevo mensaje de grupo";
     case "reel_comment": return "Comentó tu reel";
     case "mention": return "Te mencionó";
+    case "live_start": return "Está en directo ahora";
     default: return "Notificación";
   }
 }
