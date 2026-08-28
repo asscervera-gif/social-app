@@ -31,7 +31,10 @@ data class StoryRow(
     val visibility: String = "everyone",
     // Texto sobre la Historia + @menciones reales ahí, comparado con
     // Instagram/TikTok/Snapchat -- ver 0143_story_caption_mentions.sql.
-    val caption: String? = null
+    val caption: String? = null,
+    // Sticker de enlace real ("swipe up"), comparado con Instagram
+    // Stories/TikTok/Snapchat -- ver 0146_story_link.sql.
+    @SerialName("link_url") val linkUrl: String? = null
 )
 
 // Adhesivo de pregunta real en una historia ("Pregúntame algo"),
@@ -290,7 +293,10 @@ class StoriesViewModel : ViewModel() {
         val visibility: String,
         // Texto sobre la Historia + @menciones reales ahí, comparado con
         // Instagram/TikTok/Snapchat -- ver 0143_story_caption_mentions.sql.
-        val caption: String? = null
+        val caption: String? = null,
+        // Sticker de enlace real ("swipe up"), comparado con Instagram
+        // Stories/TikTok/Snapchat -- ver 0146_story_link.sql.
+        @SerialName("link_url") val linkUrl: String? = null
     )
 
     @Serializable
@@ -315,6 +321,28 @@ class StoriesViewModel : ViewModel() {
             } catch (e: Exception) {
                 // Ya registrada (unique constraint) u otro fallo no
                 // crítico -- ver la historia no debe romperse por esto.
+            }
+        }
+    }
+
+    @Serializable
+    private data class NewStoryLinkClick(
+        @SerialName("story_id") val storyId: String,
+        @SerialName("user_id") val userId: String
+    )
+
+    /** Registrar un clic real en el sticker de enlace ("swipe up"),
+     * comparado con Instagram Stories/TikTok/Snapchat -- ver
+     * 0146_story_link.sql. Mismo criterio real que recordView(): no
+     * crítico si falla, abrir el enlace no debe bloquearse por esto. */
+    fun recordLinkClick(story: StoryRow) {
+        viewModelScope.launch {
+            val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+            try {
+                SupabaseManager.client.from("story_link_clicks").insert(NewStoryLinkClick(story.id, userId))
+            } catch (e: Exception) {
+                // Ya registrado (unique constraint) u otro fallo no
+                // crítico.
             }
         }
     }
@@ -373,7 +401,7 @@ class StoriesViewModel : ViewModel() {
      * story_polls.options) para llegar a insertarse -- si no las
      * cumple, la encuesta simplemente no se crea (la historia en sí
      * sigue publicándose con normalidad). */
-    fun createStory(context: Context, uri: Uri, visibility: String = "everyone", caption: String? = null, questionPrompt: String? = null, pollQuestion: String? = null, pollOptions: List<String> = emptyList(), onDone: () -> Unit) {
+    fun createStory(context: Context, uri: Uri, visibility: String = "everyone", caption: String? = null, linkUrl: String? = null, questionPrompt: String? = null, pollQuestion: String? = null, pollOptions: List<String> = emptyList(), onDone: () -> Unit) {
         viewModelScope.launch {
             val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
             _isUploading.value = true
@@ -384,8 +412,15 @@ class StoriesViewModel : ViewModel() {
                 // el resto de superficies con @menciones (posts/reels/
                 // comments).
                 val trimmedCaption = caption?.trim()?.take(2200)?.ifEmpty { null }
+                // Sticker de enlace real ("swipe up"), comparado con
+                // Instagram Stories/TikTok/Snapchat -- mismo límite y
+                // patrón real del CHECK de stories.link_url
+                // (0146_story_link.sql): debe empezar por http(s)://,
+                // si no lo cumple simplemente se descarta (la historia
+                // en sí sigue publicándose con normalidad).
+                val trimmedLink = linkUrl?.trim()?.take(500)?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
                 val insertedStory = SupabaseManager.client.from("stories")
-                    .insert(NewStory(userId, url, visibility, trimmedCaption)) { select() }
+                    .insert(NewStory(userId, url, visibility, trimmedCaption, trimmedLink)) { select() }
                     .decodeSingle<StoryRow>()
                 // Mismo límite real del CHECK de story_questions.prompt
                 // (0099_story_questions.sql): 200 caracteres.

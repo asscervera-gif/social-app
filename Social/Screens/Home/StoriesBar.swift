@@ -9,6 +9,7 @@
 
 import SwiftUI
 import PhotosUI
+import UIKit
 
 struct StoriesBar: View {
     @StateObject private var viewModel = StoriesViewModel()
@@ -35,6 +36,10 @@ struct StoriesBar: View {
     // Instagram/TikTok/Snapchat -- opcional. Ver
     // StoriesViewModel.createStory(), 0143_story_caption_mentions.sql.
     @State private var pendingCaption = ""
+    // Sticker de enlace real ("swipe up"), comparado con Instagram
+    // Stories/TikTok/Snapchat -- opcional. Ver
+    // StoriesViewModel.createStory(), 0146_story_link.sql.
+    @State private var pendingLinkURL = ""
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -123,6 +128,13 @@ struct StoriesBar: View {
                     Section {
                         TextField("Añadir texto (opcional, @usuario para mencionar)", text: $pendingCaption)
                     }
+                    // Sticker de enlace real ("swipe up"), comparado con
+                    // Instagram Stories/TikTok/Snapchat -- opcional.
+                    Section {
+                        TextField("Añadir enlace (opcional, https://...)", text: $pendingLinkURL)
+                            .keyboardType(.URL)
+                            .autocapitalization(.none)
+                    }
                     // Adhesivo de pregunta real en una historia
                     // ("Pregúntame algo"), comparado con Instagram --
                     // opcional.
@@ -144,13 +156,15 @@ struct StoriesBar: View {
                                 let pollQuestion = pendingPollQuestion
                                 let pollOptions = [pendingPollOptionA, pendingPollOptionB]
                                 let caption = pendingCaption
+                                let linkURL = pendingLinkURL
                                 pendingImageData = nil
                                 pendingQuestion = ""
                                 pendingPollQuestion = ""
                                 pendingPollOptionA = ""
                                 pendingPollOptionB = ""
                                 pendingCaption = ""
-                                Task { await viewModel.createStory(imageData: data, visibility: "everyone", caption: caption, questionPrompt: question, pollQuestion: pollQuestion, pollOptions: pollOptions) }
+                                pendingLinkURL = ""
+                                Task { await viewModel.createStory(imageData: data, visibility: "everyone", caption: caption, linkURL: linkURL, questionPrompt: question, pollQuestion: pollQuestion, pollOptions: pollOptions) }
                             }
                         }
                         Button("Mejores amigos") {
@@ -159,13 +173,15 @@ struct StoriesBar: View {
                                 let pollQuestion = pendingPollQuestion
                                 let pollOptions = [pendingPollOptionA, pendingPollOptionB]
                                 let caption = pendingCaption
+                                let linkURL = pendingLinkURL
                                 pendingImageData = nil
                                 pendingQuestion = ""
                                 pendingPollQuestion = ""
                                 pendingPollOptionA = ""
                                 pendingPollOptionB = ""
                                 pendingCaption = ""
-                                Task { await viewModel.createStory(imageData: data, visibility: "close_friends", caption: caption, questionPrompt: question, pollQuestion: pollQuestion, pollOptions: pollOptions) }
+                                pendingLinkURL = ""
+                                Task { await viewModel.createStory(imageData: data, visibility: "close_friends", caption: caption, linkURL: linkURL, questionPrompt: question, pollQuestion: pollQuestion, pollOptions: pollOptions) }
                             }
                         }
                     }
@@ -256,6 +272,28 @@ private struct StoryViewer: View {
                         .font(.title3)
                         .padding(.horizontal, 24)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                }
+
+                // Sticker de enlace real ("swipe up"), comparado con
+                // Instagram Stories/TikTok/Snapchat -- ver
+                // StoriesViewModel.recordLinkClick(), 0146_story_link.sql.
+                if let linkURLString = story.link_url, let linkURL = URL(string: linkURLString) {
+                    VStack {
+                        Spacer()
+                        Button {
+                            Task { await viewModel.recordLinkClick(story) }
+                            UIApplication.shared.open(linkURL)
+                        } label: {
+                            Text("🔗 Ver más")
+                                .font(.subheadline.bold())
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(Color.black.opacity(0.4))
+                                .clipShape(Capsule())
+                        }
+                        .padding(.bottom, 32)
+                    }
                 }
 
                 HStack(spacing: 0) {

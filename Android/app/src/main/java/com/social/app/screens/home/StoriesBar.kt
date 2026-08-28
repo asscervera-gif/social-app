@@ -90,6 +90,10 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
     // audiencia. Ver StoriesViewModel.createStory(),
     // 0143_story_caption_mentions.sql.
     var pendingCaption by remember { mutableStateOf("") }
+    // Sticker de enlace real ("swipe up"), comparado con Instagram
+    // Stories/TikTok/Snapchat -- opcional, mismo diálogo real de
+    // audiencia. Ver StoriesViewModel.createStory(), 0146_story_link.sql.
+    var pendingLinkUrl by remember { mutableStateOf("") }
 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) pendingUploadUri = uri
@@ -163,6 +167,15 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
                         label = { Text("Añadir texto (opcional, @usuario para mencionar)") },
                         modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
                     )
+                    // Sticker de enlace real ("swipe up"), comparado con
+                    // Instagram Stories/TikTok/Snapchat -- opcional.
+                    androidx.compose.material3.OutlinedTextField(
+                        value = pendingLinkUrl,
+                        onValueChange = { pendingLinkUrl = it },
+                        label = { Text("Añadir enlace (opcional, https://...)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                    )
                     // Adhesivo de pregunta real en una historia
                     // ("Pregúntame algo"), comparado con Instagram --
                     // opcional, ver StoriesViewModel.createStory().
@@ -209,13 +222,15 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
                     val pollQuestion = pendingPollQuestion
                     val pollOptions = listOf(pendingPollOptionA, pendingPollOptionB)
                     val caption = pendingCaption
+                    val linkUrl = pendingLinkUrl
                     pendingUploadUri = null
                     pendingQuestion = ""
                     pendingPollQuestion = ""
                     pendingPollOptionA = ""
                     pendingPollOptionB = ""
                     pendingCaption = ""
-                    viewModel.createStory(context, uri, visibility = "close_friends", caption = caption, questionPrompt = question, pollQuestion = pollQuestion, pollOptions = pollOptions) {}
+                    pendingLinkUrl = ""
+                    viewModel.createStory(context, uri, visibility = "close_friends", caption = caption, linkUrl = linkUrl, questionPrompt = question, pollQuestion = pollQuestion, pollOptions = pollOptions) {}
                 }) { Text("Mejores amigos") }
             },
             dismissButton = {
@@ -224,13 +239,15 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
                     val pollQuestion = pendingPollQuestion
                     val pollOptions = listOf(pendingPollOptionA, pendingPollOptionB)
                     val caption = pendingCaption
+                    val linkUrl = pendingLinkUrl
                     pendingUploadUri = null
                     pendingQuestion = ""
                     pendingPollQuestion = ""
                     pendingPollOptionA = ""
                     pendingPollOptionB = ""
                     pendingCaption = ""
-                    viewModel.createStory(context, uri, visibility = "everyone", caption = caption, questionPrompt = question, pollQuestion = pollQuestion, pollOptions = pollOptions) {}
+                    pendingLinkUrl = ""
+                    viewModel.createStory(context, uri, visibility = "everyone", caption = caption, linkUrl = linkUrl, questionPrompt = question, pollQuestion = pollQuestion, pollOptions = pollOptions) {}
                 }) { Text("Todos") }
             }
         )
@@ -247,6 +264,7 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
 private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewModel(), onDismiss: () -> Unit) {
     var index by remember { mutableStateOf(0) }
     val story = group.stories.getOrNull(index)
+    val context = LocalContext.current
     // "Quién vio tu historia" (0053_story_views.sql), comparado con
     // Instagram/Snapchat/WhatsApp Status -- antes ni siquiera se
     // registraba quién veía una historia, la tabla no existía.
@@ -374,6 +392,25 @@ private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewMod
                     modifier = Modifier
                         .align(Alignment.Center)
                         .padding(horizontal = 24.dp)
+                )
+            }
+            // Sticker de enlace real ("swipe up"), comparado con
+            // Instagram Stories/TikTok/Snapchat -- ver
+            // StoriesViewModel.recordLinkClick(), 0146_story_link.sql.
+            story.linkUrl?.let { linkUrl ->
+                Text(
+                    "🔗 Ver más",
+                    color = androidx.compose.ui.graphics.Color.White,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 32.dp)
+                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.4f), androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
+                        .clickable {
+                            viewModel.recordLinkClick(story)
+                            context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(linkUrl)))
+                        }
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
                 )
             }
             Row(

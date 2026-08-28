@@ -25,6 +25,9 @@ struct StoryRow: Decodable, Identifiable {
     // Texto sobre la Historia + @menciones reales ahí, comparado con
     // Instagram/TikTok/Snapchat -- ver 0143_story_caption_mentions.sql.
     var caption: String? = nil
+    // Sticker de enlace real ("swipe up"), comparado con Instagram
+    // Stories/TikTok/Snapchat -- ver 0146_story_link.sql.
+    var link_url: String? = nil
 }
 
 // Adhesivo de pregunta real en una historia ("Pregúntame algo"),
@@ -296,6 +299,23 @@ final class StoriesViewModel: ObservableObject {
             .execute()
     }
 
+    /// Registrar un clic real en el sticker de enlace ("swipe up"),
+    /// comparado con Instagram Stories/TikTok/Snapchat -- ver
+    /// 0146_story_link.sql. Mismo criterio real que recordView(): no
+    /// crítico si falla. Equivalente de
+    /// StoriesViewModel.kt.recordLinkClick().
+    func recordLinkClick(_ story: StoryRow) async {
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        struct NewStoryLinkClick: Encodable {
+            let story_id: UUID
+            let user_id: UUID
+        }
+        try? await SupabaseManager.shared.client
+            .from("story_link_clicks")
+            .insert(NewStoryLinkClick(story_id: story.id, user_id: userID))
+            .execute()
+    }
+
     struct StoryViewer: Identifiable {
         let id: UUID
         let displayName: String
@@ -338,7 +358,7 @@ final class StoriesViewModel: ObservableObject {
     /// independiente del adhesivo de pregunta ([questionPrompt]) --
     /// pueden coexistir en la misma historia. Equivalente de
     /// StoriesViewModel.kt.createStory().
-    func createStory(imageData: Data, visibility: String = "everyone", caption: String? = nil, questionPrompt: String? = nil, pollQuestion: String? = nil, pollOptions: [String] = []) async {
+    func createStory(imageData: Data, visibility: String = "everyone", caption: String? = nil, linkURL: String? = nil, questionPrompt: String? = nil, pollQuestion: String? = nil, pollOptions: [String] = []) async {
         guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
         isUploading = true
         defer { isUploading = false }
@@ -352,14 +372,23 @@ final class StoriesViewModel: ObservableObject {
                 // comparado con Instagram/TikTok/Snapchat -- ver
                 // 0143_story_caption_mentions.sql.
                 let caption: String?
+                // Sticker de enlace real ("swipe up"), comparado con
+                // Instagram Stories/TikTok/Snapchat -- ver
+                // 0146_story_link.sql.
+                let link_url: String?
             }
             // Mismo límite real que posts_caption_length
             // (0023_text_length_limits.sql).
             let trimmedCaption = caption?.trimmingCharacters(in: .whitespacesAndNewlines).prefix(2200)
             let finalCaption = (trimmedCaption?.isEmpty ?? true) ? nil : String(trimmedCaption!)
+            // Mismo límite y patrón real del CHECK de stories.link_url
+            // (0146_story_link.sql): debe empezar por http(s)://, si no
+            // lo cumple simplemente se descarta.
+            let trimmedLink = linkURL?.trimmingCharacters(in: .whitespacesAndNewlines).prefix(500)
+            let finalLink = (trimmedLink != nil && (trimmedLink!.hasPrefix("http://") || trimmedLink!.hasPrefix("https://"))) ? String(trimmedLink!) : nil
             let insertedStory: StoryRow = try await SupabaseManager.shared.client
                 .from("stories")
-                .insert(NewStory(author_id: userID, media_url: url, visibility: visibility, caption: finalCaption))
+                .insert(NewStory(author_id: userID, media_url: url, visibility: visibility, caption: finalCaption, link_url: finalLink))
                 .select()
                 .single()
                 .execute()

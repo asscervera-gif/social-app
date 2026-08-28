@@ -4075,6 +4075,32 @@ async function main() {
     await db.query(`select * from get_post_insights($1)`, [insightsPostId]);
   });
 
+  // --- stories.link_url + story_link_clicks (0146_story_link.sql):
+  // sticker de enlace real ("swipe up"), comparado con Instagram
+  // Stories/TikTok/Snapchat. Mismo patrón real que story_views (0053). ---
+  await asUser(u1);
+  await expectOk('stories_write_own: u1 SÍ puede publicar una historia real con un link_url real (https)', async () => {
+    await db.query(`insert into stories (author_id, media_url, link_url) values ($1, 'https://cdn.example/story.jpg', 'https://social.example/promo')`, [u1]);
+  });
+  const linkStoryId = (await db.query(`select id from stories where author_id = $1 and link_url is not null`, [u1])).rows[0].id;
+  await expectFail('stories: un link_url real sin http(s):// NO se puede guardar (constraint real)', async () => {
+    await db.query(`insert into stories (author_id, media_url, link_url) values ($1, 'https://cdn.example/story3.jpg', 'no-es-una-url')`, [u1]);
+  });
+
+  await asUser(u2);
+  await expectOk('story_link_clicks_insert_own: u2 SÍ puede registrar su propio clic real en el enlace', async () => {
+    await db.query(`insert into story_link_clicks (story_id, user_id) values ($1, $2)`, [linkStoryId, u2]);
+  });
+  await expectFail('story_link_clicks_insert_own: u2 NO puede registrar un clic real en nombre de otro', async () => {
+    await db.query(`insert into story_link_clicks (story_id, user_id) values ($1, $2)`, [linkStoryId, u3]);
+  });
+  const u2SeesClicks = (await db.query(`select id from story_link_clicks where story_id = $1`, [linkStoryId])).rows;
+  check('story_link_clicks_select_own_story: u2 (NO autor real de la historia) NO ve los clics', u2SeesClicks.length === 0);
+
+  await asUser(u1);
+  const u1SeesClicks = (await db.query(`select id from story_link_clicks where story_id = $1`, [linkStoryId])).rows;
+  check('story_link_clicks_select_own_story: u1 (autor real de la historia) SÍ ve el clic real registrado', u1SeesClicks.length === 1);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado
