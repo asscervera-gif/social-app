@@ -4007,6 +4007,35 @@ async function main() {
   const storyMentionNotifStillOne = (await db.query(`select payload from notifications where recipient_id = $1 and kind = 'mention' and payload ? 'story_id'`, [u2])).rows;
   check('notify_mentions_in_story: una historia real sin @mención no genera un segundo aviso', storyMentionNotifStillOne.length === 1);
 
+  // --- hashtag_follows (0144_hashtag_follows.sql): seguir un hashtag
+  // real, comparado con Instagram/TikTok/X. ---
+  await asUser(u1);
+  await expectOk('hashtag_follows_own: u1 SÍ puede seguir su propio hashtag real', async () => {
+    await db.query(`insert into hashtag_follows (user_id, hashtag) values ($1, 'atardecer')`, [u1]);
+  });
+  await expectFail('hashtag_follows: un hashtag real con "#" NO se puede guardar (constraint real)', async () => {
+    await db.query(`insert into hashtag_follows (user_id, hashtag) values ($1, '#atardecer')`, [u1]);
+  });
+  await expectFail('hashtag_follows: un hashtag real en mayúsculas NO se puede guardar sin normalizar (constraint real)', async () => {
+    await db.query(`insert into hashtag_follows (user_id, hashtag) values ($1, 'Atardecer')`, [u1]);
+  });
+
+  await asUser(u2);
+  const u2SeesU1Hashtags = (await db.query(`select hashtag from hashtag_follows where user_id = $1`, [u1])).rows;
+  check('hashtag_follows_own: u2 NO ve los hashtags reales que sigue u1', u2SeesU1Hashtags.length === 0);
+  await expectFail('hashtag_follows_own: u2 NO puede seguir un hashtag real en nombre de u1', async () => {
+    await db.query(`insert into hashtag_follows (user_id, hashtag) values ($1, 'playa')`, [u1]);
+  });
+
+  await asUser(u1);
+  const u1Hashtags = (await db.query(`select hashtag from hashtag_follows where user_id = $1`, [u1])).rows;
+  check('hashtag_follows_own: u1 SÍ ve su propio hashtag real seguido', u1Hashtags.length === 1 && u1Hashtags[0].hashtag === 'atardecer');
+  await expectOk('hashtag_follows_own: u1 SÍ puede dejar de seguir su propio hashtag real', async () => {
+    await db.query(`delete from hashtag_follows where user_id = $1 and hashtag = 'atardecer'`, [u1]);
+  });
+  const u1HashtagsAfterUnfollow = (await db.query(`select hashtag from hashtag_follows where user_id = $1`, [u1])).rows;
+  check('hashtag_follows_own: el hashtag real ya no aparece tras dejar de seguirlo', u1HashtagsAfterUnfollow.length === 0);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

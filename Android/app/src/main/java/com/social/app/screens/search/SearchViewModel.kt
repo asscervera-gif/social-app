@@ -48,6 +48,57 @@ class SearchViewModel : ViewModel() {
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
+    // Seguir un hashtag real, comparado con Instagram/TikTok/X -- ver
+    // 0144_hashtag_follows.sql. `null` mientras no se ha comprobado
+    // todavía para el hashtag actual (evita parpadear "Seguir" un
+    // instante antes de saber el estado real).
+    private val _isFollowingCurrentHashtag = MutableStateFlow<Boolean?>(null)
+    val isFollowingCurrentHashtag: StateFlow<Boolean?> = _isFollowingCurrentHashtag.asStateFlow()
+
+    @Serializable
+    private data class HashtagFollowRow(val hashtag: String)
+
+    @Serializable
+    private data class NewHashtagFollow(
+        @SerialName("user_id") val userId: String,
+        val hashtag: String
+    )
+
+    suspend fun toggleFollowHashtag(tag: String) {
+        val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return
+        val normalized = tag.trim().lowercase().removePrefix("#")
+        if (normalized.isEmpty()) return
+        val currentlyFollowing = _isFollowingCurrentHashtag.value == true
+        try {
+            if (currentlyFollowing) {
+                SupabaseManager.client.from("hashtag_follows")
+                    .delete { filter { eq("user_id", userId); eq("hashtag", normalized) } }
+                _isFollowingCurrentHashtag.value = false
+            } else {
+                SupabaseManager.client.from("hashtag_follows").insert(NewHashtagFollow(userId, normalized))
+                _isFollowingCurrentHashtag.value = true
+            }
+        } catch (e: Exception) {
+            _errorMessage.value = "No se pudo actualizar el hashtag seguido."
+        }
+    }
+
+    private suspend fun loadFollowingState(tag: String) {
+        val userId = SupabaseManager.client.auth.currentUserOrNull()?.id
+        val normalized = tag.trim().lowercase().removePrefix("#")
+        if (userId == null || normalized.isEmpty()) {
+            _isFollowingCurrentHashtag.value = null
+            return
+        }
+        _isFollowingCurrentHashtag.value = try {
+            SupabaseManager.client.from("hashtag_follows")
+                .select(columns = Columns.raw("hashtag")) { filter { eq("user_id", userId); eq("hashtag", normalized) } }
+                .decodeSingleOrNull<HashtagFollowRow>() != null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     private var searchJob: Job? = null
 
     fun onQueryChange(text: String) {
@@ -76,8 +127,10 @@ class SearchViewModel : ViewModel() {
     private suspend fun searchHashtag(tag: String) {
         if (tag.isBlank()) {
             _postResults.value = emptyList()
+            _isFollowingCurrentHashtag.value = null
             return
         }
+        loadFollowingState(tag)
         try {
             // Hallazgo real: a diferencia de la búsqueda de perfiles (sí
             // excluye bloqueados), esta búsqueda por hashtag no filtraba

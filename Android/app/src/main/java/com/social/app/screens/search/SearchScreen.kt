@@ -15,10 +15,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 
 /**
  * Buscador de personas — no existía en ninguna plataforma, comparado con
@@ -47,6 +49,10 @@ fun SearchScreen(viewModel: SearchViewModel = viewModel(), onOpenProfile: (Strin
     val postResults by viewModel.postResults.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     val isHashtagMode = query.trimStart().startsWith("#")
+    // Seguir un hashtag real, comparado con Instagram/TikTok/X -- ver
+    // SearchViewModel.toggleFollowHashtag(), 0144_hashtag_follows.sql.
+    val isFollowingCurrentHashtag by viewModel.isFollowingCurrentHashtag.collectAsState()
+    val scope = rememberCoroutineScope()
 
     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
         Text("Buscar", style = MaterialTheme.typography.headlineSmall)
@@ -104,6 +110,20 @@ fun SearchScreen(viewModel: SearchViewModel = viewModel(), onOpenProfile: (Strin
                                 .padding(start = 12.dp)
                         )
                     }
+                }
+            }
+        }
+        if (isHashtagMode && query.trim().removePrefix("#").isNotBlank() && isFollowingCurrentHashtag != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(query.trim(), style = MaterialTheme.typography.titleMedium)
+                androidx.compose.material3.OutlinedButton(onClick = {
+                    scope.launch { viewModel.toggleFollowHashtag(query) }
+                }) {
+                    Text(if (isFollowingCurrentHashtag == true) "Siguiendo" else "Seguir")
                 }
             }
         }

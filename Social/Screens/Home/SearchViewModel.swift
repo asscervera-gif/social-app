@@ -30,8 +30,59 @@ final class SearchViewModel: ObservableObject {
     @Published var results: [Profile] = []
     @Published var postResults: [Post] = []
     @Published var errorMessage: String?
+    // Seguir un hashtag real, comparado con Instagram/TikTok/X -- ver
+    // 0144_hashtag_follows.sql. `nil` mientras no se ha comprobado
+    // todavía para el hashtag actual. Equivalente de
+    // SearchViewModel.kt.isFollowingCurrentHashtag.
+    @Published var isFollowingCurrentHashtag: Bool?
 
     private var searchTask: Task<Void, Never>?
+
+    private struct HashtagFollowRow: Decodable { let hashtag: String }
+    private struct NewHashtagFollow: Encodable { let user_id: UUID; let hashtag: String }
+
+    func toggleFollowHashtag(_ tag: String) async {
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        let normalized = tag.trimmingCharacters(in: .whitespaces).lowercased().replacingOccurrences(of: "#", with: "")
+        guard !normalized.isEmpty else { return }
+        let currentlyFollowing = isFollowingCurrentHashtag == true
+        do {
+            if currentlyFollowing {
+                try await SupabaseManager.shared.client
+                    .from("hashtag_follows")
+                    .delete()
+                    .eq("user_id", value: userID)
+                    .eq("hashtag", value: normalized)
+                    .execute()
+                isFollowingCurrentHashtag = false
+            } else {
+                try await SupabaseManager.shared.client
+                    .from("hashtag_follows")
+                    .insert(NewHashtagFollow(user_id: userID, hashtag: normalized))
+                    .execute()
+                isFollowingCurrentHashtag = true
+            }
+        } catch {
+            errorMessage = "No se pudo actualizar el hashtag seguido."
+        }
+    }
+
+    private func loadFollowingState(tag: String) async {
+        let normalized = tag.trimmingCharacters(in: .whitespaces).lowercased().replacingOccurrences(of: "#", with: "")
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id, !normalized.isEmpty else {
+            isFollowingCurrentHashtag = nil
+            return
+        }
+        let row: HashtagFollowRow? = try? await SupabaseManager.shared.client
+            .from("hashtag_follows")
+            .select("hashtag")
+            .eq("user_id", value: userID)
+            .eq("hashtag", value: normalized)
+            .single()
+            .execute()
+            .value
+        isFollowingCurrentHashtag = row != nil
+    }
 
     private func scheduleSearch() {
         searchTask?.cancel()
@@ -57,8 +108,10 @@ final class SearchViewModel: ObservableObject {
     private func searchHashtag(tag: String) async {
         guard !tag.isEmpty else {
             postResults = []
+            isFollowingCurrentHashtag = nil
             return
         }
+        await loadFollowingState(tag: tag)
         do {
             // Hallazgo real: a diferencia de la búsqueda de perfiles (sí
             // excluye bloqueados), esta búsqueda por hashtag no filtraba

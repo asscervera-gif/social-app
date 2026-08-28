@@ -60,6 +60,19 @@ struct SearchView: View {
                     }
                 }
             }
+            // Seguir un hashtag real, comparado con Instagram/TikTok/X --
+            // ver SearchViewModel.toggleFollowHashtag(),
+            // 0144_hashtag_follows.sql.
+            if isHashtagMode, !viewModel.query.trimmingCharacters(in: .whitespaces).dropFirst().isEmpty, let isFollowing = viewModel.isFollowingCurrentHashtag {
+                HStack {
+                    Text(viewModel.query).font(.headline)
+                    Spacer()
+                    Button(isFollowing ? "Siguiendo" : "Seguir") {
+                        Task { await viewModel.toggleFollowHashtag(viewModel.query) }
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
             let noResults = isHashtagMode ? viewModel.postResults.isEmpty : viewModel.results.isEmpty
             if !viewModel.query.trimmingCharacters(in: .whitespaces).isEmpty && noResults {
                 Text("Sin resultados.").foregroundStyle(.secondary)
