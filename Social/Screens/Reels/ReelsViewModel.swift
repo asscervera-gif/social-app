@@ -42,6 +42,12 @@ struct Reel: Codable, Identifiable {
     // comparado con Instagram/TikTok -- mismo diseño exacto que
     // Post.locationName, ver 0114_reel_location_tag.sql.
     var locationName: String?
+    // Sonido de un reel reutilizable ("usar este sonido") + "Reels con
+    // este sonido", comparado con TikTok/Instagram Reels -- ver
+    // 0150_reel_sounds.sql. Siempre apunta directo a la raíz real de la
+    // cadena, normalizado por el propio servidor al insertar.
+    var soundSourceReelID: UUID?
+    var soundUseCount: Int = 0
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -59,6 +65,8 @@ struct Reel: Codable, Identifiable {
         case isSensitive = "is_sensitive"
         case replyAudience = "reply_audience"
         case locationName = "location_name"
+        case soundSourceReelID = "sound_source_reel_id"
+        case soundUseCount = "sound_use_count"
     }
 }
 
@@ -85,7 +93,14 @@ final class ReelsViewModel: ObservableObject {
     /// PostDetailView.swift. Sujeto a las mismas reglas RLS/bloqueo reales
     /// que el resto del feed: si la política lo deniega, sencillamente no
     /// se añade. Equivalente de ReelsViewModel.kt.load(pinnedReelId:).
-    func load(pinnedReelID: UUID? = nil) async {
+    /// [soundFilterReelID] real -- "Reels con este sonido", comparado
+    /// con TikTok/Instagram Reels: en vez de los 30 más recientes de
+    /// todo el feed, trae solo los reels reales que comparten ese
+    /// sonido (`sound_source_reel_id` ya normalizado a la raíz por el
+    /// propio servidor, ver 0150_reel_sounds.sql) -- una sola consulta
+    /// plana, sin recursión en el cliente. Equivalente de
+    /// ReelsViewModel.kt.load(soundFilterReelId:).
+    func load(pinnedReelID: UUID? = nil, soundFilterReelID: UUID? = nil) async {
         isLoading = true
         defer { isLoading = false }
         do {
@@ -126,8 +141,13 @@ final class ReelsViewModel: ObservableObject {
                 mutedAccountIDs = Set(rows.map { $0.muted_id })
             }
 
-            let allReels: [Reel] = try await client.from("reels")
-                .select()
+            var reelsQuery = client.from("reels").select()
+            if let soundFilterReelID {
+                reelsQuery = client.from("reels")
+                    .select()
+                    .or("sound_source_reel_id.eq.\(soundFilterReelID),id.eq.\(soundFilterReelID)")
+            }
+            let allReels: [Reel] = try await reelsQuery
                 .order("created_at", ascending: false)
                 .limit(30)
                 .execute()
@@ -366,7 +386,7 @@ final class ReelsViewModel: ObservableObject {
     /// StorageUploader.uploadVideoThumbnail(). Si falla (vídeo sin
     /// fotograma decodificable), el reel se sigue publicando igual, solo
     /// sin miniatura real. Equivalente de ReelsViewModel.kt.upload().
-    func upload(videoData: Data, fileExtension: String, caption: String, isSocialOnly: Bool, locationName: String = "") async -> Bool {
+    func upload(videoData: Data, fileExtension: String, caption: String, isSocialOnly: Bool, locationName: String = "", soundSourceReelID: UUID? = nil) async -> Bool {
         isUploading = true
         defer { isUploading = false }
         struct NewReel: Encodable {
@@ -376,6 +396,10 @@ final class ReelsViewModel: ObservableObject {
             let is_social_only: Bool
             let location_name: String?
             let thumbnail_url: String?
+            // Sonido de un reel reutilizable ("usar este sonido"),
+            // comparado con TikTok/Instagram Reels -- ver
+            // 0150_reel_sounds.sql.
+            let sound_source_reel_id: UUID?
         }
         do {
             guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return false }
@@ -387,7 +411,7 @@ final class ReelsViewModel: ObservableObject {
             let thumbnailURL = await StorageUploader.uploadVideoThumbnail(videoData: videoData, fileExtension: fileExtension, userID: userID)
             try await SupabaseManager.shared.client
                 .from("reels")
-                .insert(NewReel(author_id: userID, video_url: videoURL, caption: caption.isEmpty ? nil : caption, is_social_only: isSocialOnly, location_name: finalLocation, thumbnail_url: thumbnailURL))
+                .insert(NewReel(author_id: userID, video_url: videoURL, caption: caption.isEmpty ? nil : caption, is_social_only: isSocialOnly, location_name: finalLocation, thumbnail_url: thumbnailURL, sound_source_reel_id: soundSourceReelID))
                 .execute()
             AnalyticsManager.track("reel_created")
             await load()

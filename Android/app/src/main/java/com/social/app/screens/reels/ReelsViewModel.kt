@@ -49,7 +49,14 @@ data class Reel(
     // Etiqueta de ubicación real (texto libre, no geocodificado),
     // comparado con Instagram/TikTok -- mismo diseño exacto que
     // posts.locationName, ver 0114_reel_location_tag.sql.
-    @SerialName("location_name") val locationName: String? = null
+    @SerialName("location_name") val locationName: String? = null,
+    // Sonido de un reel reutilizable ("usar este sonido") + "Reels con
+    // este sonido", comparado con TikTok/Instagram Reels -- ver
+    // 0150_reel_sounds.sql. Siempre apunta directo a la raíz real de la
+    // cadena (nunca a un eslabón intermedio), normalizado por el propio
+    // servidor al insertar.
+    @SerialName("sound_source_reel_id") val soundSourceReelId: String? = null,
+    @SerialName("sound_use_count") val soundUseCount: Int = 0
 )
 
 /**
@@ -117,7 +124,13 @@ class ReelsViewModel : ViewModel() {
      * que el resto del feed: si la política lo deniega, sencillamente no
      * se añade (fallo silencioso, no un crash).
      */
-    fun load(pinnedReelId: String? = null) {
+    /** ["soundFilterReelId"] real -- "Reels con este sonido", comparado
+     * con TikTok/Instagram Reels: en vez de los 30 más recientes de todo
+     * el feed, trae solo los reels reales que comparten ese sonido
+     * (`sound_source_reel_id` ya normalizado a la raíz por el propio
+     * servidor, ver 0150_reel_sounds.sql) -- una sola consulta plana,
+     * sin recursión en el cliente. */
+    fun load(pinnedReelId: String? = null, soundFilterReelId: String? = null) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
@@ -158,6 +171,9 @@ class ReelsViewModel : ViewModel() {
                 }
                 val recentReels = SupabaseManager.client.from("reels")
                     .select {
+                        if (soundFilterReelId != null) {
+                            filter { or { eq("sound_source_reel_id", soundFilterReelId); eq("id", soundFilterReelId) } }
+                        }
                         order("created_at", Order.DESCENDING)
                         limit(30)
                     }
@@ -367,7 +383,10 @@ class ReelsViewModel : ViewModel() {
         val caption: String?,
         @SerialName("is_social_only") val isSocialOnly: Boolean,
         @SerialName("location_name") val locationName: String? = null,
-        @SerialName("thumbnail_url") val thumbnailUrl: String? = null
+        @SerialName("thumbnail_url") val thumbnailUrl: String? = null,
+        // Sonido de un reel reutilizable ("usar este sonido"), comparado
+        // con TikTok/Instagram Reels -- ver 0150_reel_sounds.sql.
+        @SerialName("sound_source_reel_id") val soundSourceReelId: String? = null
     )
 
     /** Sube el vídeo real al bucket `media` (StorageUploader.uploadVideo,
@@ -378,7 +397,7 @@ class ReelsViewModel : ViewModel() {
      * StorageUploader.uploadVideoThumbnail(). Si falla (vídeo sin
      * fotograma decodificable), el reel se sigue publicando igual, solo
      * sin miniatura real -- nunca bloquea la publicación por esto. */
-    fun upload(context: Context, videoUri: Uri, caption: String, isSocialOnly: Boolean, locationName: String = "", onDone: (Boolean) -> Unit) {
+    fun upload(context: Context, videoUri: Uri, caption: String, isSocialOnly: Boolean, locationName: String = "", soundSourceReelId: String? = null, onDone: (Boolean) -> Unit) {
         viewModelScope.launch {
             _isUploading.value = true
             try {
@@ -395,7 +414,7 @@ class ReelsViewModel : ViewModel() {
                 } catch (e: Exception) {
                     null
                 }
-                SupabaseManager.client.from("reels").insert(NewReel(userId, videoUrl, caption.ifBlank { null }, isSocialOnly, trimmedLocation, thumbnailUrl))
+                SupabaseManager.client.from("reels").insert(NewReel(userId, videoUrl, caption.ifBlank { null }, isSocialOnly, trimmedLocation, thumbnailUrl, soundSourceReelId))
                 com.social.app.backend.AnalyticsManager.track("reel_created")
                 load()
                 onDone(true)

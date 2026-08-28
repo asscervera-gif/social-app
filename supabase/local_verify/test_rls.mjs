@@ -4204,6 +4204,40 @@ async function main() {
   const u1OwnSessions = (await db.query(`select duration_seconds from app_sessions where user_id = $1`, [u1])).rows;
   check('app_sessions_own: u1 SÍ ve su propia sesión real con la duración guardada', u1OwnSessions.length === 1 && u1OwnSessions[0].duration_seconds === 300);
 
+  // --- reels.sound_source_reel_id/sound_use_count (0150_reel_sounds.sql):
+  // sonido de un reel reutilizable ("usar este sonido") + "Reels con
+  // este sonido", comparado con TikTok/Instagram Reels. Mismo patrón
+  // real de profundidad anidada ya usado en reel_view_count (0131). ---
+  await asUser(u1);
+  const rootReelId = (await db.query(
+    `insert into reels (author_id, video_url) values ($1, 'https://cdn.example/root.mp4') returning id`, [u1]
+  )).rows[0].id;
+
+  await asUser(u2);
+  const middleReelId = (await db.query(
+    `insert into reels (author_id, video_url, sound_source_reel_id) values ($1, 'https://cdn.example/middle.mp4', $2) returning id`, [u2, rootReelId]
+  )).rows[0].id;
+  const middleRow = (await db.query(`select sound_source_reel_id, sound_use_count from reels where id = $1`, [middleReelId])).rows[0];
+  check('resolve_reel_sound_root: sound_source_reel_id real del segundo reel apunta directo a la raíz (rootReelId)', middleRow.sound_source_reel_id === rootReelId);
+
+  await asUser(u3);
+  const leafReelId = (await db.query(
+    `insert into reels (author_id, video_url, sound_source_reel_id) values ($1, 'https://cdn.example/leaf.mp4', $2) returning id`, [u3, middleReelId]
+  )).rows[0].id;
+  const leafRow = (await db.query(`select sound_source_reel_id from reels where id = $1`, [leafReelId])).rows[0];
+  check('resolve_reel_sound_root: sound_source_reel_id real del TERCER reel (encadenado sobre el segundo) también apunta directo a la raíz, no al eslabón intermedio', leafRow.sound_source_reel_id === rootReelId);
+
+  const rootAfterTwoUses = (await db.query(`select sound_use_count from reels where id = $1`, [rootReelId])).rows[0];
+  check('sync_reel_sound_use_count: el sonido raíz real acumula 2 usos reales (middleReelId + leafReelId), aunque el segundo se registrara "sobre" el intermedio', rootAfterTwoUses.sound_use_count === 2);
+
+  await asUser(u1);
+  await db.query(`update reels set sound_use_count = 999999 where id = $1`, [rootReelId]);
+  const stillProtectedSoundCount = (await db.query(`select sound_use_count from reels where id = $1`, [rootReelId])).rows[0];
+  check('protect_reel_counts: el propio autor real NO puede falsear sound_use_count a mano', stillProtectedSoundCount.sound_use_count === 2);
+
+  const reelsWithThisSound = (await db.query(`select id from reels where sound_source_reel_id = $1 order by created_at`, [rootReelId])).rows;
+  check('"Reels con este sonido": una sola consulta plana por sound_source_reel_id real encuentra los 2 reels reales que lo usan', reelsWithThisSound.length === 2);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

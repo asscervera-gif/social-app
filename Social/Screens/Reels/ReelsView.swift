@@ -44,6 +44,10 @@ struct ReelsView: View {
     // Instagram/TikTok -- el control solo tiene sentido sobre el reel
     // propio (0086_disable_comments.sql).
     @State private var myID: UUID?
+    // Sonido de un reel reutilizable ("usar este sonido"), comparado con
+    // TikTok/Instagram Reels -- ver ReelsViewModel.upload(),
+    // 0150_reel_sounds.sql.
+    @State private var pendingSoundSourceReelID: UUID?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -94,8 +98,11 @@ struct ReelsView: View {
         .refreshable { await viewModel.load() }
         .sheet(isPresented: $showUpload) {
             UploadReelView(isUploading: viewModel.isUploading) { data, ext, caption, isSocialOnly, locationName in
-                let success = await viewModel.upload(videoData: data, fileExtension: ext, caption: caption, isSocialOnly: isSocialOnly, locationName: locationName)
-                if success { showUpload = false }
+                let success = await viewModel.upload(videoData: data, fileExtension: ext, caption: caption, isSocialOnly: isSocialOnly, locationName: locationName, soundSourceReelID: pendingSoundSourceReelID)
+                if success {
+                    showUpload = false
+                    pendingSoundSourceReelID = nil
+                }
             }
         }
         .sheet(isPresented: Binding(
@@ -130,7 +137,11 @@ struct ReelsView: View {
             onToggleHideLikeCount: { Task { await viewModel.toggleHideLikeCount(reel) } },
             onToggleSensitive: { Task { await viewModel.toggleSensitive(reel) } },
             onCycleReplyAudience: { Task { await viewModel.cycleReplyAudience(reel) } },
-            onTrackView: { Task { await viewModel.trackView(reel) } }
+            onTrackView: { Task { await viewModel.trackView(reel) } },
+            onUseSound: {
+                pendingSoundSourceReelID = reel.soundSourceReelID ?? reel.id
+                showUpload = true
+            }
         )
     }
 }
@@ -162,6 +173,9 @@ private struct ReelRow: View {
     // ver ReelsViewModel.trackView(), 0131_reel_view_count.sql. No cuenta
     // las vistas del propio autor sobre su propio reel (isMine).
     var onTrackView: () -> Void = {}
+    // Sonido de un reel reutilizable ("usar este sonido"), comparado con
+    // TikTok/Instagram Reels -- ver 0150_reel_sounds.sql.
+    var onUseSound: () -> Void = {}
     private var replyAudienceIcon: String {
         switch reel.replyAudience {
         case "followers": return "💬🧑‍🤝‍🧑"
@@ -243,6 +257,13 @@ private struct ReelRow: View {
                 Text("📍 \(location)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+            // Sonido de un reel reutilizable ("usar este sonido"),
+            // comparado con TikTok/Instagram Reels -- ver
+            // ReelsViewModel.upload(), 0150_reel_sounds.sql.
+            Button(action: onUseSound) {
+                Text("🎵 Usar este sonido" + (reel.soundUseCount > 0 ? " · \(reel.soundUseCount)" : ""))
+                    .font(.caption)
             }
             HStack {
                 Button(action: onLike) {

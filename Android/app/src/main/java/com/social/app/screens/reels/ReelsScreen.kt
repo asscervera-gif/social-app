@@ -76,6 +76,10 @@ fun ReelsScreen(
     val errorMessage by viewModel.errorMessage.collectAsState()
     var showUpload by remember { mutableStateOf(false) }
     var commentingReelId by remember { mutableStateOf<String?>(null) }
+    // Sonido de un reel reutilizable ("usar este sonido") + "Reels con
+    // este sonido", comparado con TikTok/Instagram Reels -- ver
+    // ReelsViewModel.upload()/load(), 0150_reel_sounds.sql.
+    var pendingSoundSourceReelId by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     var hasJumpedToInitial by remember { mutableStateOf(false) }
     val myId = com.social.app.backend.SupabaseManager.client.auth.currentUserOrNull()?.id
@@ -161,7 +165,11 @@ fun ReelsScreen(
                         onToggleCommentsDisabled = { viewModel.toggleCommentsDisabled(reel) },
                         onToggleHideLikeCount = { viewModel.toggleHideLikeCount(reel) },
                         onToggleSensitive = { viewModel.toggleSensitive(reel) },
-                        onCycleReplyAudience = { viewModel.cycleReplyAudience(reel) }
+                        onCycleReplyAudience = { viewModel.cycleReplyAudience(reel) },
+                        onUseSound = {
+                            pendingSoundSourceReelId = reel.soundSourceReelId ?: reel.id
+                            showUpload = true
+                        }
                     )
                 }
             }
@@ -173,8 +181,11 @@ fun ReelsScreen(
             isUploading = viewModel.isUploading.collectAsState().value,
             onDismiss = { showUpload = false },
             onUpload = { uri, caption, isSocialOnly, locationName ->
-                viewModel.upload(context, uri, caption, isSocialOnly, locationName) { success ->
-                    if (success) showUpload = false
+                viewModel.upload(context, uri, caption, isSocialOnly, locationName, pendingSoundSourceReelId) { success ->
+                    if (success) {
+                        showUpload = false
+                        pendingSoundSourceReelId = null
+                    }
                 }
             }
         )
@@ -217,7 +228,10 @@ private fun ReelPage(
     onToggleCommentsDisabled: () -> Unit,
     onToggleHideLikeCount: () -> Unit,
     onToggleSensitive: () -> Unit,
-    onCycleReplyAudience: () -> Unit
+    onCycleReplyAudience: () -> Unit,
+    // Sonido de un reel reutilizable ("usar este sonido"), comparado con
+    // TikTok/Instagram Reels -- ver 0150_reel_sounds.sql.
+    onUseSound: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val mentionResolver = remember { MentionResolver() }
@@ -321,6 +335,19 @@ private fun ReelPage(
                     style = MaterialTheme.typography.labelSmall,
                     color = androidx.compose.ui.graphics.Color.White,
                     modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+            // Sonido de un reel reutilizable ("usar este sonido"),
+            // comparado con TikTok/Instagram Reels -- ver
+            // ReelsViewModel.upload(), 0150_reel_sounds.sql.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(top = 6.dp).clickable(onClick = onUseSound)
+            ) {
+                Text(
+                    "🎵 Usar este sonido" + if (reel.soundUseCount > 0) " · ${reel.soundUseCount}" else "",
+                    color = androidx.compose.ui.graphics.Color.White,
+                    style = MaterialTheme.typography.labelMedium
                 )
             }
             Text(
