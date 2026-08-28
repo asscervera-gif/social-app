@@ -40,6 +40,12 @@ struct GroupChatView: View {
     // exacto que ChatView.swift (1:1).
     @State private var voiceRecorder = VoiceRecorder()
     @State private var isRecording = false
+    // Encuesta real dentro de un chat de grupo, comparado con WhatsApp --
+    // ver GroupChatViewModel.sendPoll(), 0133_group_chat_polls.sql.
+    @State private var showNewPoll = false
+    @State private var newPollQuestion = ""
+    @State private var newPollOptionA = ""
+    @State private var newPollOptionB = ""
     // Fotos reales en un chat de grupo, comparado con WhatsApp/Instagram/
     // Messenger/Facebook -- mismo patrón exacto que ChatView.swift (1:1).
     @State private var selectedPhoto: PhotosPickerItem?
@@ -165,6 +171,13 @@ struct GroupChatView: View {
                                     .flatMap { viewModel.sharedPostAuthors[$0.authorID] },
                                 repliedMessage: message.replyToMessageID.flatMap { repliedID in
                                     viewModel.messages.first { $0.id == repliedID }
+                                },
+                                poll: viewModel.polls[message.id],
+                                myPollVote: viewModel.polls[message.id].flatMap { viewModel.myPollVotes[$0.id] },
+                                onVotePoll: { optionIndex in
+                                    if let pollID = viewModel.polls[message.id]?.id {
+                                        Task { await viewModel.voteOnGroupPoll(pollID: pollID, optionIndex: optionIndex) }
+                                    }
                                 },
                                 onToggleReaction: { emoji in
                                     Task { await viewModel.toggleReaction(groupMessageID: message.id, emoji: emoji) }
@@ -347,6 +360,14 @@ struct GroupChatView: View {
                         .presentationDetents([.height(220)])
                     }
                 }
+                // Encuesta real dentro de un chat de grupo, comparado con
+                // WhatsApp -- ver GroupChatViewModel.sendPoll(),
+                // 0133_group_chat_polls.sql.
+                Button {
+                    showNewPoll = true
+                } label: {
+                    Image(systemName: "chart.bar")
+                }
                 TextField(isRecording ? "Grabando…" : "Mensaje…", text: $draft)
                     .textFieldStyle(.roundedBorder)
                     .disabled(isRecording)
@@ -407,6 +428,38 @@ struct GroupChatView: View {
                 Task {
                     if await viewModel.leaveGroup() {
                         dismiss()
+                    }
+                }
+            }
+        }
+        // Encuesta real dentro de un chat de grupo, comparado con
+        // WhatsApp -- ver GroupChatViewModel.sendPoll(),
+        // 0133_group_chat_polls.sql. Solo 2 opciones en el compositor,
+        // mismo alcance deliberado que la encuesta de una publicación
+        // normal (NewPostView.swift) -- el esquema del servidor admite
+        // hasta 8.
+        .sheet(isPresented: $showNewPoll) {
+            NavigationStack {
+                Form {
+                    TextField("Pregunta", text: $newPollQuestion)
+                    TextField("Opción 1", text: $newPollOptionA)
+                    TextField("Opción 2", text: $newPollOptionB)
+                }
+                .navigationTitle("Nueva encuesta")
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Enviar") {
+                            let question = newPollQuestion
+                            let options = [newPollOptionA, newPollOptionB]
+                            newPollQuestion = ""
+                            newPollOptionA = ""
+                            newPollOptionB = ""
+                            showNewPoll = false
+                            Task { await viewModel.sendPoll(question: question, options: options) }
+                        }
+                    }
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancelar") { showNewPoll = false }
                     }
                 }
             }
@@ -713,6 +766,11 @@ private struct GroupMessageBubble: View {
     // nil, se omite sin más, sin texto de relleno inventado. Ver
     // 0102_message_reply.sql.
     var repliedMessage: GroupMessage? = nil
+    // Encuesta real dentro de un chat de grupo, comparado con WhatsApp --
+    // ver GroupChatViewModel.voteOnGroupPoll(), 0133_group_chat_polls.sql.
+    var poll: GroupChatViewModel.GroupMessagePoll? = nil
+    var myPollVote: Int? = nil
+    var onVotePoll: (Int) -> Void = { _ in }
     let onToggleReaction: (String) -> Void
     var onOpenFullScreen: (URL) -> Void = { _ in }
     var onOpenVideo: (URL) -> Void = { _ in }
@@ -783,6 +841,37 @@ private struct GroupMessageBubble: View {
                     .padding(.vertical, 4)
                     .background(Color.gray.opacity(0.12))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            // Encuesta real dentro de un chat de grupo, comparado con
+            // WhatsApp -- cualquier miembro vota, el reparto se ve en
+            // vivo. Ver GroupChatViewModel.voteOnGroupPoll(),
+            // 0133_group_chat_polls.sql.
+            if let poll {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(poll.question).font(.subheadline.bold())
+                    let totalVotes = poll.vote_counts.reduce(0, +)
+                    ForEach(Array(poll.options.enumerated()), id: \.offset) { optionIndex, optionText in
+                        if let myPollVote {
+                            let votesForOption = optionIndex < poll.vote_counts.count ? poll.vote_counts[optionIndex] : 0
+                            let percent = totalVotes == 0 ? 0 : (votesForOption * 100) / totalVotes
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 8).fill(.gray.opacity(0.15))
+                                GeometryReader { geo in
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(optionIndex == myPollVote ? Color.accentColor : .gray.opacity(0.35))
+                                        .frame(width: geo.size.width * CGFloat(percent) / 100)
+                                }
+                                Text("\(optionText) · \(percent)%").padding(.horizontal, 10).padding(.vertical, 6)
+                            }
+                            .frame(height: 32)
+                        } else {
+                            Button(optionText) { onVotePoll(optionIndex) }
+                                .buttonStyle(.bordered)
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                }
+                .frame(minWidth: 200)
             }
             // Nota de voz real (0062_group_message_audio.sql), comparado
             // con WhatsApp/Messenger/Telegram -- mismo reproductor nativo

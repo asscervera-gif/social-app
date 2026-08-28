@@ -84,6 +84,26 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
     private val _messages = MutableStateFlow<List<GroupMessage>>(emptyList())
     val messages: StateFlow<List<GroupMessage>> = _messages.asStateFlow()
 
+    // Encuesta real dentro de un chat de GRUPO, comparado con WhatsApp --
+    // ver 0133_group_chat_polls.sql. A diferencia de post_polls
+    // (HomeViewModel), aquí CUALQUIER miembro ve el voto individual de
+    // cualquier otro miembro (mismo criterio real que WhatsApp: coordinar
+    // un plan requiere saber quién votó qué).
+    @Serializable
+    data class GroupMessagePoll(
+        val id: String,
+        @SerialName("group_message_id") val groupMessageId: String,
+        val question: String,
+        val options: List<String>,
+        @SerialName("vote_counts") val voteCounts: List<Int> = emptyList()
+    )
+
+    private val _polls = MutableStateFlow<Map<String, GroupMessagePoll>>(emptyMap())
+    val polls: StateFlow<Map<String, GroupMessagePoll>> = _polls.asStateFlow()
+
+    private val _myPollVotes = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val myPollVotes: StateFlow<Map<String, Int>> = _myPollVotes.asStateFlow()
+
     // Responder a un mensaje concreto (cita), comparado con
     // WhatsApp/Telegram/iMessage/Instagram DM -- mensaje real que se está
     // citando ahora mismo en el compositor, ver 0102_message_reply.sql.
@@ -113,6 +133,98 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
 
     private val _sharedPostAuthors = MutableStateFlow<Map<String, Profile>>(emptyMap())
     val sharedPostAuthors: StateFlow<Map<String, Profile>> = _sharedPostAuthors.asStateFlow()
+
+    @Serializable
+    private data class GroupPollVoteRow(
+        @SerialName("poll_id") val pollId: String,
+        @SerialName("voter_id") val voterId: String,
+        @SerialName("option_index") val optionIndex: Int
+    )
+
+    @Serializable
+    private data class NewGroupMessagePoll(
+        @SerialName("group_message_id") val groupMessageId: String,
+        val question: String,
+        val options: List<String>
+    )
+
+    private suspend fun loadPolls(messages: List<GroupMessage>) {
+        val messageIds = messages.map { it.id }
+        if (messageIds.isEmpty()) return
+        try {
+            val userId = SupabaseManager.client.auth.currentUserOrNull()?.id
+            val pollRows = SupabaseManager.client.from("group_message_polls")
+                .select(columns = Columns.raw("id,group_message_id,question,options,vote_counts")) { filter { isIn("group_message_id", messageIds) } }
+                .decodeList<GroupMessagePoll>()
+            _polls.value = pollRows.associateBy { it.groupMessageId }
+            if (pollRows.isNotEmpty() && userId != null) {
+                val voteRows = SupabaseManager.client.from("group_message_poll_votes")
+                    .select(columns = Columns.raw("poll_id,voter_id,option_index")) {
+                        filter { eq("voter_id", userId); isIn("poll_id", pollRows.map { it.id }) }
+                    }
+                    .decodeList<GroupPollVoteRow>()
+                _myPollVotes.value = voteRows.associate { it.pollId to it.optionIndex }
+            }
+        } catch (e: Exception) {
+            // Sin bloquear el resto del hilo si falla -- el mensaje sigue
+            // mostrándose, solo sin la encuesta real.
+        }
+    }
+
+    /** Encuesta real dentro de un chat de GRUPO, comparado con WhatsApp --
+     * ver 0133_group_chat_polls.sql. `body` se rellena con la pregunta
+     * real para no chocar con la restricción real de `group_messages`
+     * (`body is not null or media_url is not null`, 0057). */
+    fun sendPoll(question: String, options: List<String>) {
+        val trimmedQuestion = question.trim()
+        val cleanOptions = options.map { it.trim() }.filter { it.isNotEmpty() }
+        if (trimmedQuestion.isEmpty() || cleanOptions.size !in 2..8) return
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                val inserted = SupabaseManager.client.from("group_messages")
+                    .insert(NewGroupMessage(groupChatId, userId, body = trimmedQuestion)) { select() }
+                    .decodeSingle<GroupMessage>()
+                if (_messages.value.none { it.id == inserted.id }) {
+                    _messages.update { it + inserted }
+                }
+                SupabaseManager.client.from("group_message_polls").insert(
+                    NewGroupMessagePoll(inserted.id, trimmedQuestion, cleanOptions)
+                )
+                loadPolls(listOf(inserted))
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo enviar la encuesta."
+            }
+        }
+    }
+
+    @Serializable
+    private data class NewGroupPollVote(
+        @SerialName("poll_id") val pollId: String,
+        @SerialName("voter_id") val voterId: String,
+        @SerialName("option_index") val optionIndex: Int
+    )
+
+    /** Votar/cambiar de opción en una encuesta real de grupo -- mismo
+     * patrón exacto que HomeViewModel.voteOnPostPoll(). */
+    fun voteOnGroupPoll(pollId: String, optionIndex: Int) {
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                _myPollVotes.update { it + (pollId to optionIndex) }
+                SupabaseManager.client.from("group_message_poll_votes").upsert(
+                    NewGroupPollVote(pollId, userId, optionIndex),
+                    onConflict = "poll_id,voter_id"
+                )
+                val updated = SupabaseManager.client.from("group_message_polls")
+                    .select(columns = Columns.raw("id,group_message_id,question,options,vote_counts")) { filter { eq("id", pollId) } }
+                    .decodeSingleOrNull<GroupMessagePoll>()
+                updated?.let { poll -> _polls.update { it + (poll.groupMessageId to poll) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo registrar el voto."
+            }
+        }
+    }
 
     private suspend fun loadSharedPosts(messages: List<GroupMessage>) {
         val postIds = messages.mapNotNull { it.sharedPostId }.filter { it !in _sharedPosts.value }.distinct()
@@ -224,6 +336,7 @@ class GroupChatViewModel(private val groupChatId: String) : ViewModel() {
                 loadReactions()
                 loadReads()
                 loadSharedPosts(_messages.value)
+                loadPolls(_messages.value)
                 markUnreadAsRead()
                 loadStarred()
             } catch (e: Exception) {

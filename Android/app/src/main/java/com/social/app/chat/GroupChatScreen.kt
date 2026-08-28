@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -114,6 +115,11 @@ fun GroupChatScreen(
     // (0069_message_shared_post.sql), comparado con Instagram/TikTok/
     // Twitter/Snapchat.
     val sharedPosts by viewModel.sharedPosts.collectAsState()
+    // Encuesta real dentro de un chat de grupo, comparado con WhatsApp --
+    // ver GroupChatViewModel.sendPoll(), 0133_group_chat_polls.sql.
+    val polls by viewModel.polls.collectAsState()
+    val myPollVotes by viewModel.myPollVotes.collectAsState()
+    var showNewPoll by remember { mutableStateOf(false) }
     val sharedPostAuthors by viewModel.sharedPostAuthors.collectAsState()
     // Nombre editable y foto de grupo real, comparado con WhatsApp/
     // Messenger/Telegram -- ver GroupChatViewModel.kt para el hallazgo
@@ -396,7 +402,46 @@ fun GroupChatScreen(
                         // cualquier parte de la vista previa abre la
                         // publicación completa real (PostDetailScreen.kt),
                         // mismo patrón exacto que ChatScreen.kt (chat 1:1).
-                        if (message.sharedPostId != null) {
+                        val poll = polls[message.id]
+                        if (poll != null) {
+                            // Encuesta real dentro de un chat de grupo,
+                            // comparado con WhatsApp -- ver
+                            // GroupChatViewModel.voteOnGroupPoll(),
+                            // 0133_group_chat_polls.sql. Cualquier miembro
+                            // vota, el reparto se ve en vivo.
+                            val myVote = myPollVotes[poll.id]
+                            Column(modifier = Modifier.padding(10.dp).widthIn(min = 200.dp)) {
+                                Text(poll.question, style = MaterialTheme.typography.bodyMedium)
+                                val totalVotes = poll.voteCounts.sum()
+                                poll.options.forEachIndexed { optionIndex, optionText ->
+                                    if (myVote != null) {
+                                        val votes = poll.voteCounts.getOrElse(optionIndex) { 0 }
+                                        val percent = if (totalVotes == 0) 0 else (votes * 100) / totalVotes
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(top = 6.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(MaterialTheme.colorScheme.surface)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth(percent / 100f)
+                                                    .background(
+                                                        if (optionIndex == myVote) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                                                    )
+                                            ) { Text(" ") }
+                                            Text("$optionText · $percent%", modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                                        }
+                                    } else {
+                                        OutlinedButton(
+                                            onClick = { viewModel.voteOnGroupPoll(poll.id, optionIndex) },
+                                            modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
+                                        ) { Text(optionText) }
+                                    }
+                                }
+                            }
+                        } else if (message.sharedPostId != null) {
                             val sharedPostId = message.sharedPostId
                             val sharedPost = sharedPosts[sharedPostId]
                             val sharedAuthor = sharedPost?.let { sharedPostAuthors[it.authorId] }
@@ -649,6 +694,12 @@ fun GroupChatScreen(
                 ) {
                     Text(if (isRecording) "⏹" else "🎙")
                 }
+                // Encuesta real dentro de un chat de grupo, comparado con
+                // WhatsApp -- ver GroupChatViewModel.sendPoll(),
+                // 0133_group_chat_polls.sql.
+                OutlinedButton(onClick = { showNewPoll = true }, modifier = Modifier.padding(end = 8.dp)) {
+                    Text("📊")
+                }
                 OutlinedTextField(
                     value = draft,
                     onValueChange = { draft = it; viewModel.notifyTyping() },
@@ -675,6 +726,37 @@ fun GroupChatScreen(
     }
     fullScreenVideoUrl?.let { url ->
         com.social.app.util.FullScreenVideoViewer(url = url, onDismiss = { fullScreenVideoUrl = null })
+    }
+
+    // Encuesta real dentro de un chat de grupo, comparado con WhatsApp --
+    // ver GroupChatViewModel.sendPoll(), 0133_group_chat_polls.sql. Solo 2
+    // opciones en el compositor, mismo alcance deliberado que la encuesta
+    // de una publicación normal (NewPostSheet.kt) -- el esquema del
+    // servidor admite hasta 8.
+    if (showNewPoll) {
+        var pollQuestion by remember { mutableStateOf("") }
+        var pollOptionA by remember { mutableStateOf("") }
+        var pollOptionB by remember { mutableStateOf("") }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showNewPoll = false },
+            title = { Text("Nueva encuesta") },
+            text = {
+                Column {
+                    OutlinedTextField(value = pollQuestion, onValueChange = { pollQuestion = it }, label = { Text("Pregunta") })
+                    OutlinedTextField(value = pollOptionA, onValueChange = { pollOptionA = it }, label = { Text("Opción 1") }, modifier = Modifier.padding(top = 8.dp))
+                    OutlinedTextField(value = pollOptionB, onValueChange = { pollOptionB = it }, label = { Text("Opción 2") }, modifier = Modifier.padding(top = 8.dp))
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.sendPoll(pollQuestion, listOf(pollOptionA, pollOptionB))
+                    showNewPoll = false
+                }) { Text("Enviar") }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showNewPoll = false }) { Text("Cancelar") }
+            }
+        )
     }
 
     if (showMembers) {

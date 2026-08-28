@@ -123,6 +123,121 @@ final class GroupChatViewModel: ObservableObject {
         }
     }
 
+    // Encuesta real dentro de un chat de GRUPO, comparado con WhatsApp --
+    // ver 0133_group_chat_polls.sql. A diferencia de post_polls
+    // (HomeViewModel), aquí CUALQUIER miembro ve el voto individual de
+    // cualquier otro miembro (mismo criterio real que WhatsApp: coordinar
+    // un plan requiere saber quién votó qué). Equivalente de
+    // GroupChatViewModel.kt.GroupMessagePoll.
+    struct GroupMessagePoll: Decodable, Identifiable {
+        let id: UUID
+        let group_message_id: UUID
+        let question: String
+        let options: [String]
+        var vote_counts: [Int] = []
+    }
+    @Published var polls: [UUID: GroupMessagePoll] = [:]
+    @Published var myPollVotes: [UUID: Int] = [:]
+
+    private struct GroupPollVoteRow: Decodable {
+        let poll_id: UUID
+        let voter_id: UUID
+        let option_index: Int
+    }
+
+    private func loadPolls(_ messages: [GroupMessage]) async {
+        let messageIDs = messages.map { $0.id }
+        guard !messageIDs.isEmpty else { return }
+        guard let pollRows: [GroupMessagePoll] = try? await SupabaseManager.shared.client
+            .from("group_message_polls")
+            .select("id,group_message_id,question,options,vote_counts")
+            .in("group_message_id", values: messageIDs)
+            .execute()
+            .value else { return }
+        for poll in pollRows { polls[poll.group_message_id] = poll }
+        guard !pollRows.isEmpty, let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        if let voteRows: [GroupPollVoteRow] = try? await SupabaseManager.shared.client
+            .from("group_message_poll_votes")
+            .select("poll_id,voter_id,option_index")
+            .eq("voter_id", value: userID)
+            .in("poll_id", values: pollRows.map { $0.id })
+            .execute()
+            .value {
+            for row in voteRows { myPollVotes[row.poll_id] = row.option_index }
+        }
+    }
+
+    /// Encuesta real dentro de un chat de GRUPO, comparado con WhatsApp --
+    /// ver 0133_group_chat_polls.sql. `body` se rellena con la pregunta
+    /// real para no chocar con la restricción real de `group_messages`
+    /// (`body is not null or media_url is not null`, 0057). Equivalente
+    /// de GroupChatViewModel.kt.sendPoll().
+    func sendPoll(question: String, options: [String]) async {
+        let trimmedQuestion = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanOptions = options.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        guard !trimmedQuestion.isEmpty, (2...8).contains(cleanOptions.count) else { return }
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        struct NewGroupMessage: Encodable {
+            let group_chat_id: UUID
+            let sender_id: UUID
+            let body: String
+        }
+        struct NewGroupMessagePoll: Encodable {
+            let group_message_id: UUID
+            let question: String
+            let options: [String]
+        }
+        do {
+            let inserted: GroupMessage = try await SupabaseManager.shared.client
+                .from("group_messages")
+                .insert(NewGroupMessage(group_chat_id: groupChatID, sender_id: userID, body: trimmedQuestion))
+                .select()
+                .single()
+                .execute()
+                .value
+            if !messages.contains(where: { $0.id == inserted.id }) {
+                messages.append(inserted)
+            }
+            try await SupabaseManager.shared.client
+                .from("group_message_polls")
+                .insert(NewGroupMessagePoll(group_message_id: inserted.id, question: trimmedQuestion, options: cleanOptions))
+                .execute()
+            await loadPolls([inserted])
+        } catch {
+            errorMessage = "No se pudo enviar la encuesta."
+        }
+    }
+
+    /// Votar/cambiar de opción en una encuesta real de grupo -- mismo
+    /// patrón exacto que HomeViewModel.voteOnPostPoll(). Equivalente de
+    /// GroupChatViewModel.kt.voteOnGroupPoll().
+    func voteOnGroupPoll(pollID: UUID, optionIndex: Int) async {
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        myPollVotes[pollID] = optionIndex
+        struct NewGroupPollVote: Encodable {
+            let poll_id: UUID
+            let voter_id: UUID
+            let option_index: Int
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("group_message_poll_votes")
+                .upsert(NewGroupPollVote(poll_id: pollID, voter_id: userID, option_index: optionIndex), onConflict: "poll_id,voter_id")
+                .execute()
+            if let updated: GroupMessagePoll = try? await SupabaseManager.shared.client
+                .from("group_message_polls")
+                .select("id,group_message_id,question,options,vote_counts")
+                .eq("id", value: pollID)
+                .single()
+                .execute()
+                .value {
+                polls[updated.group_message_id] = updated
+            }
+        } catch {
+            errorMessage = "No se pudo registrar el voto."
+        }
+    }
+
     // Reacciones a mensajes de grupo (0060_group_message_reactions.sql),
     // comparado con WhatsApp/Messenger/Instagram -- mismo patrón exacto
     // que ChatViewModel.swift (chat 1:1).
@@ -177,6 +292,7 @@ final class GroupChatViewModel: ObservableObject {
             await loadReactions()
             await loadReads()
             await loadSharedPosts(messages)
+            await loadPolls(messages)
             await markUnreadAsRead()
             await loadStarred()
         } catch {

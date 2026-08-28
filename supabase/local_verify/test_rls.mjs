@@ -3663,6 +3663,59 @@ async function main() {
   const pvAfterSecondVisit = (await db.query(`select visitor_id from profile_visits where visited_id = $1`, [pvVisited])).rows;
   check('profile_visits: una segunda visita real del mismo visitante NO duplica la fila (sigue habiendo 1)', pvAfterSecondVisit.length === 1);
 
+  // --- group_message_polls/group_message_poll_votes
+  // (0133_group_chat_polls.sql): encuesta real dentro de un chat de
+  // GRUPO, comparado con WhatsApp. Usuarios NUEVOS a propósito. ---
+  await asSuperuser();
+  const gpU1 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const gpU2 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const gpStranger = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(
+    `insert into profiles (id, display_name) values ($1,'Gp1'),($2,'Gp2'),($3,'GpStranger') on conflict (id) do update set display_name=excluded.display_name`,
+    [gpU1, gpU2, gpStranger]
+  );
+  await asUser(gpU1);
+  const gpGroupId = crypto.randomUUID();
+  await db.query(`insert into group_chats (id, name, created_by) values ($1, $2, $3)`, [gpGroupId, 'Grupo con encuesta', gpU1]);
+  await db.query(`insert into group_chat_members (group_chat_id, user_id) values ($1, $2)`, [gpGroupId, gpU2]);
+
+  const gpMessage = (await db.query(
+    `insert into group_messages (group_chat_id, sender_id, body) values ($1, $2, '¿Quedamos el sábado o el domingo?') returning id`,
+    [gpGroupId, gpU1]
+  )).rows[0];
+  await expectOk('group_message_polls_insert_own: gpU1 (remitente real del mensaje) SÍ puede crear la encuesta', async () => {
+    await db.query(
+      `insert into group_message_polls (group_message_id, question, options) values ($1, $2, $3)`,
+      [gpMessage.id, '¿Quedamos el sábado o el domingo?', JSON.stringify(['Sábado', 'Domingo'])]
+    );
+  });
+  const gpPoll = (await db.query(`select id from group_message_polls where group_message_id = $1`, [gpMessage.id])).rows[0];
+
+  await asUser(gpStranger);
+  const gpSeenByStranger = (await db.query(`select id from group_message_polls where group_message_id = $1`, [gpMessage.id])).rows;
+  check('group_message_polls_select: un tercero real (gpStranger, no miembro) NO ve la encuesta del grupo', gpSeenByStranger.length === 0);
+  await expectFail('group_message_poll_votes_insert_own: un tercero real (gpStranger, no miembro) NO puede votar', async () => {
+    await db.query(`insert into group_message_poll_votes (poll_id, voter_id, option_index) values ($1, $2, 0)`, [gpPoll.id, gpStranger]);
+  });
+
+  await asUser(gpU2);
+  await expectOk('group_message_poll_votes_insert_own: gpU2 (miembro real del grupo) SÍ puede votar', async () => {
+    await db.query(`insert into group_message_poll_votes (poll_id, voter_id, option_index) values ($1, $2, 1)`, [gpPoll.id, gpU2]);
+  });
+  const gpCountsAfterVote = (await db.query(`select vote_counts from group_message_polls where id = $1`, [gpPoll.id])).rows[0];
+  check('sync_group_message_poll_counts: vote_counts real refleja el voto de gpU2 (opción 1)', JSON.stringify(gpCountsAfterVote.vote_counts) === JSON.stringify([0, 1]));
+
+  await asUser(gpU1);
+  const gpVotesSeenByOtherMember = (await db.query(`select voter_id, option_index from group_message_poll_votes where poll_id = $1`, [gpPoll.id])).rows;
+  check('group_message_poll_votes_select: gpU1 (otro miembro real, no autor de la encuesta) SÍ ve el voto individual de gpU2 -- criterio distinto de post_polls', gpVotesSeenByOtherMember.length === 1 && gpVotesSeenByOtherMember[0].voter_id === gpU2);
+
+  await asUser(gpU2);
+  await expectOk('group_message_poll_votes_update_own: gpU2 SÍ puede cambiar de opción real (voto 1 -> 0)', async () => {
+    await db.query(`update group_message_poll_votes set option_index = 0 where poll_id = $1 and voter_id = $2`, [gpPoll.id, gpU2]);
+  });
+  const gpCountsAfterChange = (await db.query(`select vote_counts from group_message_polls where id = $1`, [gpPoll.id])).rows[0];
+  check('sync_group_message_poll_counts: vote_counts real se recalcula tras cambiar de opción (0 -> ahora la opción 0)', JSON.stringify(gpCountsAfterChange.vote_counts) === JSON.stringify([1, 0]));
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado
