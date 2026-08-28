@@ -32,8 +32,22 @@ class BlockedUsersViewModel : ViewModel() {
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
+    // Fecha real de bloqueo, comparado con Instagram/Twitter-X (la
+    // pantalla "Cuentas bloqueadas" muestra cuándo bloqueaste a cada
+    // persona, útil para una revisión periódica de seguridad). Hallazgo
+    // real: `blocks.created_at` ya existe desde el principio
+    // (0003_safety.sql), pero ningún cliente lo pedía ni lo mostraba
+    // jamás -- mismo patrón ya visto esta sesión con
+    // live_stream_viewers (Ronda 79): el dato real ya estaba, solo
+    // faltaba consultarlo.
+    private val _blockedAt = MutableStateFlow<Map<String, String>>(emptyMap())
+    val blockedAt: StateFlow<Map<String, String>> = _blockedAt.asStateFlow()
+
     @Serializable
-    private data class BlockRow(@SerialName("blocked_id") val blockedId: String)
+    private data class BlockRow(
+        @SerialName("blocked_id") val blockedId: String,
+        @SerialName("created_at") val createdAt: String = ""
+    )
 
     fun load() {
         viewModelScope.launch {
@@ -41,8 +55,9 @@ class BlockedUsersViewModel : ViewModel() {
             try {
                 val userId = SupabaseManager.client.auth.currentUserOrNull()?.id
                 val rows = SupabaseManager.client.from("blocks")
-                    .select(Columns.raw("blocked_id"))
+                    .select(Columns.raw("blocked_id,created_at")) { order("created_at", io.github.jan.supabase.postgrest.query.Order.DESCENDING) }
                     .decodeList<BlockRow>()
+                _blockedAt.value = rows.associate { it.blockedId to it.createdAt }
                 val ids = rows.map { it.blockedId }.filter { it != userId }
                 // Sin `isIn`/filtro de pertenencia verificado en el resto del
                 // código (MatchViewModel/HomeViewModel filtran en cliente, no

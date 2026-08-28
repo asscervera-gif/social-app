@@ -31,6 +31,9 @@ import androidx.compose.ui.unit.dp
 fun BlockedUsersScreen() {
     val vm = remember { BlockedUsersViewModel() }
     val blocked by vm.blocked.collectAsState()
+    // Fecha real de bloqueo, comparado con Instagram/Twitter-X -- ver
+    // BlockedUsersViewModel.blockedAt().
+    val blockedAt by vm.blockedAt.collectAsState()
     val isLoading by vm.isLoading.collectAsState()
     val errorMessage by vm.errorMessage.collectAsState()
 
@@ -73,7 +76,16 @@ fun BlockedUsersScreen() {
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 com.social.app.avatar.AvatarView(config = profile.avatarConfig ?: emptyMap(), size = 40.dp)
-                                Text(profile.displayName, modifier = Modifier.padding(start = 12.dp))
+                                Column(modifier = Modifier.padding(start = 12.dp)) {
+                                    Text(profile.displayName)
+                                    blockedAt[profile.id]?.takeIf { it.isNotBlank() }?.let {
+                                        Text(
+                                            "Bloqueado ${com.social.app.util.relativeTime(it)}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
                             }
                             OutlinedButton(onClick = { vm.unblock(profile.id) }) {
                                 Text("Desbloquear")

@@ -17,6 +17,14 @@ final class BlockedUsersViewModel: ObservableObject {
     @Published var blocked: [Profile] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    // Fecha real de bloqueo, comparado con Instagram/Twitter-X (la
+    // pantalla "Cuentas bloqueadas" muestra cuándo bloqueaste a cada
+    // persona). Hallazgo real: `blocks.created_at` ya existe desde el
+    // principio (0003_safety.sql), pero ningún cliente lo pedía ni lo
+    // mostraba jamás -- mismo patrón ya visto esta sesión con
+    // live_stream_viewers (Ronda 79). Equivalente de
+    // BlockedUsersViewModel.kt.blockedAt.
+    @Published var blockedAt: [UUID: String] = [:]
 
     func load() async {
         isLoading = true
@@ -25,12 +33,14 @@ final class BlockedUsersViewModel: ObservableObject {
             let client = SupabaseManager.shared.client
             let userID = try? await client.auth.session.user.id
 
-            struct BlockRow: Decodable { let blocked_id: UUID }
+            struct BlockRow: Decodable { let blocked_id: UUID; let created_at: String }
             let rows: [BlockRow] = try await client
                 .from("blocks")
-                .select()
+                .select("blocked_id,created_at")
+                .order("created_at", ascending: false)
                 .execute()
                 .value
+            blockedAt = Dictionary(uniqueKeysWithValues: rows.map { ($0.blocked_id, $0.created_at) })
             let ids = rows.map { $0.blocked_id }.filter { $0 != userID }
 
             // Sin filtro de pertenencia por lista verificado en el resto del
