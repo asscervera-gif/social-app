@@ -21,6 +21,10 @@ struct PerfilView: View {
     // de PerfilScreen.kt. Solo generación esta ronda, sin escáner
     // todavía (hueco futuro documentado, no fingido aquí).
     @State private var showQr = false
+    // Escanear el QR de otro perfil real -- cierra el hueco de "solo
+    // generación" de la ronda anterior. Ver ProfileQrScannerView.swift.
+    @State private var showQrScanner = false
+    @State private var scannedProfileID: UUID?
     @State private var showDuelHistory = false
     // Hallazgo real: no había ningún punto de entrada a la lista de chats
     // en ninguna plataforma (ver ChatListViewModel.swift).
@@ -138,7 +142,18 @@ struct PerfilView: View {
             }
             .sheet(isPresented: $showQr) {
                 if let myID = viewModel.profile?.id {
-                    ProfileQrView(profileID: myID)
+                    ProfileQrView(profileID: myID, onScanned: { scannedID in
+                        showQr = false
+                        scannedProfileID = scannedID
+                    })
+                }
+            }
+            .sheet(isPresented: Binding(
+                get: { scannedProfileID != nil },
+                set: { isPresented in if !isPresented { scannedProfileID = nil } }
+            )) {
+                if let profileID = scannedProfileID {
+                    NavigationStack { ProfileViewerView(profileID: profileID) }
                 }
             }
             .task {

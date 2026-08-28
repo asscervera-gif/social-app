@@ -100,7 +100,12 @@ fun PerfilScreen(
     onOpenBroadcastLists: () -> Unit = {},
     // "Quién visitó tu perfil" real, comparado con LinkedIn/Twitter-X
     // (Premium) -- ver ProfileVisitsScreen.kt, 0132_profile_visits.sql.
-    onOpenProfileVisits: () -> Unit = {}
+    onOpenProfileVisits: () -> Unit = {},
+    // Escanear el QR de otro perfil real, comparado con Snapchat
+    // (Snapcode)/Instagram (Nametag)/WhatsApp -- cierra el hueco
+    // documentado más abajo (solo generación en la ronda anterior). Ver
+    // QrScannerScreen.kt.
+    onOpenQrScanner: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val profile by viewModel.profile.collectAsState()
@@ -203,11 +208,11 @@ fun PerfilScreen(
                 }
                 // Código QR de perfil real, comparado con Snapchat
                 // (Snapcode)/Instagram (Nametag)/WhatsApp -- hueco real,
-                // el botón de arriba solo comparte texto plano. Alcance
-                // acotado: solo generar esta ronda (mostrar mi propio
-                // QR), sin escáner todavía -- documentado como hueco
-                // futuro, no fingido aquí. El QR codifica
-                // "social://user/{id}", sin necesitar ninguna migración.
+                // el botón de arriba solo comparte texto plano. El QR
+                // codifica "social://user/{id}", sin necesitar ninguna
+                // migración. Escanear el de otra persona real, ver
+                // QrScannerScreen.kt -- cierra el hueco de "solo
+                // generación" documentado en la ronda anterior.
                 profile?.id?.let { myProfileId ->
                     var showQr by remember { mutableStateOf(false) }
                     IconButton(onClick = { showQr = true }) {
@@ -231,6 +236,9 @@ fun PerfilScreen(
                             },
                             confirmButton = {
                                 androidx.compose.material3.TextButton(onClick = { showQr = false }) { Text("Cerrar") }
+                            },
+                            dismissButton = {
+                                androidx.compose.material3.TextButton(onClick = { showQr = false; onOpenQrScanner() }) { Text("Escanear") }
                             }
                         )
                     }

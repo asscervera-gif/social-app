@@ -100,6 +100,11 @@ private const val GROUP_CHATS_LIST_ROUTE = "group_chats"
 private const val GROUP_CHAT_ROUTE = "group_chat/{groupId}/{groupName}"
 private const val SEARCH_ROUTE = "search"
 private const val FIND_ROUTE = "find"
+// Escanear el QR de otro perfil real, comparado con Snapchat (Snapcode)/
+// Instagram (Nametag)/WhatsApp -- cierra el hueco documentado en
+// PerfilScreen.kt (solo generación en la ronda anterior). Ver
+// QrScannerScreen.kt.
+private const val QR_SCANNER_ROUTE = "qr_scanner"
 // Publicación individual real ("permalink"), comparado con Instagram/
 // Twitter/Facebook -- ver PostDetailScreen.kt para el hallazgo completo.
 private const val POST_ROUTE = "post/{postId}"
@@ -255,6 +260,15 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                         )
                     }
                 }
+                composable(QR_SCANNER_ROUTE) {
+                    com.social.app.screens.perfil.QrScannerScreen(
+                        onScanned = { profileId ->
+                            navController.popBackStack()
+                            navController.navigate("profile/$profileId")
+                        },
+                        onClose = { navController.popBackStack() }
+                    )
+                }
                 composable(HASHTAG_SEARCH_ROUTE) { routeEntry ->
                     val tag = routeEntry.arguments?.getString("tag").orEmpty()
                     com.social.app.ui.theme.BackScaffold(title = "Buscar", onBack = { navController.popBackStack() }) {
@@ -325,7 +339,8 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                         onOpenGroupChats = { navController.navigate(GROUP_CHATS_LIST_ROUTE) },
                         onOpenStarredMessages = { navController.navigate(STARRED_MESSAGES_ROUTE) },
                         onOpenBroadcastLists = { navController.navigate(BROADCAST_LISTS_ROUTE) },
-                        onOpenProfileVisits = { navController.navigate(PROFILE_VISITS_ROUTE) }
+                        onOpenProfileVisits = { navController.navigate(PROFILE_VISITS_ROUTE) },
+                        onOpenQrScanner = { navController.navigate(QR_SCANNER_ROUTE) }
                     )
                 }
                 // Reels (0050_reels.sql) -- primera UI de cliente real
