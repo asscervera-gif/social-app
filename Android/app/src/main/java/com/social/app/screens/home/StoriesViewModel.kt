@@ -28,7 +28,10 @@ data class StoryRow(
     // con Instagram/Snapchat -- decodificado aunque el cliente no lo
     // necesite para filtrar (RLS ya decide quién ve qué fila en absoluto),
     // solo para poder mostrarlo si hiciera falta más adelante.
-    val visibility: String = "everyone"
+    val visibility: String = "everyone",
+    // Texto sobre la Historia + @menciones reales ahí, comparado con
+    // Instagram/TikTok/Snapchat -- ver 0143_story_caption_mentions.sql.
+    val caption: String? = null
 )
 
 // Adhesivo de pregunta real en una historia ("Pregúntame algo"),
@@ -284,7 +287,10 @@ class StoriesViewModel : ViewModel() {
     private data class NewStory(
         @SerialName("author_id") val authorId: String,
         @SerialName("media_url") val mediaUrl: String,
-        val visibility: String
+        val visibility: String,
+        // Texto sobre la Historia + @menciones reales ahí, comparado con
+        // Instagram/TikTok/Snapchat -- ver 0143_story_caption_mentions.sql.
+        val caption: String? = null
     )
 
     @Serializable
@@ -367,14 +373,19 @@ class StoriesViewModel : ViewModel() {
      * story_polls.options) para llegar a insertarse -- si no las
      * cumple, la encuesta simplemente no se crea (la historia en sí
      * sigue publicándose con normalidad). */
-    fun createStory(context: Context, uri: Uri, visibility: String = "everyone", questionPrompt: String? = null, pollQuestion: String? = null, pollOptions: List<String> = emptyList(), onDone: () -> Unit) {
+    fun createStory(context: Context, uri: Uri, visibility: String = "everyone", caption: String? = null, questionPrompt: String? = null, pollQuestion: String? = null, pollOptions: List<String> = emptyList(), onDone: () -> Unit) {
         viewModelScope.launch {
             val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
             _isUploading.value = true
             try {
                 val url = StorageUploader.uploadImage(context, uri, userId)
+                // Mismo límite real que posts_caption_length
+                // (0023_text_length_limits.sql) -- validado también en
+                // el resto de superficies con @menciones (posts/reels/
+                // comments).
+                val trimmedCaption = caption?.trim()?.take(2200)?.ifEmpty { null }
                 val insertedStory = SupabaseManager.client.from("stories")
-                    .insert(NewStory(userId, url, visibility)) { select() }
+                    .insert(NewStory(userId, url, visibility, trimmedCaption)) { select() }
                     .decodeSingle<StoryRow>()
                 // Mismo límite real del CHECK de story_questions.prompt
                 // (0099_story_questions.sql): 200 caracteres.

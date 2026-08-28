@@ -22,6 +22,9 @@ struct StoryRow: Decodable, Identifiable {
     // necesite para filtrar (RLS ya decide quién ve qué fila en
     // absoluto), solo para poder mostrarlo si hiciera falta más adelante.
     var visibility: String = "everyone"
+    // Texto sobre la Historia + @menciones reales ahí, comparado con
+    // Instagram/TikTok/Snapchat -- ver 0143_story_caption_mentions.sql.
+    var caption: String? = nil
 }
 
 // Adhesivo de pregunta real en una historia ("Pregúntame algo"),
@@ -335,7 +338,7 @@ final class StoriesViewModel: ObservableObject {
     /// independiente del adhesivo de pregunta ([questionPrompt]) --
     /// pueden coexistir en la misma historia. Equivalente de
     /// StoriesViewModel.kt.createStory().
-    func createStory(imageData: Data, visibility: String = "everyone", questionPrompt: String? = nil, pollQuestion: String? = nil, pollOptions: [String] = []) async {
+    func createStory(imageData: Data, visibility: String = "everyone", caption: String? = nil, questionPrompt: String? = nil, pollQuestion: String? = nil, pollOptions: [String] = []) async {
         guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
         isUploading = true
         defer { isUploading = false }
@@ -345,10 +348,18 @@ final class StoriesViewModel: ObservableObject {
                 let author_id: UUID
                 let media_url: String
                 let visibility: String
+                // Texto sobre la Historia + @menciones reales ahí,
+                // comparado con Instagram/TikTok/Snapchat -- ver
+                // 0143_story_caption_mentions.sql.
+                let caption: String?
             }
+            // Mismo límite real que posts_caption_length
+            // (0023_text_length_limits.sql).
+            let trimmedCaption = caption?.trimmingCharacters(in: .whitespacesAndNewlines).prefix(2200)
+            let finalCaption = (trimmedCaption?.isEmpty ?? true) ? nil : String(trimmedCaption!)
             let insertedStory: StoryRow = try await SupabaseManager.shared.client
                 .from("stories")
-                .insert(NewStory(author_id: userID, media_url: url, visibility: visibility))
+                .insert(NewStory(author_id: userID, media_url: url, visibility: visibility, caption: finalCaption))
                 .select()
                 .single()
                 .execute()

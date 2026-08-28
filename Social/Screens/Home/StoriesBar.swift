@@ -31,6 +31,10 @@ struct StoriesBar: View {
     @State private var pendingPollQuestion = ""
     @State private var pendingPollOptionA = ""
     @State private var pendingPollOptionB = ""
+    // Texto sobre la Historia + @menciones reales ahí, comparado con
+    // Instagram/TikTok/Snapchat -- opcional. Ver
+    // StoriesViewModel.createStory(), 0143_story_caption_mentions.sql.
+    @State private var pendingCaption = ""
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -103,6 +107,7 @@ struct StoriesBar: View {
                     pendingPollQuestion = ""
                     pendingPollOptionA = ""
                     pendingPollOptionB = ""
+                    pendingCaption = ""
                 }
             }
         )) {
@@ -112,6 +117,11 @@ struct StoriesBar: View {
                         Text("\"Mejores amigos\" solo se la enseña a la gente que actives en Ajustes.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
+                    }
+                    // Texto sobre la Historia + @menciones reales ahí,
+                    // comparado con Instagram/TikTok/Snapchat -- opcional.
+                    Section {
+                        TextField("Añadir texto (opcional, @usuario para mencionar)", text: $pendingCaption)
                     }
                     // Adhesivo de pregunta real en una historia
                     // ("Pregúntame algo"), comparado con Instagram --
@@ -133,12 +143,14 @@ struct StoriesBar: View {
                                 let question = pendingQuestion
                                 let pollQuestion = pendingPollQuestion
                                 let pollOptions = [pendingPollOptionA, pendingPollOptionB]
+                                let caption = pendingCaption
                                 pendingImageData = nil
                                 pendingQuestion = ""
                                 pendingPollQuestion = ""
                                 pendingPollOptionA = ""
                                 pendingPollOptionB = ""
-                                Task { await viewModel.createStory(imageData: data, visibility: "everyone", questionPrompt: question, pollQuestion: pollQuestion, pollOptions: pollOptions) }
+                                pendingCaption = ""
+                                Task { await viewModel.createStory(imageData: data, visibility: "everyone", caption: caption, questionPrompt: question, pollQuestion: pollQuestion, pollOptions: pollOptions) }
                             }
                         }
                         Button("Mejores amigos") {
@@ -146,12 +158,14 @@ struct StoriesBar: View {
                                 let question = pendingQuestion
                                 let pollQuestion = pendingPollQuestion
                                 let pollOptions = [pendingPollOptionA, pendingPollOptionB]
+                                let caption = pendingCaption
                                 pendingImageData = nil
                                 pendingQuestion = ""
                                 pendingPollQuestion = ""
                                 pendingPollOptionA = ""
                                 pendingPollOptionB = ""
-                                Task { await viewModel.createStory(imageData: data, visibility: "close_friends", questionPrompt: question, pollQuestion: pollQuestion, pollOptions: pollOptions) }
+                                pendingCaption = ""
+                                Task { await viewModel.createStory(imageData: data, visibility: "close_friends", caption: caption, questionPrompt: question, pollQuestion: pollQuestion, pollOptions: pollOptions) }
                             }
                         }
                     }
@@ -230,6 +244,18 @@ private struct StoryViewer: View {
                     image.resizable().scaledToFit()
                 } placeholder: {
                     ProgressView()
+                }
+
+                // Texto sobre la Historia + @menciones reales ahí,
+                // comparado con Instagram/TikTok/Snapchat -- ver
+                // StoriesViewModel.createStory(),
+                // 0143_story_caption_mentions.sql.
+                if let caption = story.caption {
+                    Text(caption)
+                        .foregroundStyle(.white)
+                        .font(.title3)
+                        .padding(.horizontal, 24)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 }
 
                 HStack(spacing: 0) {

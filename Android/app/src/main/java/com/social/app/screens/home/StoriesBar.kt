@@ -85,6 +85,11 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
     var pendingPollQuestion by remember { mutableStateOf("") }
     var pendingPollOptionA by remember { mutableStateOf("") }
     var pendingPollOptionB by remember { mutableStateOf("") }
+    // Texto sobre la Historia + @menciones reales ahí, comparado con
+    // Instagram/TikTok/Snapchat -- opcional, mismo diálogo real de
+    // audiencia. Ver StoriesViewModel.createStory(),
+    // 0143_story_caption_mentions.sql.
+    var pendingCaption by remember { mutableStateOf("") }
 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) pendingUploadUri = uri
@@ -150,6 +155,14 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
             text = {
                 Column {
                     Text("\"Mejores amigos\" solo se la enseña a la gente que actives en Ajustes.")
+                    // Texto sobre la Historia + @menciones reales ahí,
+                    // comparado con Instagram/TikTok/Snapchat -- opcional.
+                    androidx.compose.material3.OutlinedTextField(
+                        value = pendingCaption,
+                        onValueChange = { pendingCaption = it },
+                        label = { Text("Añadir texto (opcional, @usuario para mencionar)") },
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                    )
                     // Adhesivo de pregunta real en una historia
                     // ("Pregúntame algo"), comparado con Instagram --
                     // opcional, ver StoriesViewModel.createStory().
@@ -195,12 +208,14 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
                     val question = pendingQuestion
                     val pollQuestion = pendingPollQuestion
                     val pollOptions = listOf(pendingPollOptionA, pendingPollOptionB)
+                    val caption = pendingCaption
                     pendingUploadUri = null
                     pendingQuestion = ""
                     pendingPollQuestion = ""
                     pendingPollOptionA = ""
                     pendingPollOptionB = ""
-                    viewModel.createStory(context, uri, visibility = "close_friends", questionPrompt = question, pollQuestion = pollQuestion, pollOptions = pollOptions) {}
+                    pendingCaption = ""
+                    viewModel.createStory(context, uri, visibility = "close_friends", caption = caption, questionPrompt = question, pollQuestion = pollQuestion, pollOptions = pollOptions) {}
                 }) { Text("Mejores amigos") }
             },
             dismissButton = {
@@ -208,12 +223,14 @@ fun StoriesBar(viewModel: StoriesViewModel = viewModel()) {
                     val question = pendingQuestion
                     val pollQuestion = pendingPollQuestion
                     val pollOptions = listOf(pendingPollOptionA, pendingPollOptionB)
+                    val caption = pendingCaption
                     pendingUploadUri = null
                     pendingQuestion = ""
                     pendingPollQuestion = ""
                     pendingPollOptionA = ""
                     pendingPollOptionB = ""
-                    viewModel.createStory(context, uri, visibility = "everyone", questionPrompt = question, pollQuestion = pollQuestion, pollOptions = pollOptions) {}
+                    pendingCaption = ""
+                    viewModel.createStory(context, uri, visibility = "everyone", caption = caption, questionPrompt = question, pollQuestion = pollQuestion, pollOptions = pollOptions) {}
                 }) { Text("Todos") }
             }
         )
@@ -346,6 +363,19 @@ private fun StoryViewer(group: StoryGroup, viewModel: StoriesViewModel = viewMod
                 contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxSize()
             )
+            // Texto sobre la Historia + @menciones reales ahí, comparado
+            // con Instagram/TikTok/Snapchat -- ver
+            // StoriesViewModel.createStory(), 0143_story_caption_mentions.sql.
+            story.caption?.let { caption ->
+                Text(
+                    caption,
+                    color = androidx.compose.ui.graphics.Color.White,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = 24.dp)
+                )
+            }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 modifier = Modifier

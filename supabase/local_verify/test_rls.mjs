@@ -3987,6 +3987,26 @@ async function main() {
   const u3SeesInvite = (await db.query(`select post_id from post_collaborators where post_id = $1 and user_id = $2`, [collabPostId, u2])).rows;
   check('post_collaborators_select: u3 (ajeno real) NO ve la invitación de otra persona', u3SeesInvite.length === 0);
 
+  // --- stories.caption + notify_mentions_in_story (0143_story_caption_mentions.sql):
+  // texto sobre la Historia + @menciones reales ahí, comparado con
+  // Instagram/TikTok/Snapchat. Reutiliza extract_mentioned_profile_ids
+  // ya probada por post/reel/comment/reel_comment. ---
+  await asUser(u1);
+  await expectOk('stories_write_own: u1 SÍ puede publicar una historia real con caption y una @mención', async () => {
+    await db.query(`insert into stories (author_id, media_url, caption) values ($1, 'https://cdn.example/story.jpg', 'hola @maria99, mira esto')`, [u1]);
+  });
+  await asUser(u2);
+  const storyMentionNotif = (await db.query(`select payload from notifications where recipient_id = $1 and kind = 'mention' and payload ? 'story_id'`, [u2])).rows;
+  check('notify_mentions_in_story: u2 (@maria99) recibe el aviso real de mención en una historia', storyMentionNotif.length === 1);
+
+  await asUser(u1);
+  await expectOk('stories_write_own: u1 SÍ puede publicar una historia real sin ninguna @mención (caption normal)', async () => {
+    await db.query(`insert into stories (author_id, media_url, caption) values ($1, 'https://cdn.example/story2.jpg', 'sin mencionar a nadie')`, [u1]);
+  });
+  await asUser(u2);
+  const storyMentionNotifStillOne = (await db.query(`select payload from notifications where recipient_id = $1 and kind = 'mention' and payload ? 'story_id'`, [u2])).rows;
+  check('notify_mentions_in_story: una historia real sin @mención no genera un segundo aviso', storyMentionNotifStillOne.length === 1);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado
