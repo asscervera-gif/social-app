@@ -204,6 +204,10 @@ struct Chat: Codable, Identifiable {
     // 0139_chat_wallpaper.sql.
     var wallpaperByA: String? = nil
     var wallpaperByB: String? = nil
+    // Sonido de notificación por persona, comparado con WhatsApp/Telegram/
+    // Messenger/Instagram DM -- ver 0154_chat_notification_sound.sql.
+    var notificationSoundByA: String? = nil
+    var notificationSoundByB: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -222,6 +226,8 @@ struct Chat: Codable, Identifiable {
         case disappearingSeconds = "disappearing_seconds"
         case wallpaperByA = "wallpaper_by_a"
         case wallpaperByB = "wallpaper_by_b"
+        case notificationSoundByA = "notification_sound_by_a"
+        case notificationSoundByB = "notification_sound_by_b"
     }
 }
 

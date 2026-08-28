@@ -510,6 +510,21 @@ struct ChatView: View {
                 } label: {
                     Text("🎨")
                 }
+                // Sonido de notificación propio por chat, comparado con
+                // WhatsApp/Telegram/Messenger/Instagram DM -- ver
+                // ChatViewModel.setNotificationSound(),
+                // 0154_chat_notification_sound.sql. Tonos distintos de
+                // "default" solo suenan distinto una vez existan los
+                // archivos de audio reales empaquetados (ver comentario
+                // de honestidad en la migración).
+                Menu {
+                    Button(viewModel.notificationSound == nil ? "✓ Por defecto" : "Por defecto") { Task { await viewModel.setNotificationSound(nil) } }
+                    ForEach([("chime", "Campanita"), ("bell", "Campana"), ("ping", "Ping")], id: \.0) { key, label in
+                        Button(viewModel.notificationSound == key ? "✓ \(label)" : label) { Task { await viewModel.setNotificationSound(key) } }
+                    }
+                } label: {
+                    Text("🔔")
+                }
                 // "Vaciar conversación" real, comparado con WhatsApp/
                 // Telegram/Instagram DM/Facebook Messenger -- ver
                 // ChatViewModel.clearConversation(),

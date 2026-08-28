@@ -132,6 +132,12 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
     val wallpaperKey: StateFlow<String?> = _wallpaperKey.asStateFlow()
     private var iAmUserA = true
 
+    // Sonido de notificación propio por chat, comparado con WhatsApp/
+    // Telegram/Messenger/Instagram DM -- ver 0154_chat_notification_sound.sql.
+    // Mismo criterio que wallpaperKey: solo mi propia copia.
+    private val _notificationSound = MutableStateFlow<String?>(null)
+    val notificationSound: StateFlow<String?> = _notificationSound.asStateFlow()
+
     private val _opponentId = MutableStateFlow<String?>(null)
     val opponentId: StateFlow<String?> = _opponentId.asStateFlow()
 
@@ -589,6 +595,7 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
             val myId = SupabaseManager.client.auth.currentUserOrNull()?.id
             iAmUserA = myId == chat.userAId
             _wallpaperKey.value = if (iAmUserA) chat.wallpaperByA else chat.wallpaperByB
+            _notificationSound.value = if (iAmUserA) chat.notificationSoundByA else chat.notificationSoundByB
             _opponentId.value = when (myId) {
                 chat.userAId -> chat.userBId
                 chat.userBId -> chat.userAId
@@ -753,6 +760,7 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
             _compatibility.value = chat.compatibilityScore
             _disappearingSeconds.value = chat.disappearingSeconds
             _wallpaperKey.value = if (iAmUserA) chat.wallpaperByA else chat.wallpaperByB
+            _notificationSound.value = if (iAmUserA) chat.notificationSoundByA else chat.notificationSoundByB
         }.launchIn(viewModelScope)
 
         // Para que el remitente vea "Leído" en vivo cuando la otra persona
@@ -1191,6 +1199,23 @@ class ChatViewModel(private val chatId: String) : ViewModel() {
                     .update({ set(column, key) }) { filter { eq("id", chatId) } }
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo cambiar el fondo del chat."
+            }
+        }
+    }
+
+    /** Cambiar mi propio sonido de notificación de este chat, comparado con
+     * WhatsApp/Telegram/Messenger/Instagram DM -- solo mi copia
+     * (notification_sound_by_a/b según quién soy), `sound` en null vuelve
+     * al tono por defecto del sistema (0154_chat_notification_sound.sql). */
+    fun setNotificationSound(sound: String?) {
+        _notificationSound.value = sound
+        val column = if (iAmUserA) "notification_sound_by_a" else "notification_sound_by_b"
+        viewModelScope.launch {
+            try {
+                SupabaseManager.client.from("chats")
+                    .update({ set(column, sound) }) { filter { eq("id", chatId) } }
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo cambiar el sonido del chat."
             }
         }
     }

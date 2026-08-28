@@ -126,6 +126,8 @@ fun ChatScreen(
     // ver ChatViewModel.setWallpaper(), 0139_chat_wallpaper.sql.
     val wallpaperKey by viewModel.wallpaperKey.collectAsState()
     var showWallpaperMenu by remember { mutableStateOf(false) }
+    var showNotificationSoundMenu by remember { mutableStateOf(false) }
+    val notificationSound by viewModel.notificationSound.collectAsState()
     val opponentId by viewModel.opponentId.collectAsState()
     val suggestedActivity by viewModel.suggestedActivity.collectAsState()
     val icebreaker by viewModel.icebreaker.collectAsState()
@@ -288,6 +290,30 @@ fun ChatScreen(
                             DropdownMenuItem(text = { Text(label) }, onClick = {
                                 showWallpaperMenu = false
                                 viewModel.setWallpaper(key)
+                            })
+                        }
+                    }
+                }
+                // Sonido de notificación propio por chat, comparado con
+                // WhatsApp/Telegram/Messenger/Instagram DM -- ver
+                // ChatViewModel.setNotificationSound(),
+                // 0154_chat_notification_sound.sql. Tonos distintos de
+                // "default" solo suenan distinto una vez existan los
+                // archivos de audio reales empaquetados (ver comentario
+                // de honestidad en la migración).
+                Box {
+                    IconButton(onClick = { showNotificationSoundMenu = true }) {
+                        Text("🔔")
+                    }
+                    DropdownMenu(expanded = showNotificationSoundMenu, onDismissRequest = { showNotificationSoundMenu = false }) {
+                        DropdownMenuItem(text = { Text(if (notificationSound == null) "✓ Por defecto" else "Por defecto") }, onClick = {
+                            showNotificationSoundMenu = false
+                            viewModel.setNotificationSound(null)
+                        })
+                        listOf("chime" to "Campanita", "bell" to "Campana", "ping" to "Ping").forEach { (key, label) ->
+                            DropdownMenuItem(text = { Text(if (notificationSound == key) "✓ $label" else label) }, onClick = {
+                                showNotificationSoundMenu = false
+                                viewModel.setNotificationSound(key)
                             })
                         }
                     }

@@ -166,7 +166,11 @@ data class Chat(
     // Messenger -- cada quien ve el suyo propio, ver
     // 0139_chat_wallpaper.sql.
     @SerialName("wallpaper_by_a") val wallpaperByA: String? = null,
-    @SerialName("wallpaper_by_b") val wallpaperByB: String? = null
+    @SerialName("wallpaper_by_b") val wallpaperByB: String? = null,
+    // Sonido de notificación por persona, comparado con WhatsApp/Telegram/
+    // Messenger/Instagram DM -- ver 0154_chat_notification_sound.sql.
+    @SerialName("notification_sound_by_a") val notificationSoundByA: String? = null,
+    @SerialName("notification_sound_by_b") val notificationSoundByB: String? = null
 )
 
 @Serializable

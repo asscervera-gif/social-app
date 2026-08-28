@@ -57,6 +57,19 @@ interface ProfileMuteRow {
   muted_push_kinds: string[];
 }
 
+// Sonido de notificación personalizado por chat, comparado con
+// WhatsApp/Telegram/Messenger/Instagram DM -- ver
+// 0154_chat_notification_sound.sql.
+interface ChatSoundRow {
+  user_a_id: string;
+  notification_sound_by_a: string | null;
+  notification_sound_by_b: string | null;
+}
+
+interface GroupMemberSoundRow {
+  notification_sound: string | null;
+}
+
 interface DeviceTokenRow {
   platform: "ios" | "android";
   token: string;
@@ -198,11 +211,35 @@ serve(async (req) => {
   const title = titleFor(notification.kind);
   const bodyText = `${iconFor(notification.kind)} Toca para verlo`;
 
+  // Sonido de notificación personalizado por chat, comparado con
+  // WhatsApp/Telegram/Messenger/Instagram DM -- ver
+  // 0154_chat_notification_sound.sql. "default" si no hay ninguno
+  // elegido (mismo comportamiento real que hasta ahora).
+  let sound = "default";
+  if (notification.kind === "message" && notification.payload.chat_id) {
+    const { data: chatRow } = await admin
+      .from("chats")
+      .select("user_a_id, notification_sound_by_a, notification_sound_by_b")
+      .eq("id", notification.payload.chat_id)
+      .maybeSingle<ChatSoundRow>();
+    if (chatRow) {
+      sound = (notification.recipient_id === chatRow.user_a_id ? chatRow.notification_sound_by_a : chatRow.notification_sound_by_b) ?? "default";
+    }
+  } else if (notification.kind === "group_message" && notification.payload.group_chat_id) {
+    const { data: memberRow } = await admin
+      .from("group_chat_members")
+      .select("notification_sound")
+      .eq("group_chat_id", notification.payload.group_chat_id)
+      .eq("user_id", notification.recipient_id)
+      .maybeSingle<GroupMemberSoundRow>();
+    sound = memberRow?.notification_sound ?? "default";
+  }
+
   let sent = 0;
   for (const deviceToken of tokens) {
     const ok = deviceToken.platform === "ios"
-      ? await sendAPNs(deviceToken.token, title, bodyText)
-      : await sendFCM(deviceToken.token, title, bodyText);
+      ? await sendAPNs(deviceToken.token, title, bodyText, sound)
+      : await sendFCM(deviceToken.token, title, bodyText, sound);
     if (ok) sent++;
   }
 
@@ -211,7 +248,7 @@ serve(async (req) => {
   });
 });
 
-async function sendAPNs(deviceToken: string, title: string, body: string): Promise<boolean> {
+async function sendAPNs(deviceToken: string, title: string, body: string, sound = "default"): Promise<boolean> {
   if (!APNS_TEAM_ID || !APNS_KEY_ID || !APNS_AUTH_KEY_P8) return false;
   try {
     const jwt = await buildApnsJwt();
@@ -224,7 +261,7 @@ async function sendAPNs(deviceToken: string, title: string, body: string): Promi
         "apns-priority": "10",
       },
       body: JSON.stringify({
-        aps: { alert: { title, body }, sound: "default" },
+        aps: { alert: { title, body }, sound },
       }),
     });
     return response.ok;
@@ -279,7 +316,7 @@ function base64url(bytes: Uint8Array): string {
   return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-async function sendFCM(deviceToken: string, title: string, body: string): Promise<boolean> {
+async function sendFCM(deviceToken: string, title: string, body: string, sound = "default"): Promise<boolean> {
   if (!FCM_SERVER_KEY) return false;
   try {
     const response = await fetch("https://fcm.googleapis.com/fcm/send", {
@@ -290,7 +327,12 @@ async function sendFCM(deviceToken: string, title: string, body: string): Promis
       },
       body: JSON.stringify({
         to: deviceToken,
-        notification: { title, body },
+        // "sound" en FCM legacy nombra un recurso raw empaquetado en la
+        // app real (res/raw/<sound>.mp3), mismo campo que "default" ya
+        // usaba antes de esta ronda -- ver aviso de honestidad en
+        // 0154_chat_notification_sound.sql sobre los assets reales
+        // todavía pendientes para los tonos que no sean "default".
+        notification: { title, body, sound },
       }),
     });
     return response.ok;

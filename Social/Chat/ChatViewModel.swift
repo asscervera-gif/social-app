@@ -26,6 +26,11 @@ final class ChatViewModel: ObservableObject {
     // o wallpaper_by_b según quién soy), nunca la de la otra persona.
     @Published var wallpaperKey: String? = nil
     private var iAmUserA = true
+
+    // Sonido de notificación propio por chat, comparado con WhatsApp/
+    // Telegram/Messenger/Instagram DM -- ver 0154_chat_notification_sound.sql.
+    // Mismo criterio que wallpaperKey: solo mi propia copia.
+    @Published var notificationSound: String? = nil
     @Published var draft: String = ""
     @Published var suggestedActivity: String?
     @Published var errorMessage: String?
@@ -559,6 +564,7 @@ final class ChatViewModel: ObservableObject {
             disappearingSeconds = chat.disappearingSeconds
             iAmUserA = chat.userAID == currentUserID
             wallpaperKey = iAmUserA ? chat.wallpaperByA : chat.wallpaperByB
+            notificationSound = iAmUserA ? chat.notificationSoundByA : chat.notificationSoundByB
             opponentID = chat.userAID == currentUserID ? chat.userBID : (chat.userBID == currentUserID ? chat.userAID : nil)
             await loadReadReceiptsVisibility()
 
@@ -678,6 +684,7 @@ final class ChatViewModel: ObservableObject {
                     compatibilityScore = chat.compatibilityScore
                     disappearingSeconds = chat.disappearingSeconds
                     wallpaperKey = iAmUserA ? chat.wallpaperByA : chat.wallpaperByB
+            notificationSound = iAmUserA ? chat.notificationSoundByA : chat.notificationSoundByB
                     await checkActivitySuggestion()
                 }
             }
@@ -1176,6 +1183,25 @@ final class ChatViewModel: ObservableObject {
                 .execute()
         } catch {
             errorMessage = "No se pudo cambiar el fondo del chat."
+        }
+    }
+
+    /// Cambiar mi propio sonido de notificación de este chat, comparado con
+    /// WhatsApp/Telegram/Messenger/Instagram DM -- solo mi copia
+    /// (notification_sound_by_a/b según quién soy), `sound` en nil vuelve
+    /// al tono por defecto del sistema (0154_chat_notification_sound.sql).
+    /// Equivalente de ChatViewModel.kt.setNotificationSound().
+    func setNotificationSound(_ sound: String?) async {
+        notificationSound = sound
+        let column = iAmUserA ? "notification_sound_by_a" : "notification_sound_by_b"
+        do {
+            try await SupabaseManager.shared.client
+                .from("chats")
+                .update([column: sound])
+                .eq("id", value: chatID)
+                .execute()
+        } catch {
+            errorMessage = "No se pudo cambiar el sonido del chat."
         }
     }
 }

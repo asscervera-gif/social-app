@@ -4303,6 +4303,32 @@ async function main() {
     await db.query(`insert into chat_cleared_at (user_id, chat_id, cleared_before) values ($1, $2, now()) on conflict (user_id, chat_id) do update set cleared_before = excluded.cleared_before`, [u1, chat.id]);
   });
 
+  // --- chats.notification_sound_by_a/b + group_chat_members.notification_sound
+  // (0154_chat_notification_sound.sql): sonido de notificación real por
+  // chat, comparado con WhatsApp/Telegram/Messenger/Instagram DM. Mismo
+  // patrón real que protect_chat_wallpaper_flags (0139). ---
+  await asUser(u2);
+  await db.query(`update chats set notification_sound_by_b = 'chime' where id = $1`, [chat.id]);
+  const soundByB = (await db.query(`select notification_sound_by_a, notification_sound_by_b from chats where id = $1`, [chat.id])).rows[0];
+  check('protect_chat_notification_sound_flags: u2 (user_b) SÍ pone su propio sonido real', soundByB.notification_sound_by_b === 'chime' && soundByB.notification_sound_by_a === null);
+
+  await db.query(`update chats set notification_sound_by_a = 'bell' where id = $1`, [chat.id]);
+  const stillNoSoundA = (await db.query(`select notification_sound_by_a from chats where id = $1`, [chat.id])).rows[0];
+  check('protect_chat_notification_sound_flags: u2 NO puede poner el sonido real de u1 (revertido en silencio, no lanza)', stillNoSoundA.notification_sound_by_a === null);
+
+  await asUser(u1);
+  await db.query(`update chats set notification_sound_by_a = 'bell' where id = $1`, [chat.id]);
+  const soundByA = (await db.query(`select notification_sound_by_a from chats where id = $1`, [chat.id])).rows[0];
+  check('protect_chat_notification_sound_flags: u1 (user_a) SÍ pone su propio sonido real', soundByA.notification_sound_by_a === 'bell');
+
+  const soundGroupId = crypto.randomUUID();
+  await db.query(`insert into group_chats (id, name, created_by) values ($1, $2, $3)`, [soundGroupId, 'Grupo para sonido', u1]);
+  await expectOk('group_chat_members_update_own: u1 SÍ puede fijar el sonido real de su propia fila de membresía', async () => {
+    await db.query(`update group_chat_members set notification_sound = 'ping' where group_chat_id = $1 and user_id = $2`, [soundGroupId, u1]);
+  });
+  const soundMembership = (await db.query(`select notification_sound from group_chat_members where group_chat_id = $1 and user_id = $2`, [soundGroupId, u1])).rows[0];
+  check('group_chat_members.notification_sound: la fila real queda con el sonido elegido', soundMembership.notification_sound === 'ping');
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado
