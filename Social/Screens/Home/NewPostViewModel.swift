@@ -74,7 +74,7 @@ final class NewPostViewModel: ObservableObject {
             .execute()
     }
 
-    func post(caption: String, isSocialOnly: Bool, imageDataList: [Data], taggedProfileID: UUID? = nil, locationName: String? = nil, isSensitive: Bool = false, replyAudience: String = "everyone", pollQuestion: String = "", pollOptions: [String] = []) async -> Bool {
+    func post(caption: String, isSocialOnly: Bool, imageDataList: [Data], taggedProfileID: UUID? = nil, locationName: String? = nil, isSensitive: Bool = false, replyAudience: String = "everyone", pollQuestion: String = "", pollOptions: [String] = [], collaboratorUsername: String = "") async -> Bool {
         guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return false }
         // Mismo límite real que posts_caption_length
         // (0023_text_length_limits.sql) — validado aquí también, mismo
@@ -149,6 +149,34 @@ final class NewPostViewModel: ObservableObject {
                     .from("post_polls")
                     .insert(NewPostPoll(post_id: insertedPost.id, question: trimmedPollQuestion, options: cleanOptions))
                     .execute()
+            }
+            // Publicación colaborativa real ("Collab"), comparado con
+            // Instagram -- ver 0142_post_collaborators.sql. Alcance
+            // acotado: solo 1 colaborador por post, invitación real (no
+            // automática) que aparece como aviso aparte y hace falta
+            // aceptar. Equivalente de NewPostViewModel.kt.
+            var trimmedCollaborator = collaboratorUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedCollaborator.hasPrefix("@") { trimmedCollaborator.removeFirst() }
+            if !trimmedCollaborator.isEmpty {
+                struct UsernameRow: Decodable { let id: UUID }
+                struct NewPostCollaborator: Encodable {
+                    let post_id: UUID
+                    let user_id: UUID
+                }
+                if let collaboratorRow: UsernameRow = try? await SupabaseManager.shared.client
+                    .from("profiles")
+                    .select("id")
+                    .eq("username", value: trimmedCollaborator)
+                    .single()
+                    .execute()
+                    .value {
+                    try? await SupabaseManager.shared.client
+                        .from("post_collaborators")
+                        .insert(NewPostCollaborator(post_id: insertedPost.id, user_id: collaboratorRow.id))
+                        .execute()
+                } else {
+                    errorMessage = "Publicado, pero no se encontró a @\(trimmedCollaborator) para invitar como colaborador."
+                }
             }
             // Hallazgo real, mismo criterio ya aplicado en la versión
             // Kotlin equivalente: publicar es la acción de activación más

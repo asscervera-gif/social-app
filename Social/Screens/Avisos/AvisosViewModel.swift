@@ -205,6 +205,9 @@ extension AvisosViewModel.NotificationEntry {
         // ("Fulano está en directo ahora") -- ver
         // 0138_live_start_notification.sql.
         case "live_start": return "dot.radiowaves.left.and.right"
+        // Publicación colaborativa real ("Collab"), comparado con
+        // Instagram -- ver 0142_post_collaborators.sql.
+        case "post_collab_invite": return "person.2.badge.plus"
         default: return "bell"
         }
     }
@@ -228,6 +231,7 @@ extension AvisosViewModel.NotificationEntry {
         case "mention": return "Te mencionó"
         case "repost": return "Reposteó tu publicación"
         case "live_start": return "Está en directo ahora"
+        case "post_collab_invite": return "Te invitó a colaborar en una publicación"
         default: return "Notificación"
         }
     }

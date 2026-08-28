@@ -181,6 +181,9 @@ fun NotificationEntry.icon(): String = when (kind) {
     // Empezar un Directo real, comparado con Instagram/TikTok ("Fulano
     // está en directo ahora") -- ver 0138_live_start_notification.sql.
     "live_start" -> "🔴"
+    // Publicación colaborativa real ("Collab"), comparado con Instagram
+    // -- ver 0142_post_collaborators.sql.
+    "post_collab_invite" -> "🤝"
     else -> "🔔"
 }
 
@@ -202,5 +205,6 @@ fun NotificationEntry.title(): String = when (kind) {
     "mention" -> "Te mencionó"
     "repost" -> "Reposteó tu publicación"
     "live_start" -> "Está en directo ahora"
+    "post_collab_invite" -> "Te invitó a colaborar en una publicación"
     else -> "Notificación"
 }

@@ -87,6 +87,11 @@ fun NewPostSheet(
     var pollQuestion by remember { mutableStateOf("") }
     var pollOptionA by remember { mutableStateOf("") }
     var pollOptionB by remember { mutableStateOf("") }
+    // Publicación colaborativa real ("Collab"), comparado con Instagram
+    // -- ver NewPostViewModel.post(), 0142_post_collaborators.sql.
+    // Alcance acotado: solo 1 colaborador por post, invitación real (no
+    // automática).
+    var collaboratorUsername by remember { mutableStateOf("") }
     val socialsViewModel: SocialsListViewModel = viewModel()
     val socials by socialsViewModel.socials.collectAsState()
     LaunchedEffect(Unit) { socialsViewModel.load() }
@@ -262,13 +267,23 @@ fun NewPostSheet(
                 )
             }
 
+            // Publicación colaborativa real ("Collab"), comparado con
+            // Instagram -- ver 0142_post_collaborators.sql.
+            OutlinedTextField(
+                value = collaboratorUsername,
+                onValueChange = { collaboratorUsername = it },
+                label = { Text("Invitar a colaborar (@usuario, opcional)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+            )
+
             errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
 
             Button(
                 onClick = {
                     scope.launch {
                         val pollOptions = listOf(pollOptionA, pollOptionB)
-                        if (viewModel.post(context, caption, isSocialOnly, imageUris, taggedProfileId, locationName, isSensitive, replyAudience, pollQuestion, pollOptions)) {
+                        if (viewModel.post(context, caption, isSocialOnly, imageUris, taggedProfileId, locationName, isSensitive, replyAudience, pollQuestion, pollOptions, collaboratorUsername)) {
                             onPosted()
                             onDismiss()
                         }

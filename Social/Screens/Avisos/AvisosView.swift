@@ -253,6 +253,7 @@ private func contextFor(_ kind: String) -> String {
     case "social_accepted": return "Aceptó tu social."
     case "compat_accepted": return "Compartió su compatibilidad contigo."
     case "new_post": return "Ha publicado algo nuevo."
+    case "post_collab_invite": return "Te ha invitado a aparecer como coautor de una publicación."
     default: return "Nueva notificación."
     }
 }
@@ -306,6 +307,12 @@ private struct NotificationActionsSheet: View {
         entry.payload["duel_id"].flatMap(UUID.init)
     }
 
+    /// Publicación colaborativa real ("Collab"), comparado con Instagram
+    /// -- ver 0142_post_collaborators.sql.
+    private var collabPostID: UUID? {
+        entry.payload["post_id"].flatMap(UUID.init)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -341,6 +348,15 @@ private struct NotificationActionsSheet: View {
                     Button("✕ Denegar") {
                         respondCompat(accept: false)
                     }.buttonStyle(.bordered)
+                case "post_collab_invite":
+                    if collabPostID != nil {
+                        Button("✓ Aceptar colaboración") {
+                            respondCollab(accept: true)
+                        }.buttonStyle(.borderedProminent).tint(.green)
+                        Button("✕ Rechazar") {
+                            respondCollab(accept: false)
+                        }.buttonStyle(.bordered)
+                    }
                 default:
                     EmptyView()
                 }
@@ -482,6 +498,26 @@ private struct NotificationActionsSheet: View {
         guard let requestID = compatRequestID else { return }
         Task {
             await compatRequests.respond(requestID: requestID, accept: accept)
+            dismiss()
+        }
+    }
+
+    /// Publicación colaborativa real ("Collab"), comparado con Instagram
+    /// -- ver 0142_post_collaborators.sql.
+    private func respondCollab(accept: Bool) {
+        guard let postID = collabPostID else { return }
+        Task {
+            guard let myID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+            struct CollabResponse: Encodable {
+                let status: String
+                let responded_at: String
+            }
+            try? await SupabaseManager.shared.client
+                .from("post_collaborators")
+                .update(CollabResponse(status: accept ? "accepted" : "declined", responded_at: ISO8601DateFormatter().string(from: Date())))
+                .eq("post_id", value: postID)
+                .eq("user_id", value: myID)
+                .execute()
             dismiss()
         }
     }

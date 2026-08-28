@@ -8,6 +8,7 @@ import com.social.app.backend.SupabaseManager
 import com.social.app.backend.model.Post
 import io.github.jan.supabase.gotrue.auth
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.query.Columns
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -125,7 +126,20 @@ class NewPostViewModel : ViewModel() {
      * siempre (sin cambiar nada para quien solo muestra una miniatura),
      * el resto en `post_media`. [taggedProfileId] es opcional -- "con
      * quién" (0051_post_social_tags.sql), comparado con SOCIAL_APP.html. */
-    suspend fun post(context: Context, caption: String, isSocialOnly: Boolean, imageUris: List<Uri>, taggedProfileId: String? = null, locationName: String? = null, isSensitive: Boolean = false, replyAudience: String = "everyone", pollQuestion: String = "", pollOptions: List<String> = emptyList()): Boolean {
+    // Publicación colaborativa real ("Collab"), comparado con Instagram --
+    // ver 0142_post_collaborators.sql. Alcance acotado: solo 1 colaborador
+    // por post, invitación real (no automática) que aparece como aviso
+    // aparte y hace falta aceptar.
+    @Serializable
+    private data class NewPostCollaborator(
+        @SerialName("post_id") val postId: String,
+        @SerialName("user_id") val userId: String
+    )
+
+    @Serializable
+    private data class UsernameRow(val id: String)
+
+    suspend fun post(context: Context, caption: String, isSocialOnly: Boolean, imageUris: List<Uri>, taggedProfileId: String? = null, locationName: String? = null, isSensitive: Boolean = false, replyAudience: String = "everyone", pollQuestion: String = "", pollOptions: List<String> = emptyList(), collaboratorUsername: String = ""): Boolean {
         val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return false
         // Mismo límite real que posts_caption_length
         // (0023_text_length_limits.sql) — validado aquí también para dar
@@ -162,6 +176,22 @@ class NewPostViewModel : ViewModel() {
             val cleanOptions = pollOptions.map { it.trim() }.filter { it.isNotEmpty() }
             if (trimmedPollQuestion.isNotEmpty() && cleanOptions.size in 2..4) {
                 SupabaseManager.client.from("post_polls").insert(NewPostPoll(insertedPost.id, trimmedPollQuestion, cleanOptions))
+            }
+            val trimmedCollaborator = collaboratorUsername.trim().removePrefix("@")
+            if (trimmedCollaborator.isNotEmpty()) {
+                try {
+                    val collaboratorId = SupabaseManager.client.from("profiles")
+                        .select(columns = Columns.raw("id")) { filter { eq("username", trimmedCollaborator) } }
+                        .decodeSingleOrNull<UsernameRow>()
+                        ?.id
+                    if (collaboratorId != null) {
+                        SupabaseManager.client.from("post_collaborators").insert(NewPostCollaborator(insertedPost.id, collaboratorId))
+                    } else {
+                        _errorMessage.value = "Publicado, pero no se encontró a @$trimmedCollaborator para invitar como colaborador."
+                    }
+                } catch (e: Exception) {
+                    // No crítico: la publicación en sí ya se hizo real.
+                }
             }
             // Hallazgo real: publicar es la acción de activación más
             // importante del feed y no se registraba — comparado con

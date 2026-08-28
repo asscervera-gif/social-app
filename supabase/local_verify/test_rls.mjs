@@ -3953,6 +3953,40 @@ async function main() {
   const u2Published = (await db.query(`select * from publish_due_scheduled_posts()`)).rows;
   check('publish_due_scheduled_posts: u2 NO publica nada ajeno (no tiene posts programados propios)', u2Published.length === 0);
 
+  // --- post_collaborators (0142_post_collaborators.sql): publicación
+  // colaborativa real ("Collab"), comparado con Instagram. ---
+  await asUser(u1);
+  const collabPostId = (await db.query(
+    `insert into posts (author_id, caption) values ($1, 'post colaborativo real') returning id`,
+    [u1]
+  )).rows[0].id;
+  await expectOk('post_collaborators_insert: u1 (autor real) SÍ puede invitar a u2 como colaborador', async () => {
+    await db.query(`insert into post_collaborators (post_id, user_id) values ($1, $2)`, [collabPostId, u2]);
+  });
+  await expectFail('post_collaborators_insert: u3 (NO autor real) NO puede invitar a nadie a ese post', async () => {
+    await asUser(u3);
+    await db.query(`insert into post_collaborators (post_id, user_id) values ($1, $2)`, [collabPostId, crypto.randomUUID()]);
+  });
+  await asUser(u1);
+
+  await asUser(u2);
+  const collabNotif = (await db.query(`select payload from notifications where recipient_id = $1 and kind = 'post_collab_invite'`, [u2])).rows;
+  check('notify_post_collab_invite: u2 recibe el aviso real de invitación', collabNotif.length === 1 && collabNotif[0].payload.post_id === collabPostId);
+
+  await expectOk('post_collaborators_update: u2 (invitado real) SÍ puede aceptar su propia invitación', async () => {
+    await db.query(`update post_collaborators set status = 'accepted', responded_at = now() where post_id = $1 and user_id = $2`, [collabPostId, u2]);
+  });
+  const acceptedRow = (await db.query(`select status from post_collaborators where post_id = $1 and user_id = $2`, [collabPostId, u2])).rows[0];
+  check('post_collaborators: el estado real queda en accepted', acceptedRow.status === 'accepted');
+
+  await db.query(`update post_collaborators set post_id = $1 where post_id = $2 and user_id = $3`, [crypto.randomUUID(), collabPostId, u2]);
+  const stillSamePost = (await db.query(`select post_id from post_collaborators where user_id = $1 and post_id = $2`, [u2, collabPostId])).rows;
+  check('protect_post_collaborator_identity: u2 NO puede trasladar su fila real a otro post_id (revertido en silencio)', stillSamePost.length === 1);
+
+  await asUser(u3);
+  const u3SeesInvite = (await db.query(`select post_id from post_collaborators where post_id = $1 and user_id = $2`, [collabPostId, u2])).rows;
+  check('post_collaborators_select: u3 (ajeno real) NO ve la invitación de otra persona', u3SeesInvite.length === 0);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

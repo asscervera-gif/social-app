@@ -43,6 +43,9 @@ struct NewPostView: View {
     @State private var pollQuestion = ""
     @State private var pollOptionA = ""
     @State private var pollOptionB = ""
+    // Publicación colaborativa real ("Collab"), comparado con Instagram
+    // -- ver 0142_post_collaborators.sql.
+    @State private var collaboratorUsername = ""
     let onDismiss: () -> Void
     let onPosted: () -> Void
     // Borrador de publicación no enviada, comparado con Instagram/Twitter/
@@ -153,13 +156,20 @@ struct NewPostView: View {
                     .textFieldStyle(.roundedBorder)
             }
 
+            // Publicación colaborativa real ("Collab"), comparado con
+            // Instagram -- ver NewPostViewModel.post(),
+            // 0142_post_collaborators.sql.
+            TextField("Invitar a colaborar (@usuario, opcional)", text: $collaboratorUsername)
+                .textFieldStyle(.roundedBorder)
+                .autocapitalization(.none)
+
             if let error = viewModel.errorMessage {
                 Text(error).font(.footnote).foregroundStyle(.red)
             }
 
             Button {
                 Task {
-                    if await viewModel.post(caption: caption, isSocialOnly: isSocialOnly, imageDataList: imageDataList, taggedProfileID: taggedProfileID, locationName: locationName, isSensitive: isSensitive, replyAudience: replyAudience, pollQuestion: pollQuestion, pollOptions: [pollOptionA, pollOptionB]) {
+                    if await viewModel.post(caption: caption, isSocialOnly: isSocialOnly, imageDataList: imageDataList, taggedProfileID: taggedProfileID, locationName: locationName, isSensitive: isSensitive, replyAudience: replyAudience, pollQuestion: pollQuestion, pollOptions: [pollOptionA, pollOptionB], collaboratorUsername: collaboratorUsername) {
                         didPost = true
                         onPosted()
                         onDismiss()

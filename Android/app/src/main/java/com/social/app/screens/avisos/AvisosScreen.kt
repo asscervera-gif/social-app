@@ -42,6 +42,7 @@ import com.social.app.chat.SocialLinkManager
 import com.social.app.ui.theme.SocialColors
 import com.social.app.util.relativeTime
 import io.github.jan.supabase.gotrue.auth
+import io.github.jan.supabase.postgrest.from
 import kotlinx.coroutines.launch
 
 /**
@@ -130,6 +131,7 @@ fun AvisosScreen(
                     entry.kind == "follow" -> selected = entry
                     entry.kind == "compat_request" -> selected = entry
                     entry.kind == "fight" -> selected = entry
+                    entry.kind == "post_collab_invite" -> selected = entry
                     // Hallazgo real: aceptar un social o una solicitud de
                     // compatibilidad no notificaba nunca a quien la pidió
                     // -- ver 0046_notify_accepted.sql.
@@ -228,6 +230,7 @@ private fun contextFor(kind: String): String = when (kind) {
     "social_accepted" -> "Aceptó tu social."
     "compat_accepted" -> "Compartió su compatibilidad contigo."
     "new_post" -> "Ha publicado algo nuevo."
+    "post_collab_invite" -> "Te ha invitado a aparecer como coautor de una publicación."
     else -> "Nueva notificación."
 }
 
@@ -262,6 +265,9 @@ private fun NotificationActionsSheet(
     val actorId = entry.payload["actor_id"]
     val compatRequestId = entry.payload["compat_request_id"]
     val duelId = entry.payload["duel_id"]
+    // Publicación colaborativa real ("Collab"), comparado con Instagram
+    // -- ver 0142_post_collaborators.sql.
+    val collabPostId = entry.payload["post_id"]
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 20.dp)) {
@@ -326,6 +332,35 @@ private fun NotificationActionsSheet(
                     onClick = { scope.launch { compatRequests.respond(compatRequestId, accept = false); onDismiss() } },
                     modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
                 ) { Text("✕ Denegar") }
+            }
+            if (entry.kind == "post_collab_invite" && collabPostId != null) {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            val myId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                            SupabaseManager.client.from("post_collaborators")
+                                .update({ set("status", "accepted"); set("responded_at", java.time.Instant.now().toString()) }) {
+                                    filter { eq("post_id", collabPostId); eq("user_id", myId) }
+                                }
+                            onDismiss()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = SocialColors.Green),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                ) { Text("✓ Aceptar colaboración") }
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            val myId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                            SupabaseManager.client.from("post_collaborators")
+                                .update({ set("status", "declined"); set("responded_at", java.time.Instant.now().toString()) }) {
+                                    filter { eq("post_id", collabPostId); eq("user_id", myId) }
+                                }
+                            onDismiss()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                ) { Text("✕ Rechazar") }
             }
             if (entry.kind == "fight" && duelId != null) {
                 Button(
