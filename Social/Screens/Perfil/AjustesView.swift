@@ -44,6 +44,13 @@ struct AjustesView: View {
     // en ninguna plataforma (ver PrivacySettingsViewModel.swift).
     @StateObject private var privacy = PrivacySettingsViewModel()
     @State private var showConfirm = false
+    // "Descargar tus datos" real, comparado con Instagram/Facebook/
+    // Twitter-X ("Download Your Information") -- ver
+    // DataExportManager.swift.
+    @StateObject private var dataExportManager = DataExportManager()
+    @State private var isExporting = false
+    @State private var exportFileURL: URL?
+    @State private var exportErrorMessage: String?
     // Palabras silenciadas reales en comentarios (0078_muted_keywords.sql),
     // comparado con Instagram/Twitter.
     @State private var newMutedKeyword = ""
@@ -306,6 +313,38 @@ struct AjustesView: View {
             }
 
             ChangePasswordSection()
+
+            // "Descargar tus datos" real, comparado con Instagram/
+            // Facebook/Twitter-X ("Download Your Information") -- ver
+            // DataExportManager.swift. Alcance deliberado: perfil +
+            // publicaciones + comentarios propios (posts y reels), no
+            // cada tabla del esquema.
+            if let exportFileURL {
+                ShareLink(item: exportFileURL) {
+                    Text("Descargar mis datos").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            } else {
+                Button {
+                    Task {
+                        isExporting = true
+                        exportFileURL = await dataExportManager.buildExportFile()
+                        if exportFileURL == nil { exportErrorMessage = "No se pudieron exportar tus datos." }
+                        isExporting = false
+                    }
+                } label: {
+                    if isExporting {
+                        ProgressView()
+                    } else {
+                        Text("Descargar mis datos").frame(maxWidth: .infinity)
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(isExporting)
+            }
+            if let exportErrorMessage {
+                Text(exportErrorMessage).font(.footnote).foregroundStyle(.red)
+            }
 
             // Hallazgo real, legalmente relevante: la política de
             // privacidad existía como documento del repositorio pero

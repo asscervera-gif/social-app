@@ -1,5 +1,7 @@
 package com.social.app.screens.perfil
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -95,6 +97,33 @@ fun AjustesScreen(
     val errorMessage by account.errorMessage.collectAsState()
     var showConfirm by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    // "Descargar tus datos" real, comparado con Instagram/Facebook/
+    // Twitter-X ("Download Your Information") -- ver DataExportManager.kt.
+    // El propio selector del sistema (Storage Access Framework) deja al
+    // usuario elegir dónde guardar el JSON real, sin necesitar
+    // FileProvider ni permisos de almacenamiento adicionales.
+    val dataExportManager = remember { DataExportManager() }
+    var isExporting by remember { mutableStateOf(false) }
+    var exportMessage by remember { mutableStateOf<String?>(null) }
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            isExporting = true
+            try {
+                val json = dataExportManager.buildExportJson()
+                if (json != null) {
+                    context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
+                    exportMessage = "Tus datos se han descargado correctamente."
+                } else {
+                    exportMessage = "No se pudieron exportar tus datos."
+                }
+            } catch (e: Exception) {
+                exportMessage = "No se pudieron exportar tus datos."
+            }
+            isExporting = false
+        }
+    }
 
     // Hallazgo real: `compat_public`/`location_public` se consultaban en
     // Match/Home/"Find" pero no había ningún interruptor para activarlos
@@ -528,6 +557,20 @@ fun AjustesScreen(
         ) {
             Text("Política de privacidad")
         }
+
+        // "Descargar tus datos" real, comparado con Instagram/Facebook/
+        // Twitter-X ("Download Your Information") -- ver
+        // DataExportManager.kt. Alcance deliberado: perfil + publicaciones
+        // + comentarios propios (posts y reels), no cada tabla del esquema.
+        OutlinedButton(
+            onClick = { exportLauncher.launch("social_datos_${System.currentTimeMillis()}.json") },
+            enabled = !isExporting,
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+        ) {
+            if (isExporting) CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp))
+            Text("Descargar mis datos")
+        }
+        exportMessage?.let { Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall) }
 
         OutlinedButton(
             onClick = { showConfirm = true },
