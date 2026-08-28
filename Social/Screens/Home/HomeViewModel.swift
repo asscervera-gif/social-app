@@ -452,6 +452,42 @@ final class HomeViewModel: ObservableObject {
         }
     }
 
+    /// Repost con comentario propio ("Quote Tweet"), comparado con
+    /// Twitter/X/Facebook ("Compartir con comentario") -- reutiliza la
+    /// misma tabla/restricción unique(post_id, user_id) que toggleRepost():
+    /// primero se quita cualquier repost simple previo antes de insertar
+    /// el que lleva comentario (0155_quote_reposts.sql). Equivalente de
+    /// HomeViewModel.kt.quoteRepost().
+    func quoteRepost(_ post: Post, text: String) async {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let alreadyReposted = repostedPostIDs.contains(post.id)
+        repostedPostIDs.insert(post.id)
+        if !alreadyReposted {
+            repostCounts[post.id] = (repostCounts[post.id] ?? 0) + 1
+        }
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        struct NewQuoteRepost: Encodable {
+            let post_id: UUID
+            let user_id: UUID
+            let quote_text: String
+        }
+        do {
+            try await SupabaseManager.shared.client
+                .from("post_reposts")
+                .delete()
+                .eq("post_id", value: post.id)
+                .eq("user_id", value: userID)
+                .execute()
+            try await SupabaseManager.shared.client
+                .from("post_reposts")
+                .insert(NewQuoteRepost(post_id: post.id, user_id: userID, quote_text: String(text.prefix(500))))
+                .execute()
+            AnalyticsManager.track("post_quote_reposted")
+        } catch {
+            errorMessage = "No se pudo citar la publicación."
+        }
+    }
+
     /// Refleja en el feed el comentario ya persistido por CommentsViewModel
     /// (ver 0008_comments.sql) sin recargar el feed entero — mismo criterio
     /// que like(). Equivalente de HomeViewModel.kt.commentAdded().

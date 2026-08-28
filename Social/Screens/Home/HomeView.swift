@@ -207,6 +207,9 @@ struct HomeView: View {
                     onToggleRepost: {
                         Task { await viewModel.toggleRepost(post) }
                     },
+                    onQuoteRepost: { text in
+                        Task { await viewModel.quoteRepost(post, text: text) }
+                    },
                     onShareToStory: {
                         Task { await viewModel.shareToStory(post) }
                     },
@@ -302,6 +305,11 @@ private struct PostCard: View {
     var isReposted: Bool = false
     var repostCount: Int = 0
     var onToggleRepost: () -> Void = {}
+    // Repost con comentario propio ("Quote Tweet"), comparado con
+    // Twitter/X -- ver HomeViewModel.quoteRepost(), 0155_quote_reposts.sql.
+    var onQuoteRepost: (String) -> Void = { _ in }
+    @State private var showQuoteRepostSheet = false
+    @State private var quoteRepostText = ""
     // Compartir a tu Historia con atribución real, comparado con
     // Instagram/Facebook -- ver HomeViewModel.shareToStory(),
     // 0129_story_shared_post.sql.
@@ -562,8 +570,16 @@ private struct PostCard: View {
                 }
                 // Repostear una publicación real, comparado con Twitter/X/
                 // Facebook -- ver HomeViewModel.toggleRepost(),
-                // 0127_post_reposts.sql.
-                Button(action: onToggleRepost) {
+                // 0127_post_reposts.sql. Repost con comentario propio
+                // ("Quote Tweet") -- ver HomeViewModel.quoteRepost(),
+                // 0155_quote_reposts.sql.
+                Menu {
+                    Button(isReposted ? "Quitar repost" : "Repostear", action: onToggleRepost)
+                    Button("Citar...") {
+                        quoteRepostText = ""
+                        showQuoteRepostSheet = true
+                    }
+                } label: {
                     if repostCount > 0 {
                         Label("\(repostCount)", systemImage: "arrow.2.squarepath")
                     } else {
@@ -571,6 +587,31 @@ private struct PostCard: View {
                     }
                 }
                 .foregroundStyle(isReposted ? .green : .secondary)
+                .sheet(isPresented: $showQuoteRepostSheet) {
+                    NavigationStack {
+                        Form {
+                            TextField("Añade un comentario...", text: $quoteRepostText, axis: .vertical)
+                                .lineLimit(3...6)
+                                .onChange(of: quoteRepostText) { newValue in
+                                    if newValue.count > 500 { quoteRepostText = String(newValue.prefix(500)) }
+                                }
+                        }
+                        .navigationTitle("Citar publicación")
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Cancelar") { showQuoteRepostSheet = false }
+                            }
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Citar") {
+                                    showQuoteRepostSheet = false
+                                    onQuoteRepost(quoteRepostText)
+                                }
+                                .disabled(quoteRepostText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            }
+                        }
+                    }
+                    .presentationDetents([.medium])
+                }
                 Spacer()
                 // Hallazgo real, comparado con Instagram/TikTok/Twitter/
                 // Snapchat: en las cuatro apps, este icono abre un

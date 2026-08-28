@@ -235,7 +235,12 @@ extension AvisosViewModel.NotificationEntry {
         case "reel_comment_like": return "Le gustó tu comentario"
         case "group_message": return "Nuevo mensaje de grupo"
         case "mention": return "Te mencionó"
-        case "repost": return "Reposteó tu publicación"
+        // Repost con comentario propio ("Quote Tweet"), comparado con
+        // Twitter/X -- ver 0155_quote_reposts.sql. quote_text solo viene
+        // presente cuando el repost real llevaba comentario.
+        case "repost":
+            if let quoteText = payload["quote_text"] { return "Citó tu publicación: \"\(quoteText)\"" }
+            return "Reposteó tu publicación"
         case "live_start": return "Está en directo ahora"
         case "post_collab_invite": return "Te invitó a colaborar en una publicación"
         case "countdown_due": return "¡Cuenta atrás terminada!"

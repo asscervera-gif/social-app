@@ -3540,6 +3540,31 @@ async function main() {
   const rpNotif = (await db.query(`select kind, payload from notifications where recipient_id = $1 and kind = 'repost'`, [rpU1])).rows;
   check('notify_new_repost: el autor real de la publicación (rpU1) recibe un aviso real por cada repost (2: el primero + el de después de quitar y repostear)', rpNotif.length === 2 && rpNotif.every(n => n.payload.post_id === rpPost.id));
 
+  // --- quote_text en post_reposts (0155_quote_reposts.sql): repost con
+  // comentario propio, comparado con Twitter/X ("Quote Tweet"). Reutiliza
+  // la misma tabla/RLS de arriba -- solo se comprueba la columna nueva y
+  // el CHECK de longitud. ---
+  await asUser(rpU2);
+  await db.query(`delete from post_reposts where post_id = $1 and user_id = $2`, [rpPost.id, rpU2]);
+  await expectOk('quote_text: rpU2 SÍ puede repostear con comentario propio real', async () => {
+    await db.query(`insert into post_reposts (post_id, user_id, quote_text) values ($1, $2, 'qué post tan real')`, [rpPost.id, rpU2]);
+  });
+  const rpQuoteRow = (await db.query(`select quote_text from post_reposts where post_id = $1 and user_id = $2`, [rpPost.id, rpU2])).rows[0];
+  check('quote_text: el texto real queda guardado tal cual', rpQuoteRow.quote_text === 'qué post tan real');
+
+  await asUser(rpU3);
+  let rpQuoteTooLong = false;
+  try {
+    await db.query(`insert into post_reposts (post_id, user_id, quote_text) values ($1, $2, repeat('x', 501))`, [rpPost.id, rpU3]);
+  } catch (e) {
+    rpQuoteTooLong = true;
+  }
+  check('quote_text: CHECK real rechaza más de 500 caracteres', rpQuoteTooLong);
+
+  await asUser(rpU1);
+  const rpQuoteNotif = (await db.query(`select payload from notifications where recipient_id = $1 and kind = 'repost' order by created_at desc limit 1`, [rpU1])).rows[0];
+  check('notify_new_repost: el payload real del aviso incluye quote_text', rpQuoteNotif.payload.quote_text === 'qué post tan real');
+
   // --- post_drafts (0128_post_drafts.sql): borrador de publicación no
   // enviada, comparado con Instagram/Twitter/X -- un borrador por usuario
   // (author_id PRIMARY KEY, upsert).

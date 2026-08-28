@@ -209,7 +209,10 @@ fun NotificationEntry.title(): String = when (kind) {
     "reel_comment_like" -> "Le gustó tu comentario"
     "group_message" -> "Nuevo mensaje de grupo"
     "mention" -> "Te mencionó"
-    "repost" -> "Reposteó tu publicación"
+    // Repost con comentario propio ("Quote Tweet"), comparado con Twitter/X
+    // -- ver 0155_quote_reposts.sql. quote_text solo viene presente cuando
+    // el repost real llevaba comentario, un repost simple sigue sin él.
+    "repost" -> payload["quote_text"]?.let { "Citó tu publicación: \"$it\"" } ?: "Reposteó tu publicación"
     "live_start" -> "Está en directo ahora"
     "post_collab_invite" -> "Te invitó a colaborar en una publicación"
     "countdown_due" -> "¡Cuenta atrás terminada!"

@@ -21,6 +21,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.IconButton
@@ -216,6 +218,7 @@ fun HomeScreen(
                     isReposted = repostedPostIds.contains(post.id),
                     repostCount = repostCounts[post.id] ?: 0,
                     onToggleRepost = { viewModel.toggleRepost(post) },
+                    onQuoteRepost = { text -> viewModel.quoteRepost(post, text) },
                     onShareToStory = { viewModel.shareToStory(post) }
                 )
             }
@@ -317,6 +320,9 @@ private fun PostCard(
     isReposted: Boolean = false,
     repostCount: Int = 0,
     onToggleRepost: () -> Unit = {},
+    // Repost con comentario propio ("Quote Tweet"), comparado con
+    // Twitter/X -- ver HomeViewModel.quoteRepost(), 0155_quote_reposts.sql.
+    onQuoteRepost: (String) -> Unit = {},
     // Compartir a tu Historia con atribución real, comparado con
     // Instagram/Facebook -- ver HomeViewModel.shareToStory(),
     // 0129_story_shared_post.sql. Solo posible con foto/vídeo real
@@ -572,11 +578,51 @@ private fun PostCard(
                 // Repostear una publicación real, comparado con
                 // Twitter/X/Facebook -- ver
                 // HomeViewModel.toggleRepost(), 0127_post_reposts.sql.
-                Text(
-                    if (repostCount > 0) "🔁 $repostCount" else "🔁",
-                    color = if (isReposted) SocialColors.Green else androidx.compose.ui.graphics.Color.Unspecified,
-                    modifier = Modifier.clickable(onClick = onToggleRepost)
-                )
+                // Repost con comentario propio ("Quote Tweet"), comparado
+                // con Twitter/X -- ver HomeViewModel.quoteRepost(),
+                // 0155_quote_reposts.sql.
+                var showRepostMenu by remember { mutableStateOf(false) }
+                var showQuoteDialog by remember { mutableStateOf(false) }
+                Box {
+                    Text(
+                        if (repostCount > 0) "🔁 $repostCount" else "🔁",
+                        color = if (isReposted) SocialColors.Green else androidx.compose.ui.graphics.Color.Unspecified,
+                        modifier = Modifier.clickable { showRepostMenu = true }
+                    )
+                    DropdownMenu(expanded = showRepostMenu, onDismissRequest = { showRepostMenu = false }) {
+                        DropdownMenuItem(text = { Text(if (isReposted) "Quitar repost" else "Repostear") }, onClick = {
+                            showRepostMenu = false
+                            onToggleRepost()
+                        })
+                        DropdownMenuItem(text = { Text("Citar...") }, onClick = {
+                            showRepostMenu = false
+                            showQuoteDialog = true
+                        })
+                    }
+                }
+                if (showQuoteDialog) {
+                    var quoteText by remember { mutableStateOf("") }
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { showQuoteDialog = false },
+                        title = { Text("Citar publicación") },
+                        text = {
+                            androidx.compose.material3.OutlinedTextField(
+                                value = quoteText,
+                                onValueChange = { if (it.length <= 500) quoteText = it },
+                                placeholder = { Text("Añade un comentario...") }
+                            )
+                        },
+                        confirmButton = {
+                            androidx.compose.material3.TextButton(onClick = {
+                                showQuoteDialog = false
+                                onQuoteRepost(quoteText)
+                            }, enabled = quoteText.isNotBlank()) { Text("Citar") }
+                        },
+                        dismissButton = {
+                            androidx.compose.material3.TextButton(onClick = { showQuoteDialog = false }) { Text("Cancelar") }
+                        }
+                    )
+                }
                 Text(
                     "➤",
                     // Hallazgo real, comparado con Instagram/TikTok/Twitter/

@@ -424,6 +424,13 @@ class HomeViewModel : ViewModel() {
         @SerialName("user_id") val userId: String
     )
 
+    @Serializable
+    private data class NewQuoteRepost(
+        @SerialName("post_id") val postId: String,
+        @SerialName("user_id") val userId: String,
+        @SerialName("quote_text") val quoteText: String
+    )
+
     /** Repostear/quitar repost real de una publicación, comparado con
      * Twitter/X/Facebook -- mismo patrón exacto que toggleLike()/
      * toggleSave() de abajo, restricción unique(post_id, user_id) real
@@ -446,6 +453,32 @@ class HomeViewModel : ViewModel() {
             } catch (e: Exception) {
                 // Restricción unique(post_id, user_id): el estado deseado
                 // ya se cumple, mismo criterio que toggleLike()/toggleSave().
+            }
+        }
+    }
+
+    /** Repost con comentario propio ("Quote Tweet"), comparado con
+     * Twitter/X/Facebook ("Compartir con comentario") -- reutiliza la
+     * misma tabla/restricción unique(post_id, user_id) que toggleRepost(),
+     * por eso primero se quita cualquier repost simple previo antes de
+     * insertar el que lleva comentario (0155_quote_reposts.sql). */
+    fun quoteRepost(post: Post, text: String) {
+        if (text.isBlank()) return
+        val alreadyReposted = _repostedPostIds.value.contains(post.id)
+        _repostedPostIds.update { it + post.id }
+        if (!alreadyReposted) {
+            _repostCounts.update { it + (post.id to ((it[post.id] ?: 0) + 1)) }
+        }
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                SupabaseManager.client.from("post_reposts").delete {
+                    filter { eq("post_id", post.id); eq("user_id", userId) }
+                }
+                SupabaseManager.client.from("post_reposts").insert(NewQuoteRepost(post.id, userId, text.take(500)))
+                com.social.app.backend.AnalyticsManager.track("post_quote_reposted")
+            } catch (e: Exception) {
+                _errorMessage.value = "No se pudo citar la publicación."
             }
         }
     }
