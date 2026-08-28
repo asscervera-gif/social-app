@@ -106,6 +106,11 @@ struct Post: Codable, Identifiable {
     // Fijar una publicación en el perfil (hasta 3), comparado con
     // Instagram -- ver 0106_pin_posts_to_profile.sql.
     var pinnedAt: String? = nil
+    // Texto alternativo real (accesibilidad), comparado con Instagram/
+    // Facebook/Twitter-X -- describe mediaURL (siempre la primera/única
+    // foto, mismo criterio que 0055_post_media.sql) para VoiceOver. Ver
+    // 0151_post_alt_text.sql.
+    var altText: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -124,6 +129,7 @@ struct Post: Codable, Identifiable {
         case isSensitive = "is_sensitive"
         case replyAudience = "reply_audience"
         case pinnedAt = "pinned_at"
+        case altText = "alt_text"
     }
 }
 
@@ -135,12 +141,17 @@ struct PostMedia: Codable, Identifiable {
     let postID: UUID
     let mediaURL: String
     var position: Int
+    // Texto alternativo real (accesibilidad) propio de ESTA foto
+    // adicional, comparado con Instagram/Facebook/Twitter-X -- ver
+    // 0151_post_alt_text.sql.
+    var altText: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
         case postID = "post_id"
         case mediaURL = "media_url"
         case position
+        case altText = "alt_text"
     }
 }
 

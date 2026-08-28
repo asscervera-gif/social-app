@@ -48,7 +48,15 @@ class NewPostViewModel : ViewModel() {
         @SerialName("is_sensitive") val isSensitive: Boolean = false,
         // "¿Quién puede comentar?" real, comparado con Twitter/X/TikTok
         // -- ver 0097_reply_audience.sql.
-        @SerialName("reply_audience") val replyAudience: String = "everyone"
+        @SerialName("reply_audience") val replyAudience: String = "everyone",
+        // Texto alternativo real (accesibilidad), comparado con
+        // Instagram/Facebook/Twitter-X -- describe la primera/única
+        // foto para lectores de pantalla (TalkBack). Ver
+        // 0151_post_alt_text.sql. Alcance acotado: solo la foto
+        // principal esta ronda, sin editor de texto alternativo por
+        // cada foto adicional del carrusel todavía -- hueco futuro
+        // documentado, no fingido aquí.
+        @SerialName("alt_text") val altText: String? = null
     )
 
     // Borrador de publicación no enviada, comparado con Instagram/Twitter/
@@ -139,7 +147,7 @@ class NewPostViewModel : ViewModel() {
     @Serializable
     private data class UsernameRow(val id: String)
 
-    suspend fun post(context: Context, caption: String, isSocialOnly: Boolean, imageUris: List<Uri>, taggedProfileId: String? = null, locationName: String? = null, isSensitive: Boolean = false, replyAudience: String = "everyone", pollQuestion: String = "", pollOptions: List<String> = emptyList(), collaboratorUsername: String = ""): Boolean {
+    suspend fun post(context: Context, caption: String, isSocialOnly: Boolean, imageUris: List<Uri>, taggedProfileId: String? = null, locationName: String? = null, isSensitive: Boolean = false, replyAudience: String = "everyone", pollQuestion: String = "", pollOptions: List<String> = emptyList(), collaboratorUsername: String = "", altText: String = ""): Boolean {
         val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return false
         // Mismo límite real que posts_caption_length
         // (0023_text_length_limits.sql) — validado aquí también para dar
@@ -161,7 +169,7 @@ class NewPostViewModel : ViewModel() {
         return try {
             val mediaUrls = imageUris.mapNotNull { StorageUploader.uploadImage(context, it, userId) }
             val insertedPost = SupabaseManager.client.from("posts")
-                .insert(NewPost(userId, caption, isSocialOnly, mediaUrls.firstOrNull(), taggedProfileId, trimmedLocation, isSensitive, replyAudience)) { select() }
+                .insert(NewPost(userId, caption, isSocialOnly, mediaUrls.firstOrNull(), taggedProfileId, trimmedLocation, isSensitive, replyAudience, altText.trim().take(1000).ifBlank { null })) { select() }
                 .decodeSingle<Post>()
             if (mediaUrls.size > 1) {
                 val extraMedia = mediaUrls.drop(1).mapIndexed { index, url ->

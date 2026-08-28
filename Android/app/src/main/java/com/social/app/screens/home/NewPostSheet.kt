@@ -92,6 +92,11 @@ fun NewPostSheet(
     // Alcance acotado: solo 1 colaborador por post, invitación real (no
     // automática).
     var collaboratorUsername by remember { mutableStateOf("") }
+    // Texto alternativo real (accesibilidad), comparado con Instagram/
+    // Facebook/Twitter-X -- describe la foto principal para lectores de
+    // pantalla (TalkBack). Ver NewPostViewModel.post(),
+    // 0151_post_alt_text.sql.
+    var altText by remember { mutableStateOf("") }
     val socialsViewModel: SocialsListViewModel = viewModel()
     val socials by socialsViewModel.socials.collectAsState()
     LaunchedEffect(Unit) { socialsViewModel.load() }
@@ -168,6 +173,19 @@ fun NewPostSheet(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
             ) {
                 Text(if (imageUris.isEmpty()) "Añadir fotos" else "Cambiar fotos (${imageUris.size})")
+            }
+
+            // Texto alternativo real (accesibilidad), comparado con
+            // Instagram/Facebook/Twitter-X -- describe la foto
+            // principal para lectores de pantalla (TalkBack). Alcance
+            // acotado: solo la foto principal esta ronda.
+            if (imageUris.isNotEmpty()) {
+                OutlinedTextField(
+                    value = altText,
+                    onValueChange = { altText = it },
+                    label = { Text("Texto alternativo (accesibilidad, opcional)") },
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                )
             }
 
             OutlinedTextField(
@@ -283,7 +301,7 @@ fun NewPostSheet(
                 onClick = {
                     scope.launch {
                         val pollOptions = listOf(pollOptionA, pollOptionB)
-                        if (viewModel.post(context, caption, isSocialOnly, imageUris, taggedProfileId, locationName, isSensitive, replyAudience, pollQuestion, pollOptions, collaboratorUsername)) {
+                        if (viewModel.post(context, caption, isSocialOnly, imageUris, taggedProfileId, locationName, isSensitive, replyAudience, pollQuestion, pollOptions, collaboratorUsername, altText)) {
                             onPosted()
                             onDismiss()
                         }

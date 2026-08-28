@@ -81,7 +81,12 @@ data class Post(
     @SerialName("reply_audience") val replyAudience: String = "everyone",
     // Fijar una publicación en el perfil (hasta 3), comparado con
     // Instagram -- ver 0106_pin_posts_to_profile.sql.
-    @SerialName("pinned_at") val pinnedAt: String? = null
+    @SerialName("pinned_at") val pinnedAt: String? = null,
+    // Texto alternativo real (accesibilidad), comparado con Instagram/
+    // Facebook/Twitter-X -- describe media_url (siempre la primera/
+    // única foto, mismo criterio que 0055_post_media.sql) para lectores
+    // de pantalla (TalkBack). Ver 0151_post_alt_text.sql.
+    @SerialName("alt_text") val altText: String? = null
 )
 
 @Serializable
@@ -115,7 +120,11 @@ data class PostMedia(
     val id: String,
     @SerialName("post_id") val postId: String,
     @SerialName("media_url") val mediaUrl: String,
-    val position: Int = 0
+    val position: Int = 0,
+    // Texto alternativo real (accesibilidad) propio de ESTA foto
+    // adicional, comparado con Instagram/Facebook/Twitter-X -- ver
+    // 0151_post_alt_text.sql.
+    @SerialName("alt_text") val altText: String? = null
 )
 
 @Serializable

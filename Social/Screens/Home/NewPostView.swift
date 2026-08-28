@@ -46,6 +46,10 @@ struct NewPostView: View {
     // Publicación colaborativa real ("Collab"), comparado con Instagram
     // -- ver 0142_post_collaborators.sql.
     @State private var collaboratorUsername = ""
+    // Texto alternativo real (accesibilidad), comparado con Instagram/
+    // Facebook/Twitter-X -- describe la foto principal para VoiceOver.
+    // Ver NewPostViewModel.post(), 0151_post_alt_text.sql.
+    @State private var altText = ""
     let onDismiss: () -> Void
     let onPosted: () -> Void
     // Borrador de publicación no enviada, comparado con Instagram/Twitter/
@@ -105,6 +109,15 @@ struct NewPostView: View {
                     }
                     imageDataList = loaded
                 }
+            }
+
+            // Texto alternativo real (accesibilidad), comparado con
+            // Instagram/Facebook/Twitter-X -- describe la foto principal
+            // para VoiceOver. Alcance acotado: solo la foto principal
+            // esta ronda.
+            if !imageDataList.isEmpty {
+                TextField("Texto alternativo (accesibilidad, opcional)", text: $altText)
+                    .textFieldStyle(.roundedBorder)
             }
 
             TextField("📍 Añadir ubicación (opcional)", text: $locationName)
@@ -169,7 +182,7 @@ struct NewPostView: View {
 
             Button {
                 Task {
-                    if await viewModel.post(caption: caption, isSocialOnly: isSocialOnly, imageDataList: imageDataList, taggedProfileID: taggedProfileID, locationName: locationName, isSensitive: isSensitive, replyAudience: replyAudience, pollQuestion: pollQuestion, pollOptions: [pollOptionA, pollOptionB], collaboratorUsername: collaboratorUsername) {
+                    if await viewModel.post(caption: caption, isSocialOnly: isSocialOnly, imageDataList: imageDataList, taggedProfileID: taggedProfileID, locationName: locationName, isSensitive: isSensitive, replyAudience: replyAudience, pollQuestion: pollQuestion, pollOptions: [pollOptionA, pollOptionB], collaboratorUsername: collaboratorUsername, altText: altText) {
                         didPost = true
                         onPosted()
                         onDismiss()

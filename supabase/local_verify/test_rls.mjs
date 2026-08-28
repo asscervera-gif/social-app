@@ -4238,6 +4238,28 @@ async function main() {
   const reelsWithThisSound = (await db.query(`select id from reels where sound_source_reel_id = $1 order by created_at`, [rootReelId])).rows;
   check('"Reels con este sonido": una sola consulta plana por sound_source_reel_id real encuentra los 2 reels reales que lo usan', reelsWithThisSound.length === 2);
 
+  // --- posts.alt_text/post_media.alt_text (0151_post_alt_text.sql):
+  // texto alternativo real (accesibilidad), comparado con Instagram/
+  // Facebook/Twitter-X. Sin RLS nueva -- reutiliza posts_write_own/
+  // post_media_insert_own ya existentes. ---
+  await asUser(u1);
+  const altTextPostId = (await db.query(
+    `insert into posts (author_id, caption, media_url, alt_text) values ($1, 'foto real con descripción', 'https://cdn.example/foto.jpg', 'Atardecer real sobre el mar') returning id`,
+    [u1]
+  )).rows[0].id;
+  const altTextRow = (await db.query(`select alt_text from posts where id = $1`, [altTextPostId])).rows[0];
+  check('posts.alt_text: el texto alternativo real se guarda tal cual', altTextRow.alt_text === 'Atardecer real sobre el mar');
+
+  await expectFail('posts.alt_text: un texto alternativo real de más de 1000 caracteres NO se puede guardar (constraint real)', async () => {
+    await db.query(`update posts set alt_text = repeat('x', 1001) where id = $1`, [altTextPostId]);
+  });
+
+  await expectOk('post_media_insert_own: u1 SÍ puede añadir una foto real adicional con su propio texto alternativo', async () => {
+    await db.query(`insert into post_media (post_id, media_url, alt_text) values ($1, 'https://cdn.example/foto2.jpg', 'Segunda foto real: barco de vela')`, [altTextPostId]);
+  });
+  const mediaAltText = (await db.query(`select alt_text from post_media where post_id = $1`, [altTextPostId])).rows[0];
+  check('post_media.alt_text: la foto adicional real tiene su propio texto alternativo distinto', mediaAltText.alt_text === 'Segunda foto real: barco de vela');
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

@@ -434,7 +434,11 @@ private fun PostCard(
                 if (allUrls.size == 1) {
                     androidx.compose.foundation.Image(
                         painter = coil.compose.rememberAsyncImagePainter(firstUrl),
-                        contentDescription = null,
+                        // Texto alternativo real (accesibilidad), comparado
+                        // con Instagram/Facebook/Twitter-X -- leído por
+                        // TalkBack en vez del nombre genérico del control.
+                        // Ver 0151_post_alt_text.sql.
+                        contentDescription = post.altText,
                         contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                         modifier = Modifier.fillMaxWidth().height(220.dp)
                             .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))

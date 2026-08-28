@@ -464,6 +464,11 @@ private struct PostCard: View {
                     // completo, solo el recorte fijo de 220pt.
                     .onTapGesture(count: 2) { likeViaDoubleTap() }
                     .onTapGesture { fullScreenURL = url }
+                    // Texto alternativo real (accesibilidad), comparado
+                    // con Instagram/Facebook/Twitter-X -- leído por
+                    // VoiceOver en vez del nombre genérico del control.
+                    // Ver 0151_post_alt_text.sql.
+                    .accessibilityLabel(post.altText ?? "")
                 }
                 if showDoubleTapHeart {
                     Text("❤")

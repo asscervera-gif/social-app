@@ -74,7 +74,7 @@ final class NewPostViewModel: ObservableObject {
             .execute()
     }
 
-    func post(caption: String, isSocialOnly: Bool, imageDataList: [Data], taggedProfileID: UUID? = nil, locationName: String? = nil, isSensitive: Bool = false, replyAudience: String = "everyone", pollQuestion: String = "", pollOptions: [String] = [], collaboratorUsername: String = "") async -> Bool {
+    func post(caption: String, isSocialOnly: Bool, imageDataList: [Data], taggedProfileID: UUID? = nil, locationName: String? = nil, isSensitive: Bool = false, replyAudience: String = "everyone", pollQuestion: String = "", pollOptions: [String] = [], collaboratorUsername: String = "", altText: String = "") async -> Bool {
         guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return false }
         // Mismo límite real que posts_caption_length
         // (0023_text_length_limits.sql) — validado aquí también, mismo
@@ -101,6 +101,11 @@ final class NewPostViewModel: ObservableObject {
             let location_name: String?
             let is_sensitive: Bool
             let reply_audience: String
+            // Texto alternativo real (accesibilidad), comparado con
+            // Instagram/Facebook/Twitter-X -- ver 0151_post_alt_text.sql.
+            // Alcance acotado: solo la foto principal esta ronda, sin
+            // editor por cada foto adicional del carrusel todavía.
+            let alt_text: String?
         }
         struct NewPostMedia: Encodable {
             let post_id: UUID
@@ -125,7 +130,7 @@ final class NewPostViewModel: ObservableObject {
             }
             let insertedPost: Post = try await SupabaseManager.shared.client
                 .from("posts")
-                .insert(NewPost(author_id: userID, caption: caption, is_social_only: isSocialOnly, media_url: mediaURLs.first, tagged_profile_id: taggedProfileID, location_name: finalLocation, is_sensitive: isSensitive, reply_audience: replyAudience))
+                .insert(NewPost(author_id: userID, caption: caption, is_social_only: isSocialOnly, media_url: mediaURLs.first, tagged_profile_id: taggedProfileID, location_name: finalLocation, is_sensitive: isSensitive, reply_audience: replyAudience, alt_text: altText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : String(altText.prefix(1000))))
                 .select()
                 .single()
                 .execute()
