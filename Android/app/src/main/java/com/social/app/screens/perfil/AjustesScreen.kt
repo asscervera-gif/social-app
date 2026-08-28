@@ -92,7 +92,10 @@ fun AjustesScreen(
     onOpenCloseFriends: () -> Unit = {},
     // "Dispositivos conectados" real, comparado con Instagram/Facebook/
     // Snapchat -- ver DevicesScreen.kt.
-    onOpenDevices: () -> Unit = {}
+    onOpenDevices: () -> Unit = {},
+    // "Tiempo en pantalla" real ("Bienestar digital"), comparado con
+    // Instagram/TikTok/Facebook/Snapchat -- ver ScreenTimeScreen.kt.
+    onOpenScreenTime: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val account = remember { AccountManager() }
@@ -497,6 +500,17 @@ fun AjustesScreen(
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
         ) {
             Text("Dispositivos conectados")
+        }
+
+        // "Tiempo en pantalla" real ("Bienestar digital"), comparado con
+        // Instagram ("Tu actividad")/TikTok (Screen Time Management)/
+        // Facebook ("Tu tiempo en Facebook")/Snapchat -- ver
+        // ScreenTimeScreen.kt.
+        OutlinedButton(
+            onClick = onOpenScreenTime,
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+        ) {
+            Text("Tiempo en pantalla")
         }
 
         if (isAdmin) {

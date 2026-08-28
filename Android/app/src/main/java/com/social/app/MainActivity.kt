@@ -9,6 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.mutableStateOf
 import com.social.app.auth.AppRoot
 import com.social.app.backend.AnalyticsManager
+import com.social.app.backend.ScreenTimeManager
 import com.social.app.backend.SupabaseManager
 import com.social.app.proximity.SocialProximity
 import com.social.app.ui.theme.SocialTheme
@@ -90,6 +91,25 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         startTab.value = intent.getStringExtra(EXTRA_OPEN_TAB)
+    }
+
+    // Tiempo en pantalla real ("Bienestar digital"), comparado con
+    // Instagram/TikTok/Facebook/Snapchat -- una fila real de
+    // app_sessions por cada vez que la app pasa a primer plano hasta
+    // que vuelve a segundo plano. Single-Activity real (ver comentario
+    // de la clase), así que onStart/onStop de ESTA Activity ya es
+    // equivalente real a "la app pasó a primer/segundo plano", sin
+    // necesitar la dependencia androidx.lifecycle:lifecycle-process
+    // (ProcessLifecycleOwner) que este proyecto no tiene todavía. Ver
+    // ScreenTimeManager.kt, 0149_screen_time.sql.
+    override fun onStart() {
+        super.onStart()
+        ScreenTimeManager.startSession()
+    }
+
+    override fun onStop() {
+        ScreenTimeManager.endSession(applicationContext)
+        super.onStop()
     }
 
     override fun onDestroy() {

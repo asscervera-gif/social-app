@@ -108,6 +108,9 @@ private const val QR_SCANNER_ROUTE = "qr_scanner"
 // "Dispositivos conectados" real, comparado con Instagram/Facebook/
 // Snapchat -- ver DevicesScreen.kt.
 private const val DEVICES_ROUTE = "devices"
+// "Tiempo en pantalla" real ("Bienestar digital"), comparado con
+// Instagram/TikTok/Facebook/Snapchat -- ver ScreenTimeScreen.kt.
+private const val SCREEN_TIME_ROUTE = "screen_time"
 // Publicación individual real ("permalink"), comparado con Instagram/
 // Twitter/Facebook -- ver PostDetailScreen.kt para el hallazgo completo.
 private const val POST_ROUTE = "post/{postId}"
@@ -535,13 +538,19 @@ fun RootTabView(proximity: SocialProximity, startTab: String? = null) {
                             onOpenPrivacyPolicy = { navController.navigate(PRIVACY_POLICY_ROUTE) },
                             onOpenModeration = { navController.navigate(MODERATION_ROUTE) },
                             onOpenCloseFriends = { navController.navigate(CLOSE_FRIENDS_ROUTE) },
-                            onOpenDevices = { navController.navigate(DEVICES_ROUTE) }
+                            onOpenDevices = { navController.navigate(DEVICES_ROUTE) },
+                            onOpenScreenTime = { navController.navigate(SCREEN_TIME_ROUTE) }
                         )
                     }
                 }
                 composable(DEVICES_ROUTE) {
                     com.social.app.ui.theme.BackScaffold(title = "Dispositivos", onBack = { navController.popBackStack() }) {
                         com.social.app.screens.perfil.DevicesScreen()
+                    }
+                }
+                composable(SCREEN_TIME_ROUTE) {
+                    com.social.app.ui.theme.BackScaffold(title = "Tiempo en pantalla", onBack = { navController.popBackStack() }) {
+                        com.social.app.screens.perfil.ScreenTimeScreen()
                     }
                 }
                 composable(CLOSE_FRIENDS_ROUTE) {

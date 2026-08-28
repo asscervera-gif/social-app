@@ -4176,6 +4176,34 @@ async function main() {
   const responsesAsAuthor = (await db.query(`select user_id, value from story_slider_responses where story_id = $1 order by user_id`, [sliderStoryId])).rows;
   check('story_slider_responses_select: el autor real de la historia (u1) SÍ ve TODAS las respuestas individuales, con quién las mandó', responsesAsAuthor.length === 2);
 
+  // --- app_sessions + profiles.daily_time_limit_minutes/daily_reminder_enabled
+  // (0149_screen_time.sql): tiempo en pantalla real ("Bienestar
+  // digital"), comparado con Instagram/TikTok/Facebook/Snapchat. ---
+  await asUser(u1);
+  const sessionId = (await db.query(
+    `insert into app_sessions (user_id, started_at) values ($1, now() - interval '5 minutes') returning id`, [u1]
+  )).rows[0].id;
+  await expectOk('app_sessions_own: u1 SÍ puede cerrar su propia sesión real con la duración calculada', async () => {
+    await db.query(`update app_sessions set ended_at = now(), duration_seconds = 300 where id = $1`, [sessionId]);
+  });
+  await expectOk('profiles_update_own: u1 SÍ puede fijar su propio límite diario real', async () => {
+    await db.query(`update profiles set daily_time_limit_minutes = 60, daily_reminder_enabled = true where id = $1`, [u1]);
+  });
+  await expectFail('app_sessions.daily_time_limit_minutes: un límite real de 0 minutos NO se puede guardar (constraint real)', async () => {
+    await db.query(`update profiles set daily_time_limit_minutes = 0 where id = $1`, [u1]);
+  });
+
+  await asUser(u2);
+  await expectFail('app_sessions_own: u2 NO puede registrar una sesión real en nombre de u1', async () => {
+    await db.query(`insert into app_sessions (user_id, started_at) values ($1, now())`, [u1]);
+  });
+  const u2SeesU1Sessions = (await db.query(`select id from app_sessions where user_id = $1`, [u1])).rows;
+  check('app_sessions_own: u2 NO ve las sesiones reales de u1', u2SeesU1Sessions.length === 0);
+
+  await asUser(u1);
+  const u1OwnSessions = (await db.query(`select duration_seconds from app_sessions where user_id = $1`, [u1])).rows;
+  check('app_sessions_own: u1 SÍ ve su propia sesión real con la duración guardada', u1OwnSessions.length === 1 && u1OwnSessions[0].duration_seconds === 300);
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

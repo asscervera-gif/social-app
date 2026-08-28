@@ -314,6 +314,15 @@ struct AjustesView: View {
             }
             .buttonStyle(.bordered)
 
+            // "Tiempo en pantalla" real ("Bienestar digital"), comparado
+            // con Instagram ("Tu actividad")/TikTok (Screen Time
+            // Management)/Facebook ("Tu tiempo en Facebook")/Snapchat --
+            // ver ScreenTimeView.swift.
+            NavigationLink("Tiempo en pantalla") {
+                ScreenTimeView()
+            }
+            .buttonStyle(.bordered)
+
             if isAdmin {
                 NavigationLink("Moderación") {
                     ModerationView()
