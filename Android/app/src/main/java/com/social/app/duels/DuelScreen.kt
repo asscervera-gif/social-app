@@ -31,6 +31,9 @@ fun DuelScreen(chatId: String, opponentId: String, opponentSections: List<Pair<S
     val delta by viewModel.delta.collectAsState()
     val explanation by viewModel.explanation.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    // Cuenta atrás real por pregunta, comparado con el patrón de trivia
+    // por turnos tipo Kahoot -- ver DuelViewModel.startTimer().
+    val timeLeft by viewModel.timeLeft.collectAsState()
 
     LaunchedEffect(chatId) { viewModel.start(opponentSections) }
 
@@ -48,6 +51,11 @@ fun DuelScreen(chatId: String, opponentId: String, opponentSections: List<Pair<S
                 val question = questions.getOrNull(currentIndex)
                 if (question != null) {
                     Text("Pregunta ${currentIndex + 1} de ${questions.size}", style = MaterialTheme.typography.labelMedium)
+                    Text(
+                        "⏱ ${timeLeft}s",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (timeLeft <= 3) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     Text(question.prompt, style = MaterialTheme.typography.titleMedium)
                     question.options.forEachIndexed { index, option ->
                         OutlinedButton(onClick = { viewModel.answer(index) }, modifier = Modifier.fillMaxWidth()) {

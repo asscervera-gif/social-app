@@ -32,6 +32,31 @@ final class DuelViewModel: ObservableObject {
     @Published var delta: Int?
     @Published var explanation: String?
     @Published var errorMessage: String?
+    // Cuenta atrás real por pregunta, comparado con el patrón de trivia
+    // por turnos tipo Kahoot -- hallazgo real, confirmado con grep: cero
+    // "timer"/"countdown" en todo el archivo, .answering no tenía ningún
+    // límite de tiempo. Sin tocar el servidor: answer(-1) real al
+    // agotarse el tiempo, duel-ai/index.ts.scoreDuel ya compara
+    // correctIndex === answers[i] -- -1 nunca coincide con un índice
+    // real, cuenta como fallo real sin necesitar ningún cambio de
+    // servidor. Equivalente de DuelViewModel.kt.timeLeft.
+    @Published var timeLeft = Self.timerSeconds
+    private static let timerSeconds = 10
+    private var timerTask: Task<Void, Never>?
+
+    private func startTimer() {
+        timerTask?.cancel()
+        timeLeft = Self.timerSeconds
+        timerTask = Task { [weak self] in
+            guard let self else { return }
+            while self.timeLeft > 0 {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                if Task.isCancelled { return }
+                self.timeLeft -= 1
+            }
+            self.answer(-1)
+        }
+    }
 
     init(chatID: UUID, initiatorID: UUID, opponentID: UUID) {
         self.chatID = chatID
@@ -61,6 +86,7 @@ final class DuelViewModel: ObservableObject {
             sessionID = response.sessionId
             questions = response.questions
             stage = .answering
+            startTimer()
             // Hallazgo real, mismo criterio ya aplicado en la versión
             // Kotlin equivalente: solo se registraba `duel_completed` —
             // sin `duel_started` es imposible medir cuánta gente empieza
@@ -72,9 +98,11 @@ final class DuelViewModel: ObservableObject {
     }
 
     func answer(_ optionIndex: Int) {
+        timerTask?.cancel()
         answers.append(optionIndex)
         if currentIndex + 1 < questions.count {
             currentIndex += 1
+            startTimer()
         } else {
             Task { await finish() }
         }

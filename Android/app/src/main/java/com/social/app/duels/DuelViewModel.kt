@@ -3,6 +3,8 @@ package com.social.app.duels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.social.app.backend.model.DuelQuestion
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,6 +42,31 @@ class DuelViewModel(private val chatId: String, private val opponentId: String) 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
+    // Cuenta atrás real por pregunta, comparado con el patrón de trivia
+    // por turnos tipo Kahoot -- hallazgo real, confirmado con grep: cero
+    // "timer"/"countdown" en todo el archivo, ANSWERING no tenía ningún
+    // límite de tiempo, un jugador podía tardar minutos mientras el otro
+    // esperaba. Sin tocar el servidor: `answer(-1)` real al agotarse el
+    // tiempo, `duel-ai/index.ts.scoreDuel` ya compara
+    // `correctIndex === answers[i]` -- -1 nunca coincide con un índice
+    // real (0/1/2), cuenta como fallo real sin necesitar ningún cambio
+    // de servidor.
+    private val _timeLeft = MutableStateFlow(TIMER_SECONDS)
+    val timeLeft: StateFlow<Int> = _timeLeft.asStateFlow()
+    private var timerJob: Job? = null
+
+    private fun startTimer() {
+        timerJob?.cancel()
+        _timeLeft.value = TIMER_SECONDS
+        timerJob = viewModelScope.launch {
+            while (_timeLeft.value > 0) {
+                delay(1000)
+                _timeLeft.value -= 1
+            }
+            answer(-1)
+        }
+    }
+
     /** Reutilizada tal cual para "🔁 Retar de nuevo" (DuelScreen.kt,
      * DuelStage.FINISHED) -- hueco real #3 de la auditoría de sistemas
      * propios de SOCIAL: antes cada duelo nuevo exigía volver a entrar
@@ -61,6 +88,7 @@ class DuelViewModel(private val chatId: String, private val opponentId: String) 
                 sessionId = response.sessionId
                 _questions.value = response.questions
                 _stage.value = DuelStage.ANSWERING
+                startTimer()
                 // Hallazgo real: solo se registraba `duel_completed` —
                 // sin `duel_started` es imposible medir cuánta gente
                 // empieza un duelo y lo abandona antes de terminarlo.
@@ -72,12 +100,23 @@ class DuelViewModel(private val chatId: String, private val opponentId: String) 
     }
 
     fun answer(optionIndex: Int) {
+        timerJob?.cancel()
         answers.add(optionIndex)
         if (_currentIndex.value + 1 < _questions.value.size) {
             _currentIndex.value += 1
+            startTimer()
         } else {
             finish()
         }
+    }
+
+    override fun onCleared() {
+        timerJob?.cancel()
+        super.onCleared()
+    }
+
+    companion object {
+        private const val TIMER_SECONDS = 10
     }
 
     private fun finish() {

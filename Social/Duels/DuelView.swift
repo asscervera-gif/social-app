@@ -24,6 +24,7 @@ struct DuelView: View {
                         question: question,
                         index: viewModel.currentIndex,
                         total: viewModel.questions.count,
+                        timeLeft: viewModel.timeLeft,
                         onAnswer: viewModel.answer
                     )
                 }
@@ -49,6 +50,9 @@ private struct QuestionCard: View {
     let question: DuelQuestion
     let index: Int
     let total: Int
+    // Cuenta atrás real por pregunta, comparado con el patrón de trivia
+    // por turnos tipo Kahoot -- ver DuelViewModel.startTimer().
+    let timeLeft: Int
     let onAnswer: (Int) -> Void
 
     var body: some View {
@@ -56,6 +60,10 @@ private struct QuestionCard: View {
             Text("Pregunta \(index + 1) de \(total)")
                 .font(.caption.bold())
                 .foregroundStyle(.secondary)
+
+            Text("⏱ \(timeLeft)s")
+                .font(.subheadline.bold())
+                .foregroundStyle(timeLeft <= 3 ? .red : .secondary)
 
             Text(question.prompt)
                 .font(.title3.bold())
