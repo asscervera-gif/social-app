@@ -54,6 +54,17 @@ final class HomeViewModel: ObservableObject {
     @Published var postPolls: [UUID: PostPollRow] = [:]
     @Published var myPostPollVotes: [UUID: Int] = [:]
 
+    // Repostear una publicación real, comparado con Twitter/X/Facebook --
+    // ver 0127_post_reposts.sql. Alcance deliberado: esta ronda cubre el
+    // toggle + contador + aviso real al autor, igual que el equivalente
+    // Kotlin (HomeViewModel.kt.toggleRepost) -- mostrar el repost dentro
+    // del feed de tus propios seguidores queda para una ronda futura,
+    // mismo criterio de fase inicial ya usado varias veces esta sesión
+    // (p. ej. muted_feed_keywords solo cubrió el feed antes de extenderse
+    // a Reels).
+    @Published var repostedPostIDs: Set<UUID> = []
+    @Published var repostCounts: [UUID: Int] = [:]
+
     func load() async {
         isLoading = true
         defer { isLoading = false }
@@ -212,6 +223,17 @@ final class HomeViewModel: ObservableObject {
                     .value {
                     likedPostIDs = Set(rows.map { $0.post_id })
                 }
+                struct RepostRow: Decodable { let post_id: UUID; let user_id: UUID }
+                if !feedIDs.isEmpty,
+                   let rows: [RepostRow] = try? await client
+                    .from("post_reposts")
+                    .select("post_id,user_id")
+                    .in("post_id", values: feedIDs)
+                    .execute()
+                    .value {
+                    repostedPostIDs = Set(rows.filter { $0.user_id == userID }.map { $0.post_id })
+                    repostCounts = Dictionary(grouping: rows, by: { $0.post_id }).mapValues { $0.count }
+                }
             }
             let myInterests: Set<String>
             if let userID,
@@ -346,6 +368,45 @@ final class HomeViewModel: ObservableObject {
             // Postgrest devuelve un 409 — no es un error real de usuario,
             // el estado deseado ya se cumple (mismo criterio que
             // toggleSave()).
+        }
+    }
+
+    /// Toggle real de repost/unrepost, comparado con Twitter/X/Facebook --
+    /// mismo patrón exacto que toggleLike(). El aviso real al autor lo
+    /// dispara `private.notify_new_repost()` (0127_post_reposts.sql), no
+    /// este código. Equivalente de HomeViewModel.kt.toggleRepost().
+    func toggleRepost(_ post: Post) async {
+        let currentlyReposted = repostedPostIDs.contains(post.id)
+        if currentlyReposted {
+            repostedPostIDs.remove(post.id)
+            repostCounts[post.id] = max(0, (repostCounts[post.id] ?? 1) - 1)
+        } else {
+            repostedPostIDs.insert(post.id)
+            repostCounts[post.id] = (repostCounts[post.id] ?? 0) + 1
+        }
+        guard let userID = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+        struct NewRepost: Encodable {
+            let post_id: UUID
+            let user_id: UUID
+        }
+        do {
+            if currentlyReposted {
+                try await SupabaseManager.shared.client
+                    .from("post_reposts")
+                    .delete()
+                    .eq("post_id", value: post.id)
+                    .eq("user_id", value: userID)
+                    .execute()
+            } else {
+                try await SupabaseManager.shared.client
+                    .from("post_reposts")
+                    .insert(NewRepost(post_id: post.id, user_id: userID))
+                    .execute()
+                AnalyticsManager.track("post_reposted")
+            }
+        } catch {
+            // Restricción unique(post_id, user_id): mismo criterio de
+            // tolerancia ya usado en toggleLike()/toggleSave().
         }
     }
 

@@ -189,6 +189,12 @@ fun AvisosScreen(
                     // 0098_post_notifications.sql.
                     entry.kind == "new_post" && entry.payload["post_id"] != null ->
                         onOpenPost(entry.payload["post_id"]!!)
+                    // Repostear una publicación real, comparado con
+                    // Twitter/X/Facebook -- mismo criterio de navegación
+                    // directa que like/comment. Ver
+                    // HomeViewModel.toggleRepost(), 0127_post_reposts.sql.
+                    entry.kind == "repost" && entry.payload["post_id"] != null ->
+                        onOpenPost(entry.payload["post_id"]!!)
                 }
             })
         }

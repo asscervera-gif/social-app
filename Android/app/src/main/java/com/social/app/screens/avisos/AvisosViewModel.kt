@@ -175,6 +175,9 @@ fun NotificationEntry.icon(): String = when (kind) {
     // @menciones reales (0074_mentions.sql), comparado con
     // Instagram/Twitter/TikTok.
     "mention" -> "@"
+    // Repostear una publicación real, comparado con Twitter/X/Facebook
+    // -- ver HomeViewModel.toggleRepost(), 0127_post_reposts.sql.
+    "repost" -> "🔁"
     else -> "🔔"
 }
 
@@ -194,5 +197,6 @@ fun NotificationEntry.title(): String = when (kind) {
     "reel_comment_like" -> "Le gustó tu comentario"
     "group_message" -> "Nuevo mensaje de grupo"
     "mention" -> "Te mencionó"
+    "repost" -> "Reposteó tu publicación"
     else -> "Notificación"
 }

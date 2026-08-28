@@ -84,6 +84,10 @@ fun HomeScreen(
     val extraMediaByPost by viewModel.extraMediaByPost.collectAsState()
     val postPolls by viewModel.postPolls.collectAsState()
     val myPostPollVotes by viewModel.myPostPollVotes.collectAsState()
+    // Repostear una publicación real, comparado con Twitter/X/Facebook --
+    // ver HomeViewModel.toggleRepost(), 0127_post_reposts.sql.
+    val repostedPostIds by viewModel.repostedPostIds.collectAsState()
+    val repostCounts by viewModel.repostCounts.collectAsState()
     var commentsPostId by remember { mutableStateOf<String?>(null) }
     // Hallazgo real: no había ninguna forma de crear una publicación en
     // toda la app (ver NewPostViewModel.kt para el detalle completo).
@@ -195,7 +199,10 @@ fun HomeScreen(
                     onRequestCompat = { viewModel.requestCompatibility(post.authorId) },
                     poll = poll,
                     myPollVote = poll?.let { myPostPollVotes[it.id] },
-                    onVotePoll = { optionIndex -> poll?.let { viewModel.voteOnPostPoll(it.id, optionIndex) } }
+                    onVotePoll = { optionIndex -> poll?.let { viewModel.voteOnPostPoll(it.id, optionIndex) } },
+                    isReposted = repostedPostIds.contains(post.id),
+                    repostCount = repostCounts[post.id] ?: 0,
+                    onToggleRepost = { viewModel.toggleRepost(post) }
                 )
             }
         }
@@ -290,7 +297,12 @@ private fun PostCard(
     // 0113_post_polls.sql.
     poll: HomeViewModel.PostPollRow? = null,
     myPollVote: Int? = null,
-    onVotePoll: (Int) -> Unit = {}
+    onVotePoll: (Int) -> Unit = {},
+    // Repostear una publicación real, comparado con Twitter/X/Facebook --
+    // ver HomeViewModel.toggleRepost(), 0127_post_reposts.sql.
+    isReposted: Boolean = false,
+    repostCount: Int = 0,
+    onToggleRepost: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -534,6 +546,14 @@ private fun PostCard(
                     modifier = Modifier.clickable(onClick = onLike).padding(end = 4.dp)
                 )
                 Text("💬 ${post.commentCount}", modifier = Modifier.clickable(onClick = onOpenComments))
+                // Repostear una publicación real, comparado con
+                // Twitter/X/Facebook -- ver
+                // HomeViewModel.toggleRepost(), 0127_post_reposts.sql.
+                Text(
+                    if (repostCount > 0) "🔁 $repostCount" else "🔁",
+                    color = if (isReposted) SocialColors.Green else androidx.compose.ui.graphics.Color.Unspecified,
+                    modifier = Modifier.clickable(onClick = onToggleRepost)
+                )
                 Text(
                     "➤",
                     // Hallazgo real, comparado con Instagram/TikTok/Twitter/

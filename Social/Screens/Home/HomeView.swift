@@ -187,6 +187,11 @@ struct HomeView: View {
                     onLike: {
                         Task { await viewModel.toggleLike(post) }
                     },
+                    isReposted: viewModel.repostedPostIDs.contains(post.id),
+                    repostCount: viewModel.repostCounts[post.id] ?? 0,
+                    onToggleRepost: {
+                        Task { await viewModel.toggleRepost(post) }
+                    },
                     onCommentAdded: {
                         viewModel.commentAdded(postID: post.id)
                     },
@@ -274,6 +279,11 @@ private struct PostCard: View {
     let isSaved: Bool
     let isLiked: Bool
     let onLike: () -> Void
+    // Repostear una publicación real, comparado con Twitter/X/Facebook --
+    // ver HomeViewModel.toggleRepost(), 0127_post_reposts.sql.
+    var isReposted: Bool = false
+    var repostCount: Int = 0
+    var onToggleRepost: () -> Void = {}
     let onCommentAdded: () -> Void
     var onCommentRemoved: () -> Void = {}
     let onToggleSave: () -> Void
@@ -523,6 +533,17 @@ private struct PostCard: View {
                 } label: {
                     Label("\(post.commentCount)", systemImage: "bubble.right")
                 }
+                // Repostear una publicación real, comparado con Twitter/X/
+                // Facebook -- ver HomeViewModel.toggleRepost(),
+                // 0127_post_reposts.sql.
+                Button(action: onToggleRepost) {
+                    if repostCount > 0 {
+                        Label("\(repostCount)", systemImage: "arrow.2.squarepath")
+                    } else {
+                        Image(systemName: "arrow.2.squarepath")
+                    }
+                }
+                .foregroundStyle(isReposted ? .green : .secondary)
                 Spacer()
                 // Hallazgo real, comparado con Instagram/TikTok/Twitter/
                 // Snapchat: en las cuatro apps, este icono abre un

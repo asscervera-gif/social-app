@@ -58,6 +58,19 @@ class HomeViewModel : ViewModel() {
     private val _likedPostIds = MutableStateFlow<Set<String>>(emptySet())
     val likedPostIds: StateFlow<Set<String>> = _likedPostIds.asStateFlow()
 
+    // Repostear una publicación real, comparado con Twitter/X/Facebook --
+    // ver 0127_post_reposts.sql. Alcance deliberado de esta ronda: el
+    // repost real ya se guarda/cuenta/notifica de verdad, pero el feed
+    // principal todavía no mezcla los reposts de gente que sigo (mismo
+    // criterio de fase inicial ya usado varias veces esta sesión, p. ej.
+    // muted_feed_keywords 0116 solo cubrió el feed antes de extenderse a
+    // Reels) -- hueco real aparte para una ronda futura.
+    private val _repostedPostIds = MutableStateFlow<Set<String>>(emptySet())
+    val repostedPostIds: StateFlow<Set<String>> = _repostedPostIds.asStateFlow()
+
+    private val _repostCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val repostCounts: StateFlow<Map<String, Int>> = _repostCounts.asStateFlow()
+
     // Hallazgo real, comparado con cualquier app grande: la tarjeta del
     // feed nunca mostraba QUIÉN publicó cada post -- ni nombre, ni avatar,
     // ni forma de tocar para ver su perfil. A diferencia de Search/Match/
@@ -262,6 +275,18 @@ class HomeViewModel : ViewModel() {
                     } catch (e: Exception) {
                         // No bloquea el resto del feed si falla.
                     }
+                    try {
+                        val feedIdsForReposts = _feed.value.map { it.id }
+                        if (feedIdsForReposts.isNotEmpty()) {
+                            val repostRows = SupabaseManager.client.from("post_reposts")
+                                .select(columns = Columns.raw("post_id,user_id")) { filter { isIn("post_id", feedIdsForReposts) } }
+                                .decodeList<RepostRow>()
+                            _repostedPostIds.value = repostRows.filter { it.userId == myId }.map { it.postId }.toSet()
+                            _repostCounts.value = repostRows.groupingBy { it.postId }.eachCount()
+                        }
+                    } catch (e: Exception) {
+                        // No bloquea el resto del feed si falla.
+                    }
                 }
 
                 val myInterests = myId?.let { userId ->
@@ -369,6 +394,44 @@ class HomeViewModel : ViewModel() {
 
     @Serializable
     private data class LikedPostRow(@SerialName("post_id") val postId: String)
+
+    @Serializable
+    private data class RepostRow(
+        @SerialName("post_id") val postId: String,
+        @SerialName("user_id") val userId: String
+    )
+
+    @Serializable
+    private data class NewRepost(
+        @SerialName("post_id") val postId: String,
+        @SerialName("user_id") val userId: String
+    )
+
+    /** Repostear/quitar repost real de una publicación, comparado con
+     * Twitter/X/Facebook -- mismo patrón exacto que toggleLike()/
+     * toggleSave() de abajo, restricción unique(post_id, user_id) real
+     * (0127_post_reposts.sql). */
+    fun toggleRepost(post: Post) {
+        val currentlyReposted = _repostedPostIds.value.contains(post.id)
+        _repostedPostIds.update { if (currentlyReposted) it - post.id else it + post.id }
+        _repostCounts.update { it + (post.id to ((it[post.id] ?: 0) + if (currentlyReposted) -1 else 1).coerceAtLeast(0)) }
+        viewModelScope.launch {
+            try {
+                val userId = SupabaseManager.client.auth.currentUserOrNull()?.id ?: return@launch
+                if (currentlyReposted) {
+                    SupabaseManager.client.from("post_reposts").delete {
+                        filter { eq("post_id", post.id); eq("user_id", userId) }
+                    }
+                } else {
+                    SupabaseManager.client.from("post_reposts").insert(NewRepost(post.id, userId))
+                    com.social.app.backend.AnalyticsManager.track("post_reposted")
+                }
+            } catch (e: Exception) {
+                // Restricción unique(post_id, user_id): el estado deseado
+                // ya se cumple, mismo criterio que toggleLike()/toggleSave().
+            }
+        }
+    }
 
     /** Toggle real de like/unlike — antes era solo `like()`, un botón de un
      * solo sentido que incrementaba el contador local para siempre sin

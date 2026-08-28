@@ -3450,6 +3450,47 @@ async function main() {
   const maAfterUnmute = (await db.query(`select muted_id from muted_accounts where muter_id = $1`, [maU1])).rows;
   check('muted_accounts_delete_own: la lista real queda vacía tras dejar de silenciar', maAfterUnmute.length === 0);
 
+  // --- post_reposts (0127_post_reposts.sql): repostear una publicación
+  // real, comparado con Twitter/X/Facebook -- mismo patrón real que
+  // likes (público, solo el propio autor del repost puede crear/
+  // borrarlo). Usuarios NUEVOS a propósito. ---
+  await asSuperuser();
+  const rpU1 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const rpU2 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  const rpU3 = (await db.query(`insert into auth.users default values returning id`)).rows[0].id;
+  await db.query(`insert into profiles (id, display_name) values ($1,'Rp1'),($2,'Rp2'),($3,'Rp3') on conflict (id) do update set display_name=excluded.display_name`, [rpU1, rpU2, rpU3]);
+  const rpPost = (await db.query(`insert into posts (author_id, caption) values ($1, 'post para repostear') returning id`, [rpU1])).rows[0];
+
+  await asUser(rpU2);
+  await expectOk('post_reposts_insert_own: rpU2 SÍ puede repostear la publicación de rpU1', async () => {
+    await db.query(`insert into post_reposts (post_id, user_id) values ($1, $2)`, [rpPost.id, rpU2]);
+  });
+
+  await asUser(rpU3);
+  const rpSeenByThird = (await db.query(`select user_id from post_reposts where post_id = $1`, [rpPost.id])).rows;
+  check('post_reposts_select: un tercero real (rpU3) SÍ ve quién reposteó (público, mismo criterio que likes)', rpSeenByThird.length === 1 && rpSeenByThird[0].user_id === rpU2);
+
+  await db.query(`delete from post_reposts where post_id = $1 and user_id = $2`, [rpPost.id, rpU2]);
+  const rpAfterForeignDelete = (await db.query(`select user_id from post_reposts where post_id = $1`, [rpPost.id])).rows;
+  check('post_reposts_delete_own: un tercero real (rpU3) NO puede borrar el repost ajeno (0 filas afectadas, no un error)', rpAfterForeignDelete.length === 1);
+
+  await asUser(rpU2);
+  await expectOk('post_reposts_delete_own: el propio autor real del repost (rpU2) SÍ puede quitarlo', async () => {
+    await db.query(`delete from post_reposts where post_id = $1 and user_id = $2`, [rpPost.id, rpU2]);
+  });
+  const rpAfterOwnDelete = (await db.query(`select user_id from post_reposts where post_id = $1`, [rpPost.id])).rows;
+  check('post_reposts_delete_own: el repost real desaparece de verdad', rpAfterOwnDelete.length === 0);
+
+  await asUser(rpU2);
+  await db.query(`insert into post_reposts (post_id, user_id) values ($1, $2)`, [rpPost.id, rpU2]);
+  await asUser(rpU1);
+  // Segundo aviso real de verdad: el primer insert_own de arriba ya
+  // generó uno -- este vuelve a repostear tras haberlo quitado, mismo
+  // criterio real que un "me gusta"/"quitar me gusta"/"me gusta" genera
+  // un aviso nuevo cada vez que se vuelve a dar.
+  const rpNotif = (await db.query(`select kind, payload from notifications where recipient_id = $1 and kind = 'repost'`, [rpU1])).rows;
+  check('notify_new_repost: el autor real de la publicación (rpU1) recibe un aviso real por cada repost (2: el primero + el de después de quitar y repostear)', rpNotif.length === 2 && rpNotif.every(n => n.payload.post_id === rpPost.id));
+
   // --- Borrado de cuenta (delete-account): borrar auth.users debe
   // cascadear de verdad hasta profiles y todo lo dependiente — esto es
   // justo lo que la Edge Function hace con service_role, nunca probado

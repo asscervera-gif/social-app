@@ -183,6 +183,16 @@ struct AvisosView: View {
             showOpenedPost = true
             return
         }
+        // Repostear una publicación real, comparado con Twitter/X/
+        // Facebook -- mismo criterio de navegación directa que like/
+        // comment. Ver HomeViewModel.toggleRepost(), 0127_post_reposts.sql.
+        if entry.kind == "repost",
+           let postIDString = entry.payload["post_id"],
+           let postID = UUID(uuidString: postIDString) {
+            selectedPostID = postID
+            showOpenedPost = true
+            return
+        }
         viewModel.selected = entry
     }
 }

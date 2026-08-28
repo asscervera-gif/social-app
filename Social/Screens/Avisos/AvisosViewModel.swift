@@ -198,6 +198,9 @@ extension AvisosViewModel.NotificationEntry {
         // @menciones reales (0074_mentions.sql), comparado con
         // Instagram/Twitter/TikTok.
         case "mention": return "at"
+        // Repostear una publicación real, comparado con Twitter/X/
+        // Facebook -- ver HomeViewModel.toggleRepost(), 0127_post_reposts.sql.
+        case "repost": return "arrow.2.squarepath"
         default: return "bell"
         }
     }
@@ -219,6 +222,7 @@ extension AvisosViewModel.NotificationEntry {
         case "reel_comment_like": return "Le gustó tu comentario"
         case "group_message": return "Nuevo mensaje de grupo"
         case "mention": return "Te mencionó"
+        case "repost": return "Reposteó tu publicación"
         default: return "Notificación"
         }
     }
