@@ -7,6 +7,11 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.Orientation
@@ -636,7 +641,12 @@ fun ChatScreen(
                             // de voz, reproducción con MediaPlayer nativo.
                             AudioMessageBubble(url = message.audioUrl, isMine = isMine)
                         } else {
-                            Text(message.body ?: "", modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+                            // Enlaces reales pulsables dentro de un mensaje,
+                            // comparado con WhatsApp/Telegram/iMessage/
+                            // Instagram DM -- hueco real, un mensaje con una
+                            // URL se mostraba como texto plano sin forma de
+                            // tocarlo para abrirlo, ni siquiera resaltado.
+                            LinkifiedMessageText(message.body ?: "", modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
                         }
                     }
                     // Hallazgo real: última pieza de "chat funcional con
@@ -1334,4 +1344,39 @@ private val chatWallpaperOptions = listOf(
 private fun wallpaperBrush(key: String?): Brush {
     val colors = chatWallpaperOptions.firstOrNull { it.first == key }?.third
     return Brush.verticalGradient(colors ?: listOf(Color.Transparent, Color.Transparent))
+}
+
+// Enlaces reales pulsables dentro de un mensaje, comparado con
+// WhatsApp/Telegram/iMessage/Instagram DM -- hueco real, ningún mensaje
+// de chat en todo el repo detectaba URLs (grep confirmado: cero
+// AnnotatedString/LinkAnnotation en ChatScreen.kt hasta ahora). Regex
+// simple (sin librería nueva) + LinkAnnotation.Url (Compose UI 1.6+, ya
+// cubierto por el BOM 2024.06.00 de este proyecto) para que el sistema
+// abra el enlace real en el navegador al tocarlo. Equivalente de
+// LinkifiedMessageText en ChatView.swift (Text con Markdown nativo de
+// iOS, forma equivalente más simple en esa plataforma).
+private val messageUrlRegex = Regex("""https?://[^\s]+""")
+
+@Composable
+private fun LinkifiedMessageText(text: String, modifier: Modifier = Modifier) {
+    val matches = messageUrlRegex.findAll(text).toList()
+    if (matches.isEmpty()) {
+        Text(text, modifier = modifier)
+        return
+    }
+    val linkColor = MaterialTheme.colorScheme.primary
+    val linkStyles = androidx.compose.ui.text.TextLinkStyles(style = SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))
+    val annotated = buildAnnotatedString {
+        var cursor = 0
+        for (match in matches) {
+            append(text.substring(cursor, match.range.first))
+            val url = match.value
+            withLink(LinkAnnotation.Url(url, linkStyles)) {
+                append(url)
+            }
+            cursor = match.range.last + 1
+        }
+        if (cursor < text.length) append(text.substring(cursor))
+    }
+    Text(annotated, modifier = modifier)
 }

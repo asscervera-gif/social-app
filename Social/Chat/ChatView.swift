@@ -929,7 +929,15 @@ private struct MessageBubble: View {
                         // voz, reproducción con AVAudioPlayer nativo.
                         AudioMessageBubble(url: url, isMine: isMine)
                     } else {
-                        Text(message.body ?? "")
+                        // Enlaces reales pulsables dentro de un mensaje,
+                        // comparado con WhatsApp/Telegram/iMessage/
+                        // Instagram DM -- hueco real, ningún mensaje de
+                        // chat detectaba URLs (Android equivalente:
+                        // LinkifiedMessageText, ChatScreen.kt). `AttributedString`
+                        // con el atributo `.link` real (nativo desde iOS
+                        // 15) hace que SwiftUI lo pinte y lo abra solo,
+                        // sin gestos ni dependencias nuevas.
+                        Text(linkifiedAttributedString(message.body ?? ""))
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
                             .background(isMine ? Color.accentColor.opacity(0.85) : Color.gray.opacity(0.15))
@@ -1252,4 +1260,28 @@ private let chatWallpaperOptions: [ChatWallpaperOption] = [
 private func chatWallpaperGradient(_ key: String?) -> LinearGradient {
     let colors = chatWallpaperOptions.first { $0.key == key }?.colors ?? [Color.clear, Color.clear]
     return LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom)
+}
+
+// Enlaces reales pulsables dentro de un mensaje, comparado con
+// WhatsApp/Telegram/iMessage/Instagram DM -- regex simple (sin
+// dependencia nueva) detecta URLs reales y les da el atributo `.link`
+// real de AttributedString, que SwiftUI ya sabe pintar (subrayado) y
+// abrir solo (nativo desde iOS 15, sin gestos a mano). Equivalente de
+// LinkifiedMessageText (ChatScreen.kt).
+private let messageURLRegex = try? NSRegularExpression(pattern: #"https?://[^\s]+"#)
+
+private func linkifiedAttributedString(_ text: String) -> AttributedString {
+    var result = AttributedString(text)
+    guard let regex = messageURLRegex else { return result }
+    let nsText = text as NSString
+    let matches = regex.matches(in: text, range: NSRange(location: 0, length: nsText.length))
+    for match in matches {
+        guard let urlString = Optional(nsText.substring(with: match.range)),
+              let url = URL(string: urlString),
+              let range = result.range(of: urlString)
+        else { continue }
+        result[range].link = url
+        result[range].underlineStyle = .single
+    }
+    return result
 }
