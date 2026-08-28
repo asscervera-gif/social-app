@@ -81,13 +81,29 @@ fun SearchScreen(viewModel: SearchViewModel = viewModel(), onOpenProfile: (Strin
             }
             LazyColumn(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
                 items(recentSearches, key = { it }) { recentQuery ->
-                    Text(
-                        recentQuery,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { viewModel.onQueryChange(recentQuery) }
-                            .padding(vertical = 10.dp)
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            recentQuery,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { viewModel.onQueryChange(recentQuery) }
+                                .padding(vertical = 4.dp)
+                        )
+                        // Borrar una única búsqueda reciente, comparado
+                        // con Instagram/Twitter/TikTok -- ver
+                        // RecentSearchesPreference.remove().
+                        Text(
+                            "✕",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .clickable { RecentSearchesPreference.remove(context, recentQuery) }
+                                .padding(start = 12.dp)
+                        )
+                    }
                 }
             }
         }

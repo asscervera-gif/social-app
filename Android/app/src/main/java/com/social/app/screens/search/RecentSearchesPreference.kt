@@ -56,4 +56,15 @@ object RecentSearchesPreference {
         _recent.value = emptyList()
         prefs(context).edit().remove(KEY_RECENT).apply()
     }
+
+    /** Borrar una única búsqueda reciente, comparado con Instagram/
+     * Twitter/TikTok -- las tres dejan quitar un solo término (icono "×"
+     * en su propia fila), sin tener que vaciar toda la lista con
+     * clear(). Hallazgo real: antes solo existía la opción de todo o
+     * nada. */
+    fun remove(context: Context, query: String) {
+        val updated = _recent.value.filterNot { it.equals(query, ignoreCase = true) }
+        _recent.value = updated
+        prefs(context).edit().putString(KEY_RECENT, updated.joinToString(SEPARATOR)).apply()
+    }
 }

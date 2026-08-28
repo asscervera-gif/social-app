@@ -41,4 +41,14 @@ final class RecentSearchesPreference: ObservableObject {
         recent = []
         UserDefaults.standard.removeObject(forKey: key)
     }
+
+    /// Borrar una única búsqueda reciente, comparado con Instagram/
+    /// Twitter/TikTok -- las tres dejan quitar un solo término (icono
+    /// "×" en su propia fila), sin tener que vaciar toda la lista con
+    /// clear(). Hallazgo real: antes solo existía la opción de todo o
+    /// nada. Equivalente de RecentSearchesPreference.kt.remove().
+    func remove(_ query: String) {
+        recent = recent.filter { $0.caseInsensitiveCompare(query) != .orderedSame }
+        UserDefaults.standard.set(recent, forKey: key)
+    }
 }

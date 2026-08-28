@@ -40,6 +40,16 @@ struct SearchView: View {
                     ForEach(recentSearches.recent, id: \.self) { recentQuery in
                         Button(recentQuery) { viewModel.query = recentQuery }
                             .foregroundStyle(.primary)
+                            // Borrar una única búsqueda reciente,
+                            // comparado con Instagram/Twitter/TikTok --
+                            // ver RecentSearchesPreference.remove().
+                            .swipeActions {
+                                Button(role: .destructive) {
+                                    recentSearches.remove(recentQuery)
+                                } label: {
+                                    Label("Borrar", systemImage: "trash")
+                                }
+                            }
                     }
                 } header: {
                     HStack {
