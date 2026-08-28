@@ -28,6 +28,21 @@ data class DuelHistoryEntry(
     val opponentAvatarConfig: Map<String, String>? = null
 )
 
+// Estadísticas agregadas reales del historial, comparado con Snapchat
+// (Snap Score) y el patrón estándar de "resumen" en juegos sociales con
+// historial de partidas (Wordle compartido, Kahoot) -- antes solo se
+// veía la lista cruda, partida por partida, sin ningún total ni media.
+// Alcance deliberado: calculado sobre los mismos 50 duelos más recientes
+// que ya trae load() (limit(50) real, ver más abajo), no un agregado de
+// por vida -- documentado explícitamente en la propia UI ("de tus
+// últimos N duelos") para no afirmar más de lo que se calcula de verdad.
+data class DuelStats(
+    val totalPlayed: Int,
+    val averageDelta: Double,
+    val mostFrequentOpponentName: String?,
+    val mostFrequentOpponentCount: Int
+)
+
 @Serializable
 private data class DuelOpponentProfile(
     @SerialName("display_name") val displayName: String,
@@ -62,6 +77,9 @@ class DuelHistoryViewModel : ViewModel() {
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
+    private val _stats = MutableStateFlow<DuelStats?>(null)
+    val stats: StateFlow<DuelStats?> = _stats.asStateFlow()
+
     fun load() {
         viewModelScope.launch {
             _isLoading.value = true
@@ -91,6 +109,19 @@ class DuelHistoryViewModel : ViewModel() {
                     }
                     entry.copy(opponentName = opponent?.displayName, opponentAvatarConfig = opponent?.avatarConfig)
                 }
+
+                val deltas = _duels.value.mapNotNull { it.compatibilityDelta }
+                val mostFrequent = _duels.value
+                    .mapNotNull { it.opponentName }
+                    .groupingBy { it }
+                    .eachCount()
+                    .maxByOrNull { it.value }
+                _stats.value = if (_duels.value.isEmpty()) null else DuelStats(
+                    totalPlayed = _duels.value.size,
+                    averageDelta = if (deltas.isEmpty()) 0.0 else deltas.average(),
+                    mostFrequentOpponentName = mostFrequent?.key,
+                    mostFrequentOpponentCount = mostFrequent?.value ?: 0
+                )
             } catch (e: Exception) {
                 _errorMessage.value = "No se pudo cargar el historial de duelos: ${e.message}"
             } finally {

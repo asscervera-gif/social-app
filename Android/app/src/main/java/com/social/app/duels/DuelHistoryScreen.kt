@@ -30,11 +30,48 @@ fun DuelHistoryScreen(viewModel: DuelHistoryViewModel = viewModel(), onOpenDuel:
     val duels by viewModel.duels.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    val stats by viewModel.stats.collectAsState()
 
     LaunchedEffect(Unit) { viewModel.load() }
 
     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
         Text("Tus duelos", style = MaterialTheme.typography.headlineSmall)
+        // Estadísticas agregadas reales, comparado con Snapchat (Snap
+        // Score) y el resumen estándar de apps de partidas sociales
+        // (Wordle compartido, Kahoot) -- ver DuelHistoryViewModel.stats().
+        // Alcance deliberado, dicho explícitamente en la propia UI: solo
+        // de los últimos 50 duelos (mismo límite real que ya trae load()).
+        stats?.let { s ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text("${s.totalPlayed}", style = MaterialTheme.typography.titleMedium)
+                    Text("Duelos", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Column {
+                    Text(
+                        "${if (s.averageDelta >= 0) "+" else ""}${"%.1f".format(s.averageDelta)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = if (s.averageDelta >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                    )
+                    Text("Media", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (s.mostFrequentOpponentName != null) {
+                    Column {
+                        Text(s.mostFrequentOpponentName, style = MaterialTheme.typography.titleMedium)
+                        Text("Rival frecuente (${s.mostFrequentOpponentCount})", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            Text(
+                "De tus últimos ${s.totalPlayed} duelos",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
         if (isLoading) {
             CircularProgressIndicator(modifier = Modifier.padding(top = 12.dp))
         }

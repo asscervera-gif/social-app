@@ -16,6 +16,37 @@ struct DuelHistoryView: View {
     var body: some View {
         NavigationStack {
             List {
+                // Estadísticas agregadas reales, comparado con Snapchat
+                // (Snap Score) y el resumen estándar de apps de partidas
+                // sociales (Wordle compartido, Kahoot) -- ver
+                // DuelHistoryViewModel.stats(). Alcance deliberado, dicho
+                // explícitamente en la propia UI: solo de los últimos 50
+                // duelos (mismo límite real que ya trae load()).
+                if let stats = viewModel.stats {
+                    HStack {
+                        VStack {
+                            Text("\(stats.totalPlayed)").font(.title3.bold())
+                            Text("Duelos").font(.caption2).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        VStack {
+                            Text(String(format: "%@%.1f", stats.averageDelta >= 0 ? "+" : "", stats.averageDelta))
+                                .font(.title3.bold())
+                                .foregroundStyle(stats.averageDelta >= 0 ? .green : .red)
+                            Text("Media").font(.caption2).foregroundStyle(.secondary)
+                        }
+                        if let name = stats.mostFrequentOpponentName {
+                            Spacer()
+                            VStack {
+                                Text(name).font(.title3.bold()).lineLimit(1)
+                                Text("Rival frecuente (\(stats.mostFrequentOpponentCount))").font(.caption2).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    Text("De tus últimos \(stats.totalPlayed) duelos")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
                 if let error = viewModel.errorMessage {
                     Text(error).font(.footnote).foregroundStyle(.red)
                 }

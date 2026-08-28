@@ -31,12 +31,27 @@ struct DuelHistoryEntry: Decodable, Identifiable {
     var opponentAvatarConfig: [String: String]?
 }
 
+// Estadísticas agregadas reales del historial, comparado con Snapchat
+// (Snap Score) y el resumen estándar de apps de partidas sociales
+// (Wordle compartido, Kahoot) -- antes solo se veía la lista cruda.
+// Alcance deliberado: calculado sobre los mismos 50 duelos más recientes
+// que ya trae load() (limit(50) real), no un agregado de por vida --
+// dicho explícitamente en la propia UI. Equivalente de
+// DuelHistoryViewModel.kt.DuelStats.
+struct DuelStats {
+    let totalPlayed: Int
+    let averageDelta: Double
+    let mostFrequentOpponentName: String?
+    let mostFrequentOpponentCount: Int
+}
+
 @MainActor
 final class DuelHistoryViewModel: ObservableObject {
 
     @Published var duels: [DuelHistoryEntry] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var stats: DuelStats?
 
     /// Aviso de honestidad: `.or("col.eq.val,col.eq.val")` es la sintaxis de
     /// filtro estándar de PostgREST, expuesta igual en todos los clientes
@@ -65,6 +80,16 @@ final class DuelHistoryViewModel: ObservableObject {
                 entries[index].opponentAvatarConfig = opponent?.avatar_config
             }
             duels = entries
+
+            let deltas = entries.compactMap { $0.compatibility_delta }
+            let opponentCounts = Dictionary(grouping: entries.compactMap { $0.opponentName }, by: { $0 }).mapValues { $0.count }
+            let mostFrequent = opponentCounts.max(by: { $0.value < $1.value })
+            stats = entries.isEmpty ? nil : DuelStats(
+                totalPlayed: entries.count,
+                averageDelta: deltas.isEmpty ? 0 : Double(deltas.reduce(0, +)) / Double(deltas.count),
+                mostFrequentOpponentName: mostFrequent?.key,
+                mostFrequentOpponentCount: mostFrequent?.value ?? 0
+            )
         } catch {
             errorMessage = "No se pudo cargar el historial de duelos: \(error.localizedDescription)"
         }
