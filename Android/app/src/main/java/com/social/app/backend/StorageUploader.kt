@@ -30,6 +30,19 @@ object StorageUploader {
         SupabaseManager.client.storage.from("media").publicUrl(path)
     }
 
+    /** Sube bytes ya generados (sin `Uri`/`File` real de por medio) --
+     * mismo patrón exacto ya usado dentro de `uploadVideoThumbnail`
+     * (comprimir un `Bitmap` a JPEG en memoria y subir el array
+     * resultante), extraído aquí como función reutilizable real para
+     * "Compartir el resultado de un duelo como Historia"
+     * (DuelResultScreen.kt) -- una tarjeta generada en memoria, nunca un
+     * archivo elegido por el usuario. */
+    suspend fun uploadBytes(bytes: ByteArray, userId: String, extension: String): String = withContext(Dispatchers.IO) {
+        val path = "$userId/${UUID.randomUUID()}.$extension"
+        SupabaseManager.client.storage.from("media").upload(path, bytes)
+        SupabaseManager.client.storage.from("media").publicUrl(path)
+    }
+
     /** Última pieza de "chat funcional con fotos, voz, reacciones, read
      * receipts" — mensajes de voz nativos (MediaRecorder, ver
      * ChatViewModel.sendVoiceNote), grabados a un archivo local .m4a antes
